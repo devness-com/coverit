@@ -3,9 +3,9 @@
 **Your code, covered. One command.**
 
 <!-- badges -->
-![Version](https://img.shields.io/npm/v/coverit)
-![License](https://img.shields.io/npm/l/coverit)
-![Build](https://img.shields.io/github/actions/workflow/status/nicepkg/coverit/ci.yml)
+[![Version](https://img.shields.io/npm/v/@devness/coverit)](https://www.npmjs.com/package/@devness/coverit)
+[![License](https://img.shields.io/npm/l/@devness/coverit)](https://opensource.org/licenses/MIT)
+[![Downloads](https://img.shields.io/npm/dm/@devness/coverit)](https://www.npmjs.com/package/@devness/coverit)
 
 ## What is coverit?
 
@@ -14,14 +14,17 @@ coverit is an AI-powered test generation and execution platform. It analyzes you
 ## Quick Start
 
 ```bash
-# Install
-bun add -g coverit
+# Install globally
+npm install -g @devness/coverit
 
-# Run in your project
-coverit run
+# Or run with npx (no install)
+npx @devness/coverit run
 
-# Or scan first (dry run)
+# Scan first (dry run)
 coverit scan
+
+# Full pipeline
+coverit run
 ```
 
 ## Features
@@ -77,8 +80,8 @@ Add coverit as an MCP server in your Claude Code config:
 {
   "mcpServers": {
     "coverit": {
-      "command": "bunx",
-      "args": ["coverit", "mcp"]
+      "command": "npx",
+      "args": ["@devness/coverit", "mcp"]
     }
   }
 }
