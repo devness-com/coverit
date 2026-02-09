@@ -1,0 +1,273 @@
+import simpleGit, { type DiffResultTextFile, type SimpleGit } from "simple-git";
+import { resolve, extname } from "path";
+import type {
+  DiffResult,
+  ChangedFile,
+  DiffHunk,
+  Language,
+  FileType,
+} from "../types/index.js";
+
+const EXTENSION_TO_LANGUAGE: Record<string, Language> = {
+  ".ts": "typescript",
+  ".tsx": "typescript",
+  ".js": "javascript",
+  ".jsx": "javascript",
+  ".mjs": "javascript",
+  ".cjs": "javascript",
+  ".py": "python",
+  ".go": "go",
+  ".rs": "rust",
+  ".java": "java",
+};
+
+/**
+ * Path-based rules evaluated in order. First match wins.
+ * Each rule is [pattern, fileType] where pattern is a regex tested against the normalized posix path.
+ */
+const FILE_TYPE_RULES: Array<[RegExp, FileType]> = [
+  // Tests first — they override everything
+  [/\.(test|spec)\.[^/]+$/, "test"],
+
+  // Platform-specific
+  [/\/src-tauri\//, "desktop-window"],
+  [/\/desktop\/.*components?\//, "desktop-component"],
+  [/\/desktop\//, "desktop-window"],
+  [/\/mobile\/.*screens?\//, "mobile-screen"],
+  [/\/mobile\/.*components?\//, "mobile-component"],
+  [/\/expo\/.*screens?\//, "mobile-screen"],
+  [/\/expo\/.*components?\//, "mobile-component"],
+  [/\/mobile\//, "mobile-screen"],
+  [/\/expo\//, "mobile-screen"],
+
+  // API layer
+  [/\/routes?\//, "api-route"],
+  [/\/api\//, "api-route"],
+  [/\/controllers?\//, "api-controller"],
+  [/\/middleware\//, "middleware"],
+
+  // React patterns
+  [/\/pages?\//, "react-page"],
+  [/\/screens?\//, "react-page"],
+  [/\/hooks?\//, "react-hook"],
+  [/\/components?\//, "react-component"],
+
+  // Backend patterns
+  [/\/services?\//, "service"],
+  [/\/utils?\//, "utility"],
+  [/\/helpers?\//, "utility"],
+  [/\/models?\//, "model"],
+  [/\/entities\//, "model"],
+  [/\/schemas?\//, "schema"],
+  [/\/migrations?\//, "migration"],
+
+  // Config files
+  [/\.(config|rc)\.[^/]+$/, "config"],
+  [/\/config\//, "config"],
+
+  // Style files
+  [/\.(css|scss|sass|less|styl)$/, "style"],
+];
+
+function detectLanguage(filePath: string): Language {
+  const ext = extname(filePath).toLowerCase();
+  return EXTENSION_TO_LANGUAGE[ext] ?? "unknown";
+}
+
+function detectFileType(filePath: string): FileType {
+  // Normalize to forward slashes for consistent matching
+  const normalized = filePath.replace(/\\/g, "/");
+
+  for (const [pattern, fileType] of FILE_TYPE_RULES) {
+    if (pattern.test(normalized)) {
+      return fileType;
+    }
+  }
+
+  // TSX files with no other pattern match are likely React components
+  if (normalized.endsWith(".tsx")) {
+    return "react-component";
+  }
+
+  return "unknown";
+}
+
+/**
+ * Parse unified diff hunks from raw diff text for a single file.
+ */
+function parseHunks(rawDiff: string, _filePath: string): DiffHunk[] {
+  const hunks: DiffHunk[] = [];
+
+  // Find the section for this file and extract @@ hunk headers
+  const hunkHeaderRegex = /^@@\s+-\d+(?:,\d+)?\s+\+(\d+)(?:,(\d+))?\s+@@(.*)$/gm;
+  let match: RegExpExecArray | null;
+
+  while ((match = hunkHeaderRegex.exec(rawDiff)) !== null) {
+    const startLine = parseInt(match[1]!, 10);
+    const lineCount = match[2] !== undefined ? parseInt(match[2], 10) : 1;
+    const endLine = startLine + Math.max(lineCount - 1, 0);
+
+    // Capture the hunk content (lines between this header and the next one)
+    const headerEnd = match.index + match[0].length;
+    const nextHunkIdx = rawDiff.indexOf("\n@@", headerEnd);
+    const nextFileIdx = rawDiff.indexOf("\ndiff --git", headerEnd);
+
+    let sliceEnd: number;
+    if (nextHunkIdx === -1 && nextFileIdx === -1) {
+      sliceEnd = rawDiff.length;
+    } else if (nextHunkIdx === -1) {
+      sliceEnd = nextFileIdx;
+    } else if (nextFileIdx === -1) {
+      sliceEnd = nextHunkIdx;
+    } else {
+      sliceEnd = Math.min(nextHunkIdx, nextFileIdx);
+    }
+
+    const content = rawDiff.slice(headerEnd, sliceEnd).trim();
+
+    hunks.push({ startLine, endLine, content });
+  }
+
+  return hunks;
+}
+
+function mapDiffStatus(status: string): ChangedFile["status"] {
+  switch (status) {
+    case "A":
+      return "added";
+    case "M":
+      return "modified";
+    case "D":
+      return "deleted";
+    case "R":
+    case "R100":
+      return "renamed";
+    default:
+      // Renames with similarity (R075 etc.) or copies
+      if (status.startsWith("R")) return "renamed";
+      return "modified";
+  }
+}
+
+/**
+ * Analyze git diff to identify changed files with metadata.
+ *
+ * @param projectRoot - Absolute path to the git repository root
+ * @param baseBranch - Branch to diff against (defaults to HEAD for uncommitted changes)
+ */
+export async function analyzeDiff(
+  projectRoot: string,
+  baseBranch?: string
+): Promise<DiffResult> {
+  const root = resolve(projectRoot);
+  const git: SimpleGit = simpleGit(root);
+
+  // Verify this is a git repository
+  const isRepo = await git.checkIsRepo();
+  if (!isRepo) {
+    throw new Error(`Not a git repository: ${root}`);
+  }
+
+  const currentBranch =
+    (await git.revparse(["--abbrev-ref", "HEAD"])).trim() || "HEAD";
+  const base = baseBranch ?? currentBranch;
+
+  let diffSummaryFiles: DiffResultTextFile[];
+  let rawDiff: string;
+
+  if (baseBranch) {
+    // Diff between base branch and current HEAD
+    const summary = await git.diffSummary([baseBranch]);
+    diffSummaryFiles = summary.files as DiffResultTextFile[];
+    rawDiff = await git.diff([baseBranch]);
+  } else {
+    // Combine staged + unstaged changes against HEAD
+    const stagedSummary = await git.diffSummary(["--cached"]);
+    const unstagedSummary = await git.diffSummary();
+
+    // Merge results, preferring staged if both exist
+    const fileMap = new Map<string, DiffResultTextFile>();
+    for (const f of unstagedSummary.files as DiffResultTextFile[]) {
+      fileMap.set(f.file, f);
+    }
+    for (const f of stagedSummary.files as DiffResultTextFile[]) {
+      const existing = fileMap.get(f.file);
+      if (existing) {
+        // Combine additions/deletions from both staged and unstaged
+        fileMap.set(f.file, {
+          ...f,
+          insertions: f.insertions + existing.insertions,
+          deletions: f.deletions + existing.deletions,
+          changes: f.changes + existing.changes,
+        });
+      } else {
+        fileMap.set(f.file, f);
+      }
+    }
+
+    diffSummaryFiles = Array.from(fileMap.values());
+
+    // Get raw diff for hunk parsing
+    const stagedRaw = await git.diff(["--cached"]);
+    const unstagedRaw = await git.diff();
+    rawDiff = stagedRaw + "\n" + unstagedRaw;
+  }
+
+  // Filter out binary files and non-source artifacts
+  const sourceFiles = diffSummaryFiles.filter(
+    (f) => !f.binary && !f.file.includes("node_modules/") && !f.file.includes("dist/")
+  );
+
+  const files: ChangedFile[] = sourceFiles.map((f) => {
+    // simple-git provides status info in diffSummary via the status property on StatusResult,
+    // but DiffResultTextFile does not carry it. We infer from insertions/deletions.
+    let status: ChangedFile["status"] = "modified";
+    if (f.deletions === 0 && f.insertions > 0) {
+      status = "added";
+    }
+
+    return {
+      path: f.file,
+      status,
+      additions: f.insertions,
+      deletions: f.deletions,
+      hunks: parseHunks(rawDiff, f.file),
+      language: detectLanguage(f.file),
+      fileType: detectFileType(f.file),
+    };
+  });
+
+  // Augment with status from `git status` for more accurate added/deleted detection
+  const statusResult = await git.status();
+  const statusMap = new Map<string, string>();
+  for (const f of statusResult.created) statusMap.set(f, "A");
+  for (const f of statusResult.deleted) statusMap.set(f, "D");
+  for (const f of statusResult.renamed) statusMap.set(f.to, "R");
+
+  for (const file of files) {
+    const st = statusMap.get(file.path);
+    if (st) {
+      file.status = mapDiffStatus(st);
+    }
+  }
+
+  const addedCount = files.filter((f) => f.status === "added").length;
+  const modifiedCount = files.filter((f) => f.status === "modified").length;
+  const deletedCount = files.filter((f) => f.status === "deleted").length;
+
+  const summary = [
+    `${files.length} file(s) changed`,
+    addedCount > 0 ? `${addedCount} added` : null,
+    modifiedCount > 0 ? `${modifiedCount} modified` : null,
+    deletedCount > 0 ? `${deletedCount} deleted` : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  return {
+    files,
+    summary,
+    baseBranch: base,
+    headBranch: currentBranch,
+  };
+}

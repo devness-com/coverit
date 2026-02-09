@@ -1,0 +1,293 @@
+/**
+ * Coverit — Orchestrator
+ *
+ * Central pipeline engine that coordinates the full test lifecycle:
+ * analyze → plan → generate → execute → report.
+ *
+ * Each plan is executed independently — a failure in one plan does not
+ * block others. Errors are captured per-plan and included in the final report.
+ */
+
+import { mkdir, writeFile, readdir } from "node:fs/promises";
+import { join } from "node:path";
+import type {
+  CoveritConfig,
+  CoveritEvent,
+  CoveritEventHandler,
+  CoveritReport,
+  CodeScanResult,
+  ExecutionResult,
+  GeneratorContext,
+  TestStrategy,
+  TestPlan,
+  GeneratorResult,
+} from "../types/index.js";
+import { analyzeDiff } from "../analysis/diff-analyzer.js";
+import { scanCode } from "../analysis/code-scanner.js";
+import { buildDependencyGraph } from "../analysis/dependency-graph.js";
+import { planStrategy } from "../analysis/strategy-planner.js";
+import { createGenerator } from "../generators/index.js";
+import { createExecutor } from "../executors/index.js";
+import { generateReport } from "../agents/reporter.js";
+import { detectProjectInfo } from "../utils/framework-detector.js";
+import { logger } from "../utils/logger.js";
+
+const COVERIT_DIR = ".coverit";
+const GENERATED_DIR = "generated";
+const REPORT_FILE = "last-report.json";
+
+function emit(handler: CoveritEventHandler | undefined, event: CoveritEvent): void {
+  if (handler) {
+    try {
+      handler(event);
+    } catch (err) {
+      logger.warn("Event handler threw:", err);
+    }
+  }
+}
+
+async function ensureDir(dirPath: string): Promise<void> {
+  await mkdir(dirPath, { recursive: true });
+}
+
+async function findExistingTests(projectRoot: string): Promise<string[]> {
+  const testDirs = ["__tests__", "tests", "test"];
+  const found: string[] = [];
+
+  for (const dir of testDirs) {
+    try {
+      const entries = await readdir(join(projectRoot, dir), {
+        recursive: true,
+      });
+      for (const entry of entries) {
+        if (typeof entry === "string" && /\.(test|spec)\.[jt]sx?$/.test(entry)) {
+          found.push(join(dir, entry));
+        }
+      }
+    } catch {
+      // Directory doesn't exist — skip
+    }
+  }
+
+  return found;
+}
+
+/**
+ * Runs the full coverit pipeline for a given configuration.
+ *
+ * Pipeline phases:
+ * 1. Analysis — diff, scan, dependency graph, strategy planning
+ * 2. Generation — create test files per plan (parallelized by phase)
+ * 3. Execution — run generated tests per plan
+ * 4. Reporting — aggregate results and persist
+ */
+export async function orchestrate(
+  config: CoveritConfig,
+  onEvent?: CoveritEventHandler,
+): Promise<CoveritReport> {
+  const coveritDir = join(config.projectRoot, COVERIT_DIR);
+  const generatedDir = join(coveritDir, GENERATED_DIR);
+  await ensureDir(generatedDir);
+
+  // ── Phase 1: Analysis ──────────────────────────────────────
+  const projectInfo = await detectProjectInfo(config.projectRoot);
+  const baseBranch = config.targetPaths?.[0]; // TODO: proper baseBranch from config or git detection
+
+  const diffResult = await analyzeDiff(config.projectRoot, baseBranch);
+  emit(onEvent, { type: "analysis:start", data: { files: diffResult.files.length } });
+
+  const scanResults: CodeScanResult[] = [];
+  for (const changedFile of diffResult.files) {
+    const scanResult = await scanCode(
+      join(config.projectRoot, changedFile.path),
+      config.projectRoot,
+    );
+    scanResults.push(scanResult);
+  }
+
+  const depGraph = await buildDependencyGraph(config.projectRoot);
+
+  const strategy: TestStrategy = await planStrategy(
+    diffResult,
+    scanResults,
+    depGraph,
+    config.projectRoot,
+  );
+
+  emit(onEvent, { type: "analysis:complete", data: { strategy } });
+
+  // ── Phase 2 & 3: Generation + Execution per phase ──────────
+  const existingTests = await findExistingTests(config.projectRoot);
+  const allResults: ExecutionResult[] = [];
+
+  for (const phase of strategy.executionOrder) {
+    // Plans within a phase can run in parallel
+    const phaseResults = await Promise.all(
+      phase.plans.map(async (planId) => {
+        const plan = strategy.plans.find((p) => p.id === planId);
+        if (!plan) {
+          logger.warn(`Plan ${planId} referenced in phase but not found`);
+          return null;
+        }
+
+        try {
+          return await executePlan(plan, {
+            config,
+            projectInfo,
+            strategy,
+            scanResults,
+            existingTests,
+            generatedDir,
+            phase,
+            onEvent,
+          });
+        } catch (err) {
+          const message =
+            err instanceof Error ? err.message : String(err);
+          logger.error(`Plan ${plan.id} failed:`, message);
+          emit(onEvent, {
+            type: "error",
+            data: { message, plan },
+          });
+
+          // Return a failure result so the pipeline continues
+          return {
+            planId: plan.id,
+            status: "error" as const,
+            totalTests: 0,
+            passed: 0,
+            failed: 0,
+            skipped: 0,
+            duration: 0,
+            coverage: null,
+            failures: [],
+            output: `Plan execution error: ${message}`,
+          };
+        }
+      }),
+    );
+
+    for (const result of phaseResults) {
+      if (result) allResults.push(result);
+    }
+  }
+
+  // ── Phase 4: Reporting ─────────────────────────────────────
+  const report = generateReport(projectInfo, strategy, allResults);
+
+  emit(onEvent, { type: "report:complete", data: { report } });
+
+  // Persist report for `coverit report` command
+  await writeFile(
+    join(coveritDir, REPORT_FILE),
+    JSON.stringify(report, null, 2),
+    "utf-8",
+  );
+
+  return report;
+}
+
+// ─── Internal: execute a single TestPlan ──────────────────────
+
+interface PlanExecutionContext {
+  config: CoveritConfig;
+  projectInfo: TestStrategy["project"];
+  strategy: TestStrategy;
+  scanResults: CodeScanResult[];
+  existingTests: string[];
+  generatedDir: string;
+  phase: TestStrategy["executionOrder"][number];
+  onEvent?: CoveritEventHandler;
+}
+
+async function executePlan(
+  plan: TestPlan,
+  ctx: PlanExecutionContext,
+): Promise<ExecutionResult> {
+  const { config, projectInfo, scanResults, existingTests, generatedDir, phase, onEvent } =
+    ctx;
+
+  // ── Generate ───────────────────────────────────────────────
+  emit(onEvent, { type: "generation:start", data: { plan } });
+
+  const generatorCtx: GeneratorContext = {
+    plan,
+    project: projectInfo,
+    scanResults,
+    existingTests,
+  };
+
+  const generator = createGenerator(plan.type, projectInfo);
+  const genResult: GeneratorResult = await generator.generate(generatorCtx);
+
+  emit(onEvent, { type: "generation:complete", data: { result: genResult } });
+
+  // Write generated test files to .coverit/generated/
+  for (const test of genResult.tests) {
+    const outPath = join(generatedDir, test.filePath);
+    await ensureDir(join(outPath, ".."));
+    await writeFile(outPath, test.content, "utf-8");
+  }
+
+  if (config.generateOnly || config.skipExecution) {
+    return {
+      planId: plan.id,
+      status: "skipped",
+      totalTests: genResult.tests.reduce((sum, t) => sum + t.testCount, 0),
+      passed: 0,
+      failed: 0,
+      skipped: genResult.tests.reduce((sum, t) => sum + t.testCount, 0),
+      duration: 0,
+      coverage: null,
+      failures: [],
+      output: "Execution skipped (generate-only mode)",
+    };
+  }
+
+  // ── Execute ────────────────────────────────────────────────
+  emit(onEvent, {
+    type: "execution:start",
+    data: { plan, environment: phase.environment },
+  });
+
+  const executor = createExecutor(phase.environment);
+  // Execute each generated test and merge results
+  const mergedResult: ExecutionResult = {
+    planId: plan.id,
+    status: "passed",
+    totalTests: 0,
+    passed: 0,
+    failed: 0,
+    skipped: 0,
+    duration: 0,
+    coverage: null,
+    failures: [],
+    output: "",
+  };
+
+  for (const test of genResult.tests) {
+    const execResult = await executor.execute(test, {
+      environment: phase.environment,
+      timeout: 60_000,
+      retries: 0,
+      parallel: false,
+      collectCoverage: config.coverageThreshold !== undefined,
+      cloudConfig: config.cloudConfig,
+    });
+    mergedResult.totalTests += execResult.totalTests;
+    mergedResult.passed += execResult.passed;
+    mergedResult.failed += execResult.failed;
+    mergedResult.skipped += execResult.skipped;
+    mergedResult.duration += execResult.duration;
+    mergedResult.failures.push(...execResult.failures);
+    mergedResult.output += execResult.output + "\n";
+    if (execResult.coverage) mergedResult.coverage = execResult.coverage;
+    if (execResult.status !== "passed") mergedResult.status = execResult.status;
+  }
+
+  const execResult = mergedResult;
+
+  emit(onEvent, { type: "execution:complete", data: { result: execResult } });
+
+  return execResult;
+}
