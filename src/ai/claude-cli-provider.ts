@@ -164,7 +164,7 @@ export class ClaudeCliProvider implements AIProvider {
 
   async generate(
     messages: AIMessage[],
-    options?: AIGenerateOptions,
+    _options?: AIGenerateOptions,
   ): Promise<AIResponse> {
     if (!this.binaryPath) {
       this.binaryPath = await findClaudeBinary();
