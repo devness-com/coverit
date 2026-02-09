@@ -3,19 +3,95 @@
 import { readdir, readFile } from "node:fs/promises";
 import { basename, dirname, extname, join } from "node:path";
 import type {
+  CodeScanResult,
   GeneratorContext,
   GeneratorResult,
   TestFramework,
   TestType,
 } from "../types/index.js";
+import type { AIProvider } from "../ai/types.js";
+import { buildTestGenerationPrompt } from "../ai/prompts.js";
 
 /**
  * Abstract base class for all test generators.
  * Provides shared helpers for building test file content strings,
  * deduplicating against existing tests, and producing consistent output.
+ *
+ * When an AIProvider is attached, generators attempt LLM-powered test
+ * generation first, falling back to AST-based templates on failure or
+ * when no provider is available.
  */
 export abstract class BaseGenerator {
+  protected aiProvider: AIProvider | null = null;
+
   abstract generate(context: GeneratorContext): Promise<GeneratorResult>;
+
+  setAIProvider(provider: AIProvider): void {
+    this.aiProvider = provider;
+  }
+
+  /**
+   * Attempts LLM-powered test generation using the attached AI provider.
+   * Returns the generated test file content as a string, or null if:
+   * - No AI provider is configured
+   * - The provider call fails for any reason
+   *
+   * Callers should fall back to template-based generation when this returns null.
+   */
+  protected async generateWithAI(params: {
+    sourceCode: string;
+    scanResult: CodeScanResult;
+    testType: TestType;
+    framework: TestFramework;
+    existingTests?: string[];
+  }): Promise<string | null> {
+    if (!this.aiProvider) return null;
+
+    try {
+      const messages = buildTestGenerationPrompt({
+        sourceCode: params.sourceCode,
+        scanResult: params.scanResult,
+        testType: params.testType,
+        framework: params.framework,
+        existingTests: params.existingTests,
+      });
+
+      const response = await this.aiProvider.generate(messages, {
+        temperature: 0.2,
+        maxTokens: 4096,
+      });
+
+      const content = response.content.trim();
+      if (!content) return null;
+
+      // Strip markdown fences if the model wrapped its output in them
+      return this.extractCodeFromResponse(content);
+    } catch {
+      // Swallow errors — template fallback is always available
+      return null;
+    }
+  }
+
+  /**
+   * Extracts raw code from an LLM response that may be wrapped in
+   * markdown code fences (```typescript ... ``` or ``` ... ```).
+   */
+  private extractCodeFromResponse(raw: string): string {
+    const fenceMatch = raw.match(
+      /^```(?:typescript|ts|javascript|js|tsx|jsx)?\s*\n([\s\S]*?)\n```\s*$/
+    );
+    return fenceMatch?.[1] ? fenceMatch[1].trim() : raw;
+  }
+
+  /**
+   * Counts the number of test cases in generated code by looking for
+   * `it(`, `test(`, and `test.only(` invocations.
+   */
+  protected countTestCases(code: string): number {
+    const itCount = (code.match(/\bit\s*\(/g) || []).length;
+    const testCount = (code.match(/\btest\s*\(/g) || []).length;
+    return Math.max(itCount + testCount, 1);
+  }
 
   // ── File header ────────────────────────────────────────────
 

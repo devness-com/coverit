@@ -22,6 +22,8 @@ import type {
   TestPlan,
   GeneratorResult,
 } from "../types/index.js";
+import type { AIProvider, AIProviderConfig } from "../ai/types.js";
+import { createAIProvider, detectBestProvider } from "../ai/provider-factory.js";
 import { analyzeDiff } from "../analysis/diff-analyzer.js";
 import { scanCode } from "../analysis/code-scanner.js";
 import { buildDependencyGraph } from "../analysis/dependency-graph.js";
@@ -89,6 +91,21 @@ export async function orchestrate(
   const generatedDir = join(coveritDir, GENERATED_DIR);
   await ensureDir(generatedDir);
 
+  // ── AI provider initialization ──────────────────────────────
+  // Attempt to stand up an LLM provider for intelligent test generation.
+  // Template-based generation is the automatic fallback when unavailable.
+  let aiProvider: AIProvider | null = null;
+  try {
+    if (config.ai?.provider) {
+      aiProvider = await createAIProvider(config.ai as AIProviderConfig);
+    } else {
+      aiProvider = await detectBestProvider();
+    }
+    logger.info(`Using AI provider: ${aiProvider.name}`);
+  } catch {
+    logger.warn("No AI provider available — falling back to template-based generation");
+  }
+
   // ── Phase 1: Analysis ──────────────────────────────────────
   const projectInfo = await detectProjectInfo(config.projectRoot);
   const baseBranch = config.targetPaths?.[0]; // TODO: proper baseBranch from config or git detection
@@ -140,6 +157,7 @@ export async function orchestrate(
             generatedDir,
             phase,
             onEvent,
+            aiProvider,
           });
         } catch (err) {
           const message =
@@ -198,14 +216,23 @@ interface PlanExecutionContext {
   generatedDir: string;
   phase: TestStrategy["executionOrder"][number];
   onEvent?: CoveritEventHandler;
+  aiProvider: AIProvider | null;
 }
 
 async function executePlan(
   plan: TestPlan,
   ctx: PlanExecutionContext,
 ): Promise<ExecutionResult> {
-  const { config, projectInfo, scanResults, existingTests, generatedDir, phase, onEvent } =
-    ctx;
+  const {
+    config,
+    projectInfo,
+    scanResults,
+    existingTests,
+    generatedDir,
+    phase,
+    onEvent,
+    aiProvider,
+  } = ctx;
 
   // ── Generate ───────────────────────────────────────────────
   emit(onEvent, { type: "generation:start", data: { plan } });
@@ -217,7 +244,7 @@ async function executePlan(
     existingTests,
   };
 
-  const generator = createGenerator(plan.type, projectInfo);
+  const generator = createGenerator(plan.type, projectInfo, aiProvider);
   const genResult: GeneratorResult = await generator.generate(generatorCtx);
 
   emit(onEvent, { type: "generation:complete", data: { result: genResult } });

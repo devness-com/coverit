@@ -357,6 +357,12 @@ export interface CoveritConfig {
   generateOnly?: boolean;
   coverageThreshold?: number;
   cloudConfig?: CloudConfig;
+  ai?: {
+    provider?: "claude-cli" | "anthropic" | "openai" | "ollama" | "openai-compatible";
+    model?: string;
+    apiKey?: string;
+    baseUrl?: string;
+  };
 }
 
 // ─── Event Types (for progress reporting) ────────────────────
