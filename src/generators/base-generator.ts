@@ -66,8 +66,9 @@ export abstract class BaseGenerator {
 
       // Strip markdown fences if the model wrapped its output in them
       return this.extractCodeFromResponse(content);
-    } catch {
-      // Swallow errors — template fallback is always available
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[coverit] AI generation failed: ${msg}`);
       return null;
     }
   }

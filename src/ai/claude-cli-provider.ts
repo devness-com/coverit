@@ -175,8 +175,7 @@ export class ClaudeCliProvider implements AIProvider {
       );
     }
 
-    // Flatten messages into a single prompt string for the CLI.
-    // The system message becomes a preamble, user/assistant messages follow.
+    // Flatten messages into a single prompt string.
     const prompt = messages
       .map((msg) => {
         if (msg.role === "system") return `[System Instructions]\n${msg.content}\n`;
@@ -185,20 +184,17 @@ export class ClaudeCliProvider implements AIProvider {
       })
       .join("\n");
 
+    // Use --print with prompt piped via stdin to avoid CLI arg length limits.
     const args = [
-      "-p",
-      prompt,
+      "--print",
       "--output-format",
       "stream-json",
+      "--verbose",
       "--model",
       this.model,
     ];
 
-    if (options?.maxTokens) {
-      args.push("--max-tokens", String(options.maxTokens));
-    }
-
-    const result = await this.spawnClaude(args);
+    const result = await this.spawnClaude(args, prompt);
 
     if (result.exitCode !== 0 && !result.stdout.trim()) {
       throw new Error(
@@ -220,12 +216,12 @@ export class ClaudeCliProvider implements AIProvider {
 
   private spawnClaude(
     args: string[],
+    stdinData?: string,
   ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
     return new Promise((resolve, reject) => {
       const proc = spawn(this.binaryPath!, args, {
         stdio: ["pipe", "pipe", "pipe"],
         env: { ...process.env },
-        timeout: 300_000, // 5 minute ceiling for long generations
       });
 
       let stdout = "";
@@ -247,6 +243,14 @@ export class ClaudeCliProvider implements AIProvider {
           new Error(`Failed to spawn Claude CLI: ${err.message}`),
         );
       });
+
+      // Pipe prompt via stdin and close to signal EOF
+      if (stdinData) {
+        proc.stdin.write(stdinData);
+        proc.stdin.end();
+      } else {
+        proc.stdin.end();
+      }
     });
   }
 }
