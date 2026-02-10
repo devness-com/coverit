@@ -16,7 +16,7 @@ import { orchestrate } from "../agents/orchestrator.js";
 import { detectProjectInfo } from "../utils/framework-detector.js";
 import { isGitRepo } from "../utils/git.js";
 import { logger } from "../utils/logger.js";
-import type { TestType, CoveritConfig, CoveritEvent } from "../types/index.js";
+import type { TestType, DiffSource, CoveritConfig, CoveritEvent } from "../types/index.js";
 
 const VERSION = "0.1.0";
 const BANNER = chalk.bold.cyan(`
@@ -46,6 +46,18 @@ function parseTestTypes(raw?: string): TestType[] | undefined {
 
 function resolveProjectRoot(pathArg?: string): string {
   return resolve(pathArg ?? process.cwd());
+}
+
+function parseDiffSource(opts: Record<string, unknown>): DiffSource | undefined {
+  if (opts["staged"]) return { mode: "staged" };
+  if (opts["base"]) return { mode: "base", branch: opts["base"] as string };
+  if (opts["commit"]) return { mode: "commit", ref: opts["commit"] as string };
+  if (opts["pr"] !== undefined && opts["pr"] !== false) {
+    const num = opts["pr"] === true ? undefined : Number(opts["pr"]);
+    return { mode: "pr", number: num };
+  }
+  if (opts["files"]) return { mode: "files", patterns: (opts["files"] as string).split(",").map((p) => p.trim()) };
+  return undefined;
 }
 
 function createEventHandler(verbose: boolean): (event: CoveritEvent) => void {
@@ -110,6 +122,11 @@ program
   .option("--coverage", "Collect coverage data", false)
   .option("--dry-run", "Analyze and plan without generating or executing", false)
   .option("--verbose", "Show detailed progress output", false)
+  .option("--base <branch>", "Diff against a specific base branch")
+  .option("--commit <ref>", "Diff for a specific commit or range (e.g. HEAD~1, abc..def)")
+  .option("--pr [number]", "Diff for a pull request (auto-detects base branch)")
+  .option("--files <glob>", "Target specific files by glob pattern")
+  .option("--staged", "Only analyze staged changes")
   .hook("preAction", () => {
     console.log(BANNER);
   });
@@ -135,6 +152,7 @@ program
 
       const config: CoveritConfig = {
         projectRoot,
+        diffSource: parseDiffSource(opts),
         testTypes: parseTestTypes(opts["type"] as string | undefined),
         skipExecution: true,
         generateOnly: true,
@@ -198,6 +216,7 @@ program
     try {
       const config: CoveritConfig = {
         projectRoot,
+        diffSource: parseDiffSource(opts),
         testTypes: parseTestTypes(opts["type"] as string | undefined),
         generateOnly: true,
       };
@@ -240,6 +259,7 @@ program
     try {
       const config: CoveritConfig = {
         projectRoot,
+        diffSource: parseDiffSource(opts),
         testTypes: parseTestTypes(opts["type"] as string | undefined),
         environment: (opts["env"] as CoveritConfig["environment"]) ?? "local",
         coverageThreshold: opts["coverage"] ? 0 : undefined,

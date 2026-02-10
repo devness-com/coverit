@@ -10,7 +10,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { orchestrate } from "../agents/orchestrator.js";
 import { logger } from "../utils/logger.js";
-import type { TestType, CoveritConfig } from "../types/index.js";
+import type { TestType, DiffSource, CoveritConfig } from "../types/index.js";
 
 const VALID_TEST_TYPES: TestType[] = [
   "unit",
@@ -30,6 +30,51 @@ function parseTestTypes(raw?: string[]): TestType[] | undefined {
   );
 }
 
+/**
+ * Shared Zod schemas for diff source parameters used across all tools.
+ */
+const diffSourceSchema = {
+  baseBranch: z
+    .string()
+    .optional()
+    .describe("Diff against a specific base branch (e.g. 'main')"),
+  commit: z
+    .string()
+    .optional()
+    .describe("Diff for a specific commit or range (e.g. 'HEAD~1', 'abc..def')"),
+  pr: z
+    .number()
+    .optional()
+    .describe("Diff for a pull request by number (auto-detects base branch)"),
+  files: z
+    .array(z.string())
+    .optional()
+    .describe("Target specific files by glob patterns (e.g. ['src/ai/**'])"),
+  staged: z
+    .boolean()
+    .optional()
+    .describe("Only analyze staged (git index) changes"),
+};
+
+/**
+ * Parse MCP tool params into a DiffSource.
+ * Priority: staged > commit > pr > files > baseBranch > auto
+ */
+function parseDiffSource(params: {
+  baseBranch?: string;
+  commit?: string;
+  pr?: number;
+  files?: string[];
+  staged?: boolean;
+}): DiffSource | undefined {
+  if (params.staged) return { mode: "staged" };
+  if (params.commit) return { mode: "commit", ref: params.commit };
+  if (params.pr !== undefined) return { mode: "pr", number: params.pr };
+  if (params.files && params.files.length > 0) return { mode: "files", patterns: params.files };
+  if (params.baseBranch) return { mode: "base", branch: params.baseBranch };
+  return undefined;
+}
+
 const server = new McpServer({
   name: "coverit",
   version: "0.1.0",
@@ -43,16 +88,13 @@ server.tool(
   "Analyze a codebase and return a test strategy including detected framework, changed files, and proposed test plans.",
   {
     projectRoot: z.string().describe("Absolute path to the project root"),
-    baseBranch: z
-      .string()
-      .optional()
-      .describe("Git branch to diff against (defaults to main/master)"),
+    ...diffSourceSchema,
   },
-  async ({ projectRoot, baseBranch }) => {
+  async ({ projectRoot, baseBranch, commit, pr, files, staged }) => {
     try {
       const config: CoveritConfig = {
         projectRoot,
-        targetPaths: baseBranch ? [baseBranch] : undefined,
+        diffSource: parseDiffSource({ baseBranch, commit, pr, files, staged }),
         generateOnly: true,
         skipExecution: true,
       };
@@ -92,17 +134,14 @@ server.tool(
       .describe(
         "Types of tests to generate (unit, api, e2e-browser, etc.). Omit for all.",
       ),
-    baseBranch: z
-      .string()
-      .optional()
-      .describe("Git branch to diff against (defaults to main/master)"),
+    ...diffSourceSchema,
   },
-  async ({ projectRoot, testTypes, baseBranch }) => {
+  async ({ projectRoot, testTypes, baseBranch, commit, pr, files, staged }) => {
     try {
       const config: CoveritConfig = {
         projectRoot,
         testTypes: parseTestTypes(testTypes),
-        targetPaths: baseBranch ? [baseBranch] : undefined,
+        diffSource: parseDiffSource({ baseBranch, commit, pr, files, staged }),
         generateOnly: true,
       };
 
@@ -160,12 +199,14 @@ server.tool(
       .boolean()
       .optional()
       .describe("Collect coverage data (defaults to false)"),
+    ...diffSourceSchema,
   },
-  async ({ projectRoot, testTypes, environment, coverage }) => {
+  async ({ projectRoot, testTypes, environment, coverage, baseBranch, commit, pr, files, staged }) => {
     try {
       const config: CoveritConfig = {
         projectRoot,
         testTypes: parseTestTypes(testTypes),
+        diffSource: parseDiffSource({ baseBranch, commit, pr, files, staged }),
         environment: environment ?? "local",
         coverageThreshold: coverage ? 0 : undefined,
       };
@@ -206,10 +247,6 @@ server.tool(
   "Run the full coverit pipeline: analyze the codebase, generate tests, execute them, and return a comprehensive report.",
   {
     projectRoot: z.string().describe("Absolute path to the project root"),
-    baseBranch: z
-      .string()
-      .optional()
-      .describe("Git branch to diff against (defaults to main/master)"),
     testTypes: z
       .array(z.string())
       .optional()
@@ -222,13 +259,14 @@ server.tool(
       .boolean()
       .optional()
       .describe("Collect coverage data (defaults to false)"),
+    ...diffSourceSchema,
   },
-  async ({ projectRoot, baseBranch, testTypes, environment, coverage }) => {
+  async ({ projectRoot, testTypes, environment, coverage, baseBranch, commit, pr, files, staged }) => {
     try {
       const config: CoveritConfig = {
         projectRoot,
         testTypes: parseTestTypes(testTypes),
-        targetPaths: baseBranch ? [baseBranch] : undefined,
+        diffSource: parseDiffSource({ baseBranch, commit, pr, files, staged }),
         environment: environment ?? "local",
         coverageThreshold: coverage ? 0 : undefined,
       };

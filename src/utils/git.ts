@@ -97,3 +97,30 @@ export async function getStagedFiles(projectRoot: string): Promise<string[]> {
     .map((f) => f.trim())
     .filter(Boolean);
 }
+
+/**
+ * Detects the base branch for a PR.
+ * Tries `gh pr view` first, then falls back to git merge-base heuristics.
+ */
+export async function detectPRBaseBranch(
+  projectRoot: string,
+  prNumber?: number,
+): Promise<string> {
+  try {
+    const { execSync } = await import("node:child_process");
+    const cmd = prNumber
+      ? `gh pr view ${prNumber} --json baseRefName -q .baseRefName`
+      : `gh pr view --json baseRefName -q .baseRefName`;
+    const branch = execSync(cmd, {
+      cwd: projectRoot,
+      encoding: "utf-8",
+      timeout: 10_000,
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim();
+    if (branch) return branch;
+  } catch {
+    // gh CLI not available or not in a PR context — fall through
+  }
+
+  return getBaseBranch(projectRoot);
+}

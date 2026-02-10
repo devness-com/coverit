@@ -347,8 +347,17 @@ export interface TypeSummary {
 
 // ─── MCP Types ───────────────────────────────────────────────
 
+export type DiffSource =
+  | { mode: "auto" }
+  | { mode: "base"; branch: string }
+  | { mode: "commit"; ref: string }
+  | { mode: "pr"; number?: number }
+  | { mode: "files"; patterns: string[] }
+  | { mode: "staged" };
+
 export interface CoveritConfig {
   projectRoot: string;
+  diffSource?: DiffSource;
   targetPaths?: string[];
   testTypes?: TestType[];
   environment?: ExecutionEnvironment;

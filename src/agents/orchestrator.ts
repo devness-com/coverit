@@ -24,7 +24,13 @@ import type {
 } from "../types/index.js";
 import type { AIProvider, AIProviderConfig } from "../ai/types.js";
 import { createAIProvider, detectBestProvider } from "../ai/provider-factory.js";
-import { analyzeDiff } from "../analysis/diff-analyzer.js";
+import {
+  analyzeDiff,
+  analyzeDiffForCommit,
+  analyzeDiffStaged,
+  analyzeDiffForFiles,
+} from "../analysis/diff-analyzer.js";
+import { detectPRBaseBranch } from "../utils/git.js";
 import { scanCode } from "../analysis/code-scanner.js";
 import { buildDependencyGraph } from "../analysis/dependency-graph.js";
 import { planStrategy } from "../analysis/strategy-planner.js";
@@ -108,9 +114,32 @@ export async function orchestrate(
 
   // ── Phase 1: Analysis ──────────────────────────────────────
   const projectInfo = await detectProjectInfo(config.projectRoot);
-  const baseBranch = config.targetPaths?.[0]; // TODO: proper baseBranch from config or git detection
 
-  const diffResult = await analyzeDiff(config.projectRoot, baseBranch);
+  const diffSource = config.diffSource ?? { mode: "auto" };
+  let diffResult;
+  switch (diffSource.mode) {
+    case "base":
+      diffResult = await analyzeDiff(config.projectRoot, diffSource.branch);
+      break;
+    case "commit":
+      diffResult = await analyzeDiffForCommit(config.projectRoot, diffSource.ref);
+      break;
+    case "pr": {
+      const prBase = await detectPRBaseBranch(config.projectRoot, diffSource.number);
+      diffResult = await analyzeDiff(config.projectRoot, prBase);
+      break;
+    }
+    case "files":
+      diffResult = await analyzeDiffForFiles(config.projectRoot, diffSource.patterns);
+      break;
+    case "staged":
+      diffResult = await analyzeDiffStaged(config.projectRoot);
+      break;
+    case "auto":
+    default:
+      diffResult = await analyzeDiff(config.projectRoot);
+      break;
+  }
   emit(onEvent, { type: "analysis:start", data: { files: diffResult.files.length } });
 
   const scanResults: CodeScanResult[] = [];
