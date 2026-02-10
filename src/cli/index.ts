@@ -127,8 +127,11 @@ program
   .option("--pr [number]", "Diff for a pull request (auto-detects base branch)")
   .option("--files <glob>", "Target specific files by glob pattern")
   .option("--staged", "Only analyze staged changes")
-  .hook("preAction", () => {
-    console.log(BANNER);
+  .hook("preAction", (_thisCommand, actionCommand) => {
+    // Don't print banner for MCP mode — it corrupts stdio transport
+    if (actionCommand.name() !== "mcp") {
+      console.log(BANNER);
+    }
   });
 
 // ─── scan ────────────────────────────────────────────────────
@@ -235,7 +238,7 @@ program
       }
 
       logger.success(
-        `\nFiles written to .coverit/generated/`,
+        `\nTest files written colocated next to source files`,
       );
     } catch (err) {
       spinner.fail("Generation failed");
@@ -377,6 +380,16 @@ program
         "No report found. Run `coverit run` to generate one.",
       );
     }
+  });
+
+// ─── mcp ────────────────────────────────────────────────────
+
+program
+  .command("mcp")
+  .description("Start coverit as an MCP server (stdio transport)")
+  .action(async () => {
+    // Dynamically import the MCP server — it self-starts on import
+    await import("../mcp/server.js");
   });
 
 program.parse();
