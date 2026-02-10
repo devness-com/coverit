@@ -1,6 +1,6 @@
 {
   "coverit": {
     "command": "npx",
-    "args": ["-y", "@devness/coverit", "mcp"]
+    "args": ["-y", "@devness/coverit@latest", "mcp"]
   }
 }
