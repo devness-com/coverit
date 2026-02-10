@@ -362,6 +362,7 @@ export interface CoveritConfig {
   testTypes?: TestType[];
   environment?: ExecutionEnvironment;
   framework?: TestFramework;
+  analyzeOnly?: boolean;
   skipExecution?: boolean;
   generateOnly?: boolean;
   coverageThreshold?: number;

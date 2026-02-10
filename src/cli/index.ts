@@ -154,8 +154,7 @@ program
         projectRoot,
         diffSource: parseDiffSource(opts),
         testTypes: parseTestTypes(opts["type"] as string | undefined),
-        skipExecution: true,
-        generateOnly: true,
+        analyzeOnly: true,
       };
 
       const report = await orchestrate(config, createEventHandler(opts["verbose"] as boolean));

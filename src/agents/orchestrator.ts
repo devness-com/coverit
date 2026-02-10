@@ -142,13 +142,20 @@ export async function orchestrate(
   }
   emit(onEvent, { type: "analysis:start", data: { files: diffResult.files.length } });
 
+  // Skip deleted files — they can't be scanned
+  const scannableFiles = diffResult.files.filter((f) => f.status !== "deleted");
+
   const scanResults: CodeScanResult[] = [];
-  for (const changedFile of diffResult.files) {
-    const scanResult = await scanCode(
-      join(config.projectRoot, changedFile.path),
-      config.projectRoot,
-    );
-    scanResults.push(scanResult);
+  for (const changedFile of scannableFiles) {
+    try {
+      const scanResult = await scanCode(
+        join(config.projectRoot, changedFile.path),
+        config.projectRoot,
+      );
+      scanResults.push(scanResult);
+    } catch (err) {
+      logger.warn(`Skipping ${changedFile.path}: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   const depGraph = await buildDependencyGraph(config.projectRoot);
@@ -161,6 +168,18 @@ export async function orchestrate(
   );
 
   emit(onEvent, { type: "analysis:complete", data: { strategy } });
+
+  // ── Early return for analyze-only mode (scan command) ──────
+  if (config.analyzeOnly) {
+    const report = generateReport(projectInfo, strategy, []);
+    emit(onEvent, { type: "report:complete", data: { report } });
+    await writeFile(
+      join(coveritDir, REPORT_FILE),
+      JSON.stringify(report, null, 2),
+      "utf-8",
+    );
+    return report;
+  }
 
   // ── Phase 2 & 3: Generation + Execution per phase ──────────
   const existingTests = await findExistingTests(config.projectRoot);

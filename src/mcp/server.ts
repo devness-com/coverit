@@ -95,8 +95,7 @@ server.tool(
       const config: CoveritConfig = {
         projectRoot,
         diffSource: parseDiffSource({ baseBranch, commit, pr, files, staged }),
-        generateOnly: true,
-        skipExecution: true,
+        analyzeOnly: true,
       };
 
       const report = await orchestrate(config);
