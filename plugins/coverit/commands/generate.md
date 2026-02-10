@@ -46,5 +46,5 @@ Generated Tests
   Plan <id>: N test(s)
   ...
 
-Files written to .coverit/generated/
+Test files written colocated next to source files
 ```

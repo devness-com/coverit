@@ -41,7 +41,6 @@ import { detectProjectInfo } from "../utils/framework-detector.js";
 import { logger } from "../utils/logger.js";
 
 const COVERIT_DIR = ".coverit";
-const GENERATED_DIR = "generated";
 const REPORT_FILE = "last-report.json";
 
 function emit(handler: CoveritEventHandler | undefined, event: CoveritEvent): void {
@@ -94,8 +93,7 @@ export async function orchestrate(
   onEvent?: CoveritEventHandler,
 ): Promise<CoveritReport> {
   const coveritDir = join(config.projectRoot, COVERIT_DIR);
-  const generatedDir = join(coveritDir, GENERATED_DIR);
-  await ensureDir(generatedDir);
+  await ensureDir(coveritDir);
 
   // ── AI provider initialization ──────────────────────────────
   // Attempt to stand up an LLM provider for intelligent test generation.
@@ -202,7 +200,6 @@ export async function orchestrate(
             strategy,
             scanResults,
             existingTests,
-            generatedDir,
             phase,
             onEvent,
             aiProvider,
@@ -261,7 +258,6 @@ interface PlanExecutionContext {
   strategy: TestStrategy;
   scanResults: CodeScanResult[];
   existingTests: string[];
-  generatedDir: string;
   phase: TestStrategy["executionOrder"][number];
   onEvent?: CoveritEventHandler;
   aiProvider: AIProvider | null;
@@ -276,7 +272,6 @@ async function executePlan(
     projectInfo,
     scanResults,
     existingTests,
-    generatedDir,
     phase,
     onEvent,
     aiProvider,
@@ -297,9 +292,9 @@ async function executePlan(
 
   emit(onEvent, { type: "generation:complete", data: { result: genResult } });
 
-  // Write generated test files to .coverit/generated/
+  // Write generated test files colocated next to source files
   for (const test of genResult.tests) {
-    const outPath = join(generatedDir, test.filePath);
+    const outPath = join(config.projectRoot, test.filePath);
     await ensureDir(join(outPath, ".."));
     await writeFile(outPath, test.content, "utf-8");
   }
