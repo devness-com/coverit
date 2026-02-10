@@ -1,0 +1,7 @@
+{
+  "name": "coverit",
+  "description": "AI-powered test generation and execution. Analyze codebases, generate tests, execute them, and view reports.",
+  "author": {
+    "name": "Devness"
+  }
+}
