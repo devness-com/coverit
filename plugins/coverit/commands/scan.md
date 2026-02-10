@@ -6,9 +6,9 @@ description: "Analyze a codebase and display the test strategy"
 
 Analyze a codebase and display the test strategy without generating or running tests.
 
-## IMPORTANT: Always use the MCP tool
+## IMPORTANT: Run via sub-agent to protect context
 
-**You MUST use the `mcp__plugin_coverit_coverit__coverit_analyze` MCP tool.** Do NOT use the `coverit` CLI binary, do NOT run shell commands, do NOT use `gh` to fetch diffs manually. The MCP tool handles everything internally.
+The MCP response can be very large (10k-30k+ tokens). **You MUST delegate this to a sub-agent** using the Task tool to avoid filling up the main conversation context.
 
 ## Arguments
 
@@ -22,36 +22,27 @@ Parse from user input:
 
 ## Execution
 
-Call the MCP tool with these parameters:
+Use the Task tool with `subagent_type: "general-purpose"` and a prompt like:
 
-```json
+```
+Call the `mcp__plugin_coverit_coverit__coverit_analyze` MCP tool with:
 {
-  "projectRoot": "<absolute path to project root>",
-  "baseBranch": "<branch>",
-  "commit": "<ref>",
-  "pr": <number>,
-  "files": ["<glob>"],
-  "staged": true
+  "projectRoot": "<absolute path>",
+  <...only include diff params the user specified...>
 }
-```
 
-Only include the diff source parameter that was specified. If none specified, omit all diff source params (auto-detect mode).
+Then format the JSON response as a concise readable summary:
 
-## Display Results
-
-Format the JSON response as a readable summary:
-
-```
 Project Info
-  Name: <name>
-  Framework: <framework>
-  Test Framework: <test framework>
-  Language: <language>
+  Name / Framework / Test Framework / Language
 
-Test Plans
-  <type>    <priority>    <description>    (~N tests)
-  ...
+Test Plans (group by priority, show type, description, estimated tests)
 
-Total estimated tests: N
-Execution phases: N
+Summary: total plans, total estimated tests, execution phases
 ```
+
+**CRITICAL**: The sub-agent MUST use the `mcp__plugin_coverit_coverit__coverit_analyze` MCP tool. It must NOT use the `coverit` CLI binary, shell commands, or `gh` to fetch diffs manually.
+
+## Display
+
+Show the sub-agent's formatted summary to the user. Do NOT expand or re-process the raw JSON.

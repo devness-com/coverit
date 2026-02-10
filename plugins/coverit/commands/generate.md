@@ -6,9 +6,9 @@ description: "Generate test files without running them"
 
 Analyze a codebase and generate test files without executing them.
 
-## IMPORTANT: Always use the MCP tool
+## IMPORTANT: Run via sub-agent to protect context
 
-**You MUST use the `mcp__plugin_coverit_coverit__coverit_generate` MCP tool.** Do NOT use the `coverit` CLI binary, do NOT run shell commands, do NOT use `gh` to fetch diffs manually. The MCP tool handles everything internally.
+The MCP response can be very large. **You MUST delegate this to a sub-agent** using the Task tool to avoid filling up the main conversation context.
 
 ## Arguments
 
@@ -23,28 +23,26 @@ Parse from user input:
 
 ## Execution
 
-Call the MCP tool with these parameters:
+Use the Task tool with `subagent_type: "general-purpose"` and a prompt like:
 
-```json
+```
+Call the `mcp__plugin_coverit_coverit__coverit_generate` MCP tool with:
 {
-  "projectRoot": "<absolute path to project root>",
-  "testTypes": ["unit", "api"],
-  "baseBranch": "<branch>",
-  "commit": "<ref>",
-  "pr": <number>,
-  "files": ["<glob>"],
-  "staged": true
+  "projectRoot": "<absolute path>",
+  <...only include params the user specified...>
 }
-```
 
-Only include parameters that were specified by the user.
+Then format the response as a concise summary:
 
-## Display Results
-
-```
 Generated Tests
-  Plan <id>: N test(s)
+  Plan <id>: N test(s) — <description>
   ...
 
-Test files written colocated next to source files
+Total: N test files written colocated next to source files
 ```
+
+**CRITICAL**: The sub-agent MUST use the `mcp__plugin_coverit_coverit__coverit_generate` MCP tool. It must NOT use the `coverit` CLI binary, shell commands, or `gh` to fetch diffs manually.
+
+## Display
+
+Show the sub-agent's formatted summary to the user. Do NOT expand or re-process the raw JSON.
