@@ -1,0 +1,26 @@
+{
+  "name": "coverit",
+  "owner": {
+    "name": "Devness",
+    "email": "hello@devness.dev"
+  },
+  "metadata": {
+    "description": "AI-powered test generation and execution for Claude Code",
+    "version": "0.1.3"
+  },
+  "plugins": [
+    {
+      "name": "coverit",
+      "source": ".",
+      "description": "Analyze codebases, generate tests, execute them, and view reports — all from Claude Code.",
+      "version": "0.1.3",
+      "author": {
+        "name": "Devness"
+      },
+      "homepage": "https://coverit.dev",
+      "repository": "https://github.com/paymadi/coverit",
+      "license": "MIT",
+      "keywords": ["testing", "test-generation", "coverage", "ai-testing", "vitest", "jest", "playwright"]
+    }
+  ]
+}
