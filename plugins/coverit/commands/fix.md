@@ -58,7 +58,7 @@ Return a concise summary (NOT the full JSON):
 Group failed plan IDs into batches of **10** each.
 
 Create a **task for each batch** using TaskCreate:
-- Subject: `Fix Batch K/N: plans XXX–YYY`
+- Subject: `Fix Coverit Batch K/N: plans XXX–YYY`
 - activeForm: `Fixing Coverit batch K (plans XXX–YYY)`
 
 For each batch, spawn a sub-agent using the Task tool with `subagent_type: "general-purpose"` and `run_in_background: true`.
