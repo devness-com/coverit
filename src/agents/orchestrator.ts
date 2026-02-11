@@ -411,8 +411,8 @@ export async function orchestrate(
     );
   }
 
-  // ── Cleanup generated test files ─────────────────────────────
-  if (!config.keepTestFiles && generatedFiles.size > 0) {
+  // ── Cleanup generated test files (opt-in) ──────────────────
+  if (config.cleanupTestFiles && generatedFiles.size > 0) {
     const dirsToCheck = new Set<string>();
     for (const filePath of generatedFiles) {
       try {

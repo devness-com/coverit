@@ -368,7 +368,7 @@ export interface CoveritConfig {
   analyzeOnly?: boolean;
   skipExecution?: boolean;
   generateOnly?: boolean;
-  keepTestFiles?: boolean;
+  cleanupTestFiles?: boolean;
   coverageThreshold?: number;
   cloudConfig?: CloudConfig;
   ai?: {
