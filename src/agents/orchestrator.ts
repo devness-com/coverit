@@ -44,6 +44,7 @@ const COVERIT_DIR = ".coverit";
 const REPORT_FILE = "last-report.json";
 const STRATEGY_FILE = "strategy.json";
 const PROGRESS_FILE = "progress.json";
+const STRATEGY_VERSION = 2; // Bump when strategy format or planner logic changes
 
 interface PlanProgress {
   planId: string;
@@ -209,28 +210,43 @@ export async function orchestrate(
   // ── Phase 1: Analysis ──────────────────────────────────────
   const projectInfo = await detectProjectInfo(config.projectRoot);
 
-  let strategy: TestStrategy;
+  let strategy!: TestStrategy;
   let scanResults: CodeScanResult[] = [];
 
   // When useCache is set (batch execution), load the previously cached strategy
   // instead of re-running analysis. This ensures plan IDs remain stable.
   const strategyPath = join(coveritDir, STRATEGY_FILE);
   if (config.useCache && config.planIds) {
+    let cacheValid = false;
     try {
       const cached = await readFile(strategyPath, "utf-8");
-      const cachedData = JSON.parse(cached) as { strategy: TestStrategy; scanResults: CodeScanResult[] };
-      strategy = cachedData.strategy;
-      scanResults = cachedData.scanResults;
-      logger.info(`Loaded cached strategy with ${strategy.plans.length} plans`);
-      emit(onEvent, { type: "analysis:complete", data: { strategy } });
+      const cachedData = JSON.parse(cached) as { version?: number; strategy: TestStrategy; scanResults: CodeScanResult[] };
+      // Only use cache if version matches (prevents stale strategies from old planner logic)
+      if (cachedData.version === STRATEGY_VERSION) {
+        strategy = cachedData.strategy;
+        scanResults = cachedData.scanResults;
+        cacheValid = true;
+        logger.info(`Loaded cached strategy v${STRATEGY_VERSION} with ${strategy.plans.length} plans`);
+        emit(onEvent, { type: "analysis:complete", data: { strategy } });
+      } else {
+        logger.warn(`Cached strategy version mismatch (got ${cachedData.version}, need ${STRATEGY_VERSION}), re-analyzing`);
+      }
     } catch (err) {
-      logger.warn(`No cached strategy found, running full analysis: ${err instanceof Error ? err.message : String(err)}`);
-      // Fall through to full analysis below
+      logger.warn(`No cached strategy found: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    if (!cacheValid) {
       const result = await runAnalysis(config, config.projectRoot);
       strategy = result.strategy;
       scanResults = result.scanResults;
       emit(onEvent, { type: "analysis:start", data: { files: result.fileCount } });
       emit(onEvent, { type: "analysis:complete", data: { strategy } });
+      // Write new cache with version
+      await writeFile(
+        strategyPath,
+        JSON.stringify({ version: STRATEGY_VERSION, strategy, scanResults }, null, 2),
+        "utf-8",
+      );
     }
   } else {
     const result = await runAnalysis(config, config.projectRoot);
@@ -239,10 +255,10 @@ export async function orchestrate(
     emit(onEvent, { type: "analysis:start", data: { files: result.fileCount } });
     emit(onEvent, { type: "analysis:complete", data: { strategy } });
 
-    // Cache strategy for batch execution
+    // Cache strategy for batch execution (with version tag)
     await writeFile(
       strategyPath,
-      JSON.stringify({ strategy, scanResults }, null, 2),
+      JSON.stringify({ version: STRATEGY_VERSION, strategy, scanResults }, null, 2),
       "utf-8",
     );
   }
@@ -337,12 +353,22 @@ export async function orchestrate(
 
   emit(onEvent, { type: "report:complete", data: { report } });
 
-  // Persist report for `coverit report` command
-  await writeFile(
-    join(coveritDir, REPORT_FILE),
-    JSON.stringify(report, null, 2),
-    "utf-8",
-  );
+  // Persist report — batch runs write to a separate file to avoid overwriting
+  // other batches. Full runs write to last-report.json.
+  if (config.planIds && config.planIds.length > 0) {
+    const batchFile = `batch-${config.planIds[0]}-${config.planIds[config.planIds.length - 1]}.json`;
+    await writeFile(
+      join(coveritDir, batchFile),
+      JSON.stringify(report, null, 2),
+      "utf-8",
+    );
+  } else {
+    await writeFile(
+      join(coveritDir, REPORT_FILE),
+      JSON.stringify(report, null, 2),
+      "utf-8",
+    );
+  }
 
   return report;
 }
