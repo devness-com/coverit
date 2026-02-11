@@ -474,6 +474,10 @@ async function executePlan(
   // ── Execute (with retry loop) ───────────────────────────────
   const maxRetries = config.maxRetries ?? 2;
   const executor = createExecutor(phase.environment);
+  // Set the project's package manager so the runner uses the correct exec command
+  if ("setPackageManager" in executor && typeof (executor as any).setPackageManager === "function") {
+    (executor as any).setPackageManager(ctx.projectInfo.packageManager);
+  }
   let currentTests = genResult.tests;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -507,7 +511,7 @@ async function executePlan(
     for (const test of currentTests) {
       const execResult = await executor.execute(test, {
         environment: phase.environment,
-        timeout: 60_000,
+        timeout: 120_000,
         retries: 0,
         parallel: false,
         collectCoverage: config.coverageThreshold !== undefined,
@@ -527,7 +531,8 @@ async function executePlan(
     emit(onEvent, { type: "execution:complete", data: { result: mergedResult } });
 
     // If all tests passed or no retries left, return the result
-    if (mergedResult.failures.length === 0 || attempt >= maxRetries) {
+    const isRetryable = mergedResult.failures.length > 0 || mergedResult.status === "timeout";
+    if (!isRetryable || attempt >= maxRetries) {
       await updateProgress(coveritDir, plan.id, {
         planId: plan.id,
         status: mergedResult.status === "passed" ? "passed" : mergedResult.status === "failed" ? "failed" : "error",

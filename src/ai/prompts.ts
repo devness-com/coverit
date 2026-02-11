@@ -188,7 +188,13 @@ For each function/method, cover:
 For classes, test:
 - Construction with valid and invalid arguments
 - Each public method independently
-- State transitions and side effects`;
+- State transitions and side effects
+
+IMPORTANT — Dependency Isolation:
+- Mock ALL external dependencies (databases, message queues, HTTP clients, external services).
+- For NestJS: use \`@nestjs/testing\` \`Test.createTestingModule()\` with mock providers for every injected dependency. Never bootstrap the full app module — only import the single class under test with its dependencies mocked.
+- Never connect to real databases, Redis, RabbitMQ, or any external service.
+- Use jest.fn() / vi.fn() for mock implementations. Provide minimal mock return values that satisfy the code paths.`;
 
     case "integration":
       return `Write integration tests that verify how multiple modules work together.
@@ -336,7 +342,12 @@ HARD RULES:
 4. If a test assumption was wrong (the code behaves differently than expected), update the test to match the actual behavior.
 5. If a test was testing the right thing but had an implementation error (wrong import, typo, incorrect assertion syntax), fix the implementation error.
 6. Preserve all passing tests exactly as they are.
-7. Do NOT add new tests — only fix the failing ones.`;
+7. Do NOT add new tests — only fix the failing ones.
+
+COMMON FIXES:
+- If a test TIMED OUT, it likely tried to connect to a real database/service. Rewrite it to mock ALL injected dependencies (e.g. for NestJS use Test.createTestingModule with mock providers, never import the full AppModule).
+- If a test had a PARSE ERROR, check imports and TypeScript syntax match the project's tsconfig/jest config.
+- If a test had a MODULE NOT FOUND error, fix the import paths to be relative from the test file location.`;
 
   const failureDetails = failures
     .map((f, i) => {

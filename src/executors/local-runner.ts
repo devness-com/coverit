@@ -28,6 +28,18 @@ interface SpawnResult {
 }
 
 export class LocalRunner extends BaseExecutor {
+  private packageManager: string = "npx";
+
+  /** Set the package manager runner (npx, bunx, pnpm exec, yarn) */
+  setPackageManager(pm: string): void {
+    switch (pm) {
+      case "bun": this.packageManager = "bunx"; break;
+      case "pnpm": this.packageManager = "pnpm exec"; break;
+      case "yarn": this.packageManager = "yarn"; break;
+      default: this.packageManager = "npx"; break;
+    }
+  }
+
   async execute(
     test: GeneratedTest,
     config: ExecutionConfig
@@ -106,20 +118,24 @@ export class LocalRunner extends BaseExecutor {
     }
   }
 
+  private pmExec(): string[] {
+    return this.packageManager.split(" ");
+  }
+
   private vitestCommand(file: string, coverage: boolean): string[] {
-    const args = ["bunx", "vitest", "run", file, "--reporter=json"];
+    const args = [...this.pmExec(), "vitest", "run", file, "--reporter=json"];
     if (coverage) args.push("--coverage", "--coverage.reporter=json");
     return args;
   }
 
   private jestCommand(file: string, coverage: boolean): string[] {
-    const args = ["bunx", "jest", file, "--json", "--no-cache"];
+    const args = [...this.pmExec(), "jest", file, "--json", "--no-cache"];
     if (coverage) args.push("--coverage", "--coverageReporters=json-summary");
     return args;
   }
 
   private playwrightCommand(file: string): string[] {
-    return ["bunx", "playwright", "test", file, "--reporter=json"];
+    return [...this.pmExec(), "playwright", "test", file, "--reporter=json"];
   }
 
   private pytestCommand(file: string): string[] {
