@@ -86,7 +86,13 @@ Return a concise summary (NOT the full JSON):
 
 After launching all batch agents, **actively monitor progress** by polling the per-plan progress files that the orchestrator writes in real-time.
 
-**Poll loop**: While batches are still running, use the Glob tool to list files matching `<projectRoot>/.coverit/progress/*.json`. Each plan gets its own file (e.g. `progress/plan_001.json`) written atomically as it transitions between stages. Each file contains:
+**Important**: Do NOT fall back to `coverit_full` or re-run the pipeline. Results are always available on disk in the progress files.
+
+#### Poll Loop
+
+While batches are still running, repeat every 15–20 seconds:
+
+1. **Read progress files**: Use Glob to list `<projectRoot>/.coverit/progress/*.json`, then Read each file. Each contains:
 
 ```json
 {
@@ -101,11 +107,10 @@ After launching all batch agents, **actively monitor progress** by polling the p
 }
 ```
 
-Each time you poll, **print an update** showing:
-- How many plans are in each stage (generating / running / done) based on the count and contents of progress files
-- Any newly completed plans since the last check
+2. **Check batch completion**: Call `TaskOutput` with `block: false` and `timeout: 5000` for each batch task ID. When a batch returns output, mark its task completed via TaskUpdate. Don't worry about parsing the sub-agent's text output — the progress files are the source of truth.
 
-Example progress output:
+3. **Print a progress update** each poll cycle:
+
 ```
 Progress: 42/96 plans complete (8 generating, 12 running, 34 remaining)
   Recently completed:
@@ -113,13 +118,17 @@ Progress: 42/96 plans complete (8 generating, 12 running, 34 remaining)
     plan_022: failed (3/5 tests, 0.8s) — api tests for booking/controller.ts
 ```
 
-Also check batch completion using TaskOutput with `block: false`. As each batch completes:
-1. Mark its task as completed via TaskUpdate
-2. Continue monitoring until all batches done
+4. **Determine completion**: All batches are done when every progress file has a terminal status (`passed`, `failed`, `error`, or `skipped`). Stop polling when this is true OR when all TaskOutput calls return completed.
 
-**Poll interval**: Glob the progress directory, then check batch outputs, then repeat. Do this every 15-20 seconds (use TaskOutput with a short timeout).
+#### Aggregate from Disk
 
-After all batches complete, show the final aggregated summary:
+After all batches complete, read ALL `<projectRoot>/.coverit/progress/*.json` files and aggregate:
+
+- Count plans by status (passed / failed / error / skipped)
+- Sum `passed` and `failed` test counts across all plans
+- Sum `duration` across all plans
+
+Then show the final summary:
 
 ```
 All batches complete.
@@ -128,14 +137,13 @@ Results Summary
   Status: PASSED / FAILED
   Total Plans: N (in K batches)
   Total Tests: N
-  Passed: N | Failed: N | Skipped: N
-  Duration: Nms
+  Passed: N | Failed: N | Skipped: N | Errors: N
+  Duration: Xs
 
-Coverage (if collected)
-  Lines: N% | Branches: N% | Functions: N% | Statements: N%
-
-Failures (if any, list first 10)
-  1. [planId] <test name>: <message>
+Failures (if any, list first 10):
+  1. [planId] description — N/M tests passed (Xs)
 ```
 
-If only a small number of plans (≤10), skip batching and run all plans in a single `coverit_execute_batch` call via one sub-agent.
+#### Small PR Shortcut
+
+If only a small number of plans (≤10), skip batching and run all plans in a single `coverit_execute_batch` call via one sub-agent (without `run_in_background`). Then read progress files to aggregate results the same way.
