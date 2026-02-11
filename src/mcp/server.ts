@@ -238,6 +238,66 @@ server.tool(
   },
 );
 
+// ─── coverit_execute_batch ───────────────────────────────────
+// Execute a specific batch of test plans by ID.
+
+server.tool(
+  "coverit_execute_batch",
+  "Execute a specific batch of test plans by ID. Use after coverit_analyze to run a subset of plans.",
+  {
+    projectRoot: z.string().describe("Absolute path to the project root"),
+    planIds: z
+      .array(z.string())
+      .describe("Plan IDs to execute (from coverit_analyze output)"),
+    environment: z
+      .enum(["local", "cloud-sandbox", "browser", "mobile-simulator", "desktop-app"])
+      .optional()
+      .describe("Execution environment (defaults to local)"),
+    coverage: z
+      .boolean()
+      .optional()
+      .describe("Collect coverage data (defaults to false)"),
+    ...diffSourceSchema,
+  },
+  async ({ projectRoot, planIds, environment, coverage, baseBranch, commit, pr, files, staged }) => {
+    try {
+      const config: CoveritConfig = {
+        projectRoot,
+        planIds,
+        useCache: true,
+        diffSource: parseDiffSource({ baseBranch, commit, pr, files, staged }),
+        environment: environment ?? "local",
+        coverageThreshold: coverage ? 0 : undefined,
+      };
+
+      const report = await orchestrate(config);
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                summary: report.summary,
+                results: report.results,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error("coverit_execute_batch failed:", message);
+      return {
+        content: [{ type: "text" as const, text: `Error: ${message}` }],
+        isError: true,
+      };
+    }
+  },
+);
+
 // ─── coverit_full ────────────────────────────────────────────
 // Full pipeline: analyze, generate, run, and report.
 

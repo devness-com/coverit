@@ -286,39 +286,10 @@ export async function planStrategy(
     }
   }
 
-  // Also plan tests for files that depend on changed files (ripple effect)
-  for (const file of diff.files) {
-    if (file.status === "deleted") continue;
-
-    const node = graph.get(file.path);
-    if (!node) continue;
-
-    for (const dependentPath of node.dependedBy) {
-      // Skip if already in our changed files or if it's a test file
-      if (changedPaths.has(dependentPath)) continue;
-      if (/\.(test|spec)\./.test(dependentPath)) continue;
-
-      const depNode = graph.get(dependentPath);
-      if (!depNode) continue;
-
-      // Only add unit tests for ripple-effect files
-      const planId = generatePlanId();
-      plans.push({
-        id: planId,
-        type: "unit",
-        target: {
-          files: [dependentPath],
-          functions: [],
-          endpoints: [],
-          components: [],
-        },
-        priority: "high",
-        description: `unit tests for ${dependentPath} (depends on changed file ${file.path})`,
-        estimatedTests: 3,
-        dependencies: [],
-      });
-    }
-  }
+  // NOTE: Downstream "ripple effect" testing (files that depend on changed
+  // files) was removed — it generated plans for untouched files that produced
+  // 0 tests and inflated plan counts. Coverit now only tests files directly
+  // changed in the diff.
 
   // Wire up dependencies: integration/api/e2e plans depend on their unit plan for the same file
   const unitPlansByFile = new Map<string, string>();

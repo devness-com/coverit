@@ -10,7 +10,8 @@ import type {
   TestType,
 } from "../types/index.js";
 import type { AIProvider } from "../ai/types.js";
-import { buildTestGenerationPrompt } from "../ai/prompts.js";
+import type { TestFailure } from "../types/index.js";
+import { buildTestGenerationPrompt, buildTestRefinementPrompt } from "../ai/prompts.js";
 
 /**
  * Abstract base class for all test generators.
@@ -69,6 +70,41 @@ export abstract class BaseGenerator {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[coverit] AI generation failed: ${msg}`);
+      return null;
+    }
+  }
+
+  /**
+   * Attempts to fix failing tests using the AI provider.
+   * Sends the failing test code, failure details, and source code to
+   * the LLM and returns a corrected test file, or null if unavailable.
+   */
+  async refineWithAI(params: {
+    testCode: string;
+    failures: TestFailure[];
+    sourceCode: string;
+  }): Promise<string | null> {
+    if (!this.aiProvider) return null;
+
+    try {
+      const messages = buildTestRefinementPrompt({
+        testCode: params.testCode,
+        failures: params.failures,
+        sourceCode: params.sourceCode,
+      });
+
+      const response = await this.aiProvider.generate(messages, {
+        temperature: 0.2,
+        maxTokens: 4096,
+      });
+
+      const content = response.content.trim();
+      if (!content) return null;
+
+      return this.extractCodeFromResponse(content);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[coverit] AI refinement failed: ${msg}`);
       return null;
     }
   }

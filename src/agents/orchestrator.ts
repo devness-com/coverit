@@ -8,7 +8,7 @@
  * block others. Errors are captured per-plan and included in the final report.
  */
 
-import { mkdir, writeFile, readdir } from "node:fs/promises";
+import { mkdir, writeFile, readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import type {
   CoveritConfig,
@@ -42,6 +42,43 @@ import { logger } from "../utils/logger.js";
 
 const COVERIT_DIR = ".coverit";
 const REPORT_FILE = "last-report.json";
+const STRATEGY_FILE = "strategy.json";
+const PROGRESS_FILE = "progress.json";
+
+interface PlanProgress {
+  planId: string;
+  status: "generating" | "running" | "passed" | "failed" | "error" | "skipped";
+  description: string;
+  testFile?: string;
+  passed?: number;
+  failed?: number;
+  duration?: number;
+  updatedAt: string;
+}
+
+interface ProgressData {
+  plans: Record<string, PlanProgress>;
+  startedAt: string;
+  updatedAt: string;
+}
+
+async function updateProgress(
+  coveritDir: string,
+  planId: string,
+  update: Omit<PlanProgress, "updatedAt">,
+): Promise<void> {
+  const progressPath = join(coveritDir, PROGRESS_FILE);
+  let data: ProgressData;
+  try {
+    const raw = await readFile(progressPath, "utf-8");
+    data = JSON.parse(raw) as ProgressData;
+  } catch {
+    data = { plans: {}, startedAt: new Date().toISOString(), updatedAt: "" };
+  }
+  data.plans[planId] = { ...update, updatedAt: new Date().toISOString() };
+  data.updatedAt = new Date().toISOString();
+  await writeFile(progressPath, JSON.stringify(data, null, 2), "utf-8");
+}
 
 function emit(handler: CoveritEventHandler | undefined, event: CoveritEvent): void {
   if (handler) {
@@ -79,6 +116,65 @@ async function findExistingTests(projectRoot: string): Promise<string[]> {
   return found;
 }
 
+// ─── Internal: run the analysis phase ──────────────────────────
+
+async function runAnalysis(
+  config: CoveritConfig,
+  projectRoot: string,
+): Promise<{ strategy: TestStrategy; scanResults: CodeScanResult[]; fileCount: number }> {
+  const diffSource = config.diffSource ?? { mode: "auto" };
+  let diffResult;
+  switch (diffSource.mode) {
+    case "base":
+      diffResult = await analyzeDiff(projectRoot, diffSource.branch);
+      break;
+    case "commit":
+      diffResult = await analyzeDiffForCommit(projectRoot, diffSource.ref);
+      break;
+    case "pr": {
+      const prBase = await detectPRBaseBranch(projectRoot, diffSource.number);
+      diffResult = await analyzeDiff(projectRoot, prBase);
+      break;
+    }
+    case "files":
+      diffResult = await analyzeDiffForFiles(projectRoot, diffSource.patterns);
+      break;
+    case "staged":
+      diffResult = await analyzeDiffStaged(projectRoot);
+      break;
+    case "auto":
+    default:
+      diffResult = await analyzeDiff(projectRoot);
+      break;
+  }
+
+  const scannableFiles = diffResult.files.filter((f) => f.status !== "deleted");
+
+  const scanResults: CodeScanResult[] = [];
+  for (const changedFile of scannableFiles) {
+    try {
+      const scanResult = await scanCode(
+        join(projectRoot, changedFile.path),
+        projectRoot,
+      );
+      scanResults.push(scanResult);
+    } catch (err) {
+      logger.warn(`Skipping ${changedFile.path}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  const depGraph = await buildDependencyGraph(projectRoot);
+
+  const strategy = await planStrategy(
+    diffResult,
+    scanResults,
+    depGraph,
+    projectRoot,
+  );
+
+  return { strategy, scanResults, fileCount: diffResult.files.length };
+}
+
 /**
  * Runs the full coverit pipeline for a given configuration.
  *
@@ -113,59 +209,43 @@ export async function orchestrate(
   // ── Phase 1: Analysis ──────────────────────────────────────
   const projectInfo = await detectProjectInfo(config.projectRoot);
 
-  const diffSource = config.diffSource ?? { mode: "auto" };
-  let diffResult;
-  switch (diffSource.mode) {
-    case "base":
-      diffResult = await analyzeDiff(config.projectRoot, diffSource.branch);
-      break;
-    case "commit":
-      diffResult = await analyzeDiffForCommit(config.projectRoot, diffSource.ref);
-      break;
-    case "pr": {
-      const prBase = await detectPRBaseBranch(config.projectRoot, diffSource.number);
-      diffResult = await analyzeDiff(config.projectRoot, prBase);
-      break;
-    }
-    case "files":
-      diffResult = await analyzeDiffForFiles(config.projectRoot, diffSource.patterns);
-      break;
-    case "staged":
-      diffResult = await analyzeDiffStaged(config.projectRoot);
-      break;
-    case "auto":
-    default:
-      diffResult = await analyzeDiff(config.projectRoot);
-      break;
-  }
-  emit(onEvent, { type: "analysis:start", data: { files: diffResult.files.length } });
+  let strategy: TestStrategy;
+  let scanResults: CodeScanResult[] = [];
 
-  // Skip deleted files — they can't be scanned
-  const scannableFiles = diffResult.files.filter((f) => f.status !== "deleted");
-
-  const scanResults: CodeScanResult[] = [];
-  for (const changedFile of scannableFiles) {
+  // When useCache is set (batch execution), load the previously cached strategy
+  // instead of re-running analysis. This ensures plan IDs remain stable.
+  const strategyPath = join(coveritDir, STRATEGY_FILE);
+  if (config.useCache && config.planIds) {
     try {
-      const scanResult = await scanCode(
-        join(config.projectRoot, changedFile.path),
-        config.projectRoot,
-      );
-      scanResults.push(scanResult);
+      const cached = await readFile(strategyPath, "utf-8");
+      const cachedData = JSON.parse(cached) as { strategy: TestStrategy; scanResults: CodeScanResult[] };
+      strategy = cachedData.strategy;
+      scanResults = cachedData.scanResults;
+      logger.info(`Loaded cached strategy with ${strategy.plans.length} plans`);
+      emit(onEvent, { type: "analysis:complete", data: { strategy } });
     } catch (err) {
-      logger.warn(`Skipping ${changedFile.path}: ${err instanceof Error ? err.message : String(err)}`);
+      logger.warn(`No cached strategy found, running full analysis: ${err instanceof Error ? err.message : String(err)}`);
+      // Fall through to full analysis below
+      const result = await runAnalysis(config, config.projectRoot);
+      strategy = result.strategy;
+      scanResults = result.scanResults;
+      emit(onEvent, { type: "analysis:start", data: { files: result.fileCount } });
+      emit(onEvent, { type: "analysis:complete", data: { strategy } });
     }
+  } else {
+    const result = await runAnalysis(config, config.projectRoot);
+    strategy = result.strategy;
+    scanResults = result.scanResults;
+    emit(onEvent, { type: "analysis:start", data: { files: result.fileCount } });
+    emit(onEvent, { type: "analysis:complete", data: { strategy } });
+
+    // Cache strategy for batch execution
+    await writeFile(
+      strategyPath,
+      JSON.stringify({ strategy, scanResults }, null, 2),
+      "utf-8",
+    );
   }
-
-  const depGraph = await buildDependencyGraph(config.projectRoot);
-
-  const strategy: TestStrategy = await planStrategy(
-    diffResult,
-    scanResults,
-    depGraph,
-    config.projectRoot,
-  );
-
-  emit(onEvent, { type: "analysis:complete", data: { strategy } });
 
   // ── Early return for analyze-only mode (scan command) ──────
   if (config.analyzeOnly) {
@@ -184,9 +264,15 @@ export async function orchestrate(
   const allResults: ExecutionResult[] = [];
 
   for (const phase of strategy.executionOrder) {
+    // Filter plans by planIds when running a specific batch
+    const plansToRun = config.planIds
+      ? phase.plans.filter((id) => config.planIds!.includes(id))
+      : phase.plans;
+    if (plansToRun.length === 0) continue;
+
     // Plans within a phase can run in parallel
     const phaseResults = await Promise.all(
-      phase.plans.map(async (planId) => {
+      plansToRun.map(async (planId) => {
         const plan = strategy.plans.find((p) => p.id === planId);
         if (!plan) {
           logger.warn(`Plan ${planId} referenced in phase but not found`);
@@ -213,6 +299,13 @@ export async function orchestrate(
             data: { message, plan },
           });
 
+          // Update progress with error
+          await updateProgress(coveritDir, plan.id, {
+            planId: plan.id,
+            status: "error",
+            description: plan.description,
+          });
+
           // Return a failure result so the pipeline continues
           return {
             planId: plan.id,
@@ -236,7 +329,11 @@ export async function orchestrate(
   }
 
   // ── Phase 4: Reporting ─────────────────────────────────────
-  const report = generateReport(projectInfo, strategy, allResults);
+  // When running a batch, scope the report to only the executed plans
+  const reportStrategy = config.planIds
+    ? { ...strategy, plans: strategy.plans.filter((p) => config.planIds!.includes(p.id)) }
+    : strategy;
+  const report = generateReport(projectInfo, reportStrategy, allResults);
 
   emit(onEvent, { type: "report:complete", data: { report } });
 
@@ -277,8 +374,15 @@ async function executePlan(
     aiProvider,
   } = ctx;
 
+  const coveritDir = join(config.projectRoot, COVERIT_DIR);
+
   // ── Generate ───────────────────────────────────────────────
   emit(onEvent, { type: "generation:start", data: { plan } });
+  await updateProgress(coveritDir, plan.id, {
+    planId: plan.id,
+    status: "generating",
+    description: plan.description,
+  });
 
   const generatorCtx: GeneratorContext = {
     plan,
@@ -299,7 +403,34 @@ async function executePlan(
     await writeFile(outPath, test.content, "utf-8");
   }
 
+  // If no tests were generated, skip execution — don't count as "passed"
+  if (genResult.tests.length === 0) {
+    await updateProgress(coveritDir, plan.id, {
+      planId: plan.id,
+      status: "skipped",
+      description: plan.description,
+    });
+    return {
+      planId: plan.id,
+      status: "skipped",
+      totalTests: 0,
+      passed: 0,
+      failed: 0,
+      skipped: 0,
+      duration: 0,
+      coverage: null,
+      failures: [],
+      output: "No tests generated (no testable surface)",
+    };
+  }
+
   if (config.generateOnly || config.skipExecution) {
+    await updateProgress(coveritDir, plan.id, {
+      planId: plan.id,
+      status: "skipped",
+      description: plan.description,
+      testFile: genResult.tests[0]?.filePath,
+    });
     return {
       planId: plan.id,
       status: "skipped",
@@ -314,17 +445,139 @@ async function executePlan(
     };
   }
 
-  // ── Execute ────────────────────────────────────────────────
-  emit(onEvent, {
-    type: "execution:start",
-    data: { plan, environment: phase.environment },
-  });
-
+  // ── Execute (with retry loop) ───────────────────────────────
+  const maxRetries = config.maxRetries ?? 2;
   const executor = createExecutor(phase.environment);
-  // Execute each generated test and merge results
-  const mergedResult: ExecutionResult = {
+  let currentTests = genResult.tests;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    emit(onEvent, {
+      type: "execution:start",
+      data: { plan, environment: phase.environment },
+    });
+    await updateProgress(coveritDir, plan.id, {
+      planId: plan.id,
+      status: "running",
+      description: attempt > 0
+        ? `${plan.description} (retry ${attempt}/${maxRetries})`
+        : plan.description,
+      testFile: currentTests[0]?.filePath,
+    });
+
+    // Run all test files for this plan
+    const mergedResult: ExecutionResult = {
+      planId: plan.id,
+      status: "passed",
+      totalTests: 0,
+      passed: 0,
+      failed: 0,
+      skipped: 0,
+      duration: 0,
+      coverage: null,
+      failures: [],
+      output: "",
+    };
+
+    for (const test of currentTests) {
+      const execResult = await executor.execute(test, {
+        environment: phase.environment,
+        timeout: 60_000,
+        retries: 0,
+        parallel: false,
+        collectCoverage: config.coverageThreshold !== undefined,
+        cloudConfig: config.cloudConfig,
+      });
+      mergedResult.totalTests += execResult.totalTests;
+      mergedResult.passed += execResult.passed;
+      mergedResult.failed += execResult.failed;
+      mergedResult.skipped += execResult.skipped;
+      mergedResult.duration += execResult.duration;
+      mergedResult.failures.push(...execResult.failures);
+      mergedResult.output += execResult.output + "\n";
+      if (execResult.coverage) mergedResult.coverage = execResult.coverage;
+      if (execResult.status !== "passed") mergedResult.status = execResult.status;
+    }
+
+    emit(onEvent, { type: "execution:complete", data: { result: mergedResult } });
+
+    // If all tests passed or no retries left, return the result
+    if (mergedResult.failures.length === 0 || attempt >= maxRetries) {
+      await updateProgress(coveritDir, plan.id, {
+        planId: plan.id,
+        status: mergedResult.status === "passed" ? "passed" : mergedResult.status === "failed" ? "failed" : "error",
+        description: plan.description,
+        testFile: currentTests[0]?.filePath,
+        passed: mergedResult.passed,
+        failed: mergedResult.failed,
+        duration: mergedResult.duration,
+      });
+      return mergedResult;
+    }
+
+    // ── Retry: refine failing tests with AI ───────────────────
+    if (!aiProvider) {
+      // No AI available — can't refine, return as-is
+      logger.warn(`Plan ${plan.id}: ${mergedResult.failures.length} failure(s) but no AI provider for refinement`);
+      await updateProgress(coveritDir, plan.id, {
+        planId: plan.id,
+        status: "failed",
+        description: plan.description,
+        testFile: currentTests[0]?.filePath,
+        passed: mergedResult.passed,
+        failed: mergedResult.failed,
+        duration: mergedResult.duration,
+      });
+      return mergedResult;
+    }
+
+    logger.info(`Plan ${plan.id}: ${mergedResult.failures.length} failure(s), retrying (${attempt + 1}/${maxRetries})...`);
+
+    // For each test file with failures, attempt AI refinement
+    const refinedTests = [];
+    for (const test of currentTests) {
+      const testFailures = mergedResult.failures.filter((f) =>
+        f.testName.includes(test.filePath) || mergedResult.failures.length <= currentTests.length
+      );
+
+      if (testFailures.length === 0) {
+        refinedTests.push(test);
+        continue;
+      }
+
+      // Read the source file being tested
+      let sourceCode = "";
+      try {
+        const sourceFile = plan.target.files[0];
+        if (sourceFile) {
+          sourceCode = await readFile(join(config.projectRoot, sourceFile), "utf-8");
+        }
+      } catch {
+        // Source file may not exist (e.g., deleted)
+      }
+
+      const refined = await generator.refineWithAI({
+        testCode: test.content,
+        failures: testFailures.length > 0 ? testFailures : mergedResult.failures,
+        sourceCode,
+      });
+
+      if (refined) {
+        const updatedTest = { ...test, content: refined };
+        refinedTests.push(updatedTest);
+        // Write refined test file
+        const outPath = join(config.projectRoot, test.filePath);
+        await writeFile(outPath, refined, "utf-8");
+      } else {
+        refinedTests.push(test);
+      }
+    }
+    currentTests = refinedTests;
+  }
+
+  // Should not reach here, but return error if it does
+  return {
     planId: plan.id,
-    status: "passed",
+    status: "error",
     totalTests: 0,
     passed: 0,
     failed: 0,
@@ -332,32 +585,6 @@ async function executePlan(
     duration: 0,
     coverage: null,
     failures: [],
-    output: "",
+    output: "Unexpected: retry loop exited without returning",
   };
-
-  for (const test of genResult.tests) {
-    const execResult = await executor.execute(test, {
-      environment: phase.environment,
-      timeout: 60_000,
-      retries: 0,
-      parallel: false,
-      collectCoverage: config.coverageThreshold !== undefined,
-      cloudConfig: config.cloudConfig,
-    });
-    mergedResult.totalTests += execResult.totalTests;
-    mergedResult.passed += execResult.passed;
-    mergedResult.failed += execResult.failed;
-    mergedResult.skipped += execResult.skipped;
-    mergedResult.duration += execResult.duration;
-    mergedResult.failures.push(...execResult.failures);
-    mergedResult.output += execResult.output + "\n";
-    if (execResult.coverage) mergedResult.coverage = execResult.coverage;
-    if (execResult.status !== "passed") mergedResult.status = execResult.status;
-  }
-
-  const execResult = mergedResult;
-
-  emit(onEvent, { type: "execution:complete", data: { result: execResult } });
-
-  return execResult;
 }

@@ -46,3 +46,7 @@ Summary: total plans, total estimated tests, execution phases
 ## Display
 
 Show the sub-agent's formatted summary to the user. Do NOT expand or re-process the raw JSON.
+
+## Tip
+
+The plan IDs from the scan output can be passed to `coverit_execute_batch` (or `coverit run --plan-ids`) to execute specific plans without re-running the full pipeline.

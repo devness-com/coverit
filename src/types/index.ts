@@ -360,6 +360,9 @@ export interface CoveritConfig {
   diffSource?: DiffSource;
   targetPaths?: string[];
   testTypes?: TestType[];
+  planIds?: string[];
+  useCache?: boolean;
+  maxRetries?: number;
   environment?: ExecutionEnvironment;
   framework?: TestFramework;
   analyzeOnly?: boolean;

@@ -127,6 +127,7 @@ program
   .option("--pr [number]", "Diff for a pull request (auto-detects base branch)")
   .option("--files <glob>", "Target specific files by glob pattern")
   .option("--staged", "Only analyze staged changes")
+  .option("--plan-ids <ids>", "Comma-separated plan IDs to execute (from scan output)")
   .hook("preAction", (_thisCommand, actionCommand) => {
     // Don't print banner for MCP mode — it corrupts stdio transport
     if (actionCommand.name() !== "mcp") {
@@ -259,10 +260,12 @@ program
     const spinner = ora("Starting full pipeline...").start();
 
     try {
+      const planIdsRaw = opts["planIds"] as string | undefined;
       const config: CoveritConfig = {
         projectRoot,
         diffSource: parseDiffSource(opts),
         testTypes: parseTestTypes(opts["type"] as string | undefined),
+        planIds: planIdsRaw ? planIdsRaw.split(",").map((id) => id.trim()) : undefined,
         environment: (opts["env"] as CoveritConfig["environment"]) ?? "local",
         coverageThreshold: opts["coverage"] ? 0 : undefined,
       };
