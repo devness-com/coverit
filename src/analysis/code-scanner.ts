@@ -276,6 +276,15 @@ function extractEndpoints(sourceFile: SourceFile): EndpointInfo[] {
     const propAccess = expr.asKind(SyntaxKind.PropertyAccessExpression);
     if (!propAccess) continue;
 
+    // Skip config/env lookups that happen to use .get()
+    const objText = propAccess.getExpression().getText();
+    if (
+      objText.includes("process.env") ||
+      objText.includes("configService") ||
+      objText.includes("ConfigService") ||
+      objText.includes("config.")
+    ) continue;
+
     const methodName = propAccess.getName().toLowerCase();
     if (!httpMethods.includes(methodName as HttpMethodLower)) continue;
 

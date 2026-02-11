@@ -46,16 +46,16 @@ Tell the user: "Scanning... found N plans."
 From the scan result, group plan IDs into batches of **10 plans** each.
 
 Create a **task for each batch** using TaskCreate so progress is visible:
-- Subject: `Batch K/N: plans XXX–YYY`
-- activeForm: `Running batch K (plans XXX–YYY)`
+- Subject: `Coverit Batch K/N: plans XXX–YYY`
+- activeForm: `Running Coverit batch K (plans XXX–YYY)`
 
 Tell the user the batch breakdown, e.g.:
 ```
 Executing 96 plans in 10 batches of 10:
-  Batch 1: plans 001–010
-  Batch 2: plans 011–020
+  Coverit Batch 1: plans 001–010
+  Coverit Batch 2: plans 011–020
   ...
-  Batch 10: plans 091–096
+  Coverit Batch 10: plans 091–096
 ```
 
 ### Phase 3: Execute Batches via Sub-Agents
@@ -84,31 +84,25 @@ Return a concise summary (NOT the full JSON):
 
 ### Phase 4: Monitor Progress & Aggregate
 
-After launching all batch agents, **actively monitor progress** by polling the progress file that the orchestrator writes in real-time.
+After launching all batch agents, **actively monitor progress** by polling the per-plan progress files that the orchestrator writes in real-time.
 
-**Poll loop**: While batches are still running, repeatedly read `<projectRoot>/.coverit/progress.json` using the Read tool. This file is updated after each plan transitions between stages. The structure is:
+**Poll loop**: While batches are still running, use the Glob tool to list files matching `<projectRoot>/.coverit/progress/*.json`. Each plan gets its own file (e.g. `progress/plan_001.json`) written atomically as it transitions between stages. Each file contains:
 
 ```json
 {
-  "plans": {
-    "plan_001": {
-      "planId": "plan_001",
-      "status": "generating" | "running" | "passed" | "failed" | "error" | "skipped",
-      "description": "unit tests for src/auth/service.ts — 3 function(s)",
-      "testFile": "src/auth/service.test.ts",
-      "passed": 5,
-      "failed": 0,
-      "duration": 1234,
-      "updatedAt": "..."
-    }
-  },
-  "startedAt": "...",
+  "planId": "plan_001",
+  "status": "generating" | "running" | "passed" | "failed" | "error" | "skipped",
+  "description": "unit tests for src/auth/service.ts — 3 function(s)",
+  "testFile": "src/auth/service.test.ts",
+  "passed": 5,
+  "failed": 0,
+  "duration": 1234,
   "updatedAt": "..."
 }
 ```
 
-Each time you read the progress file, **print an update** showing:
-- How many plans are in each stage (generating / running / done)
+Each time you poll, **print an update** showing:
+- How many plans are in each stage (generating / running / done) based on the count and contents of progress files
 - Any newly completed plans since the last check
 
 Example progress output:
@@ -123,7 +117,7 @@ Also check batch completion using TaskOutput with `block: false`. As each batch 
 1. Mark its task as completed via TaskUpdate
 2. Continue monitoring until all batches done
 
-**Poll interval**: Read the progress file, then check batch outputs, then repeat. Do this every 15-20 seconds (use TaskOutput with a short timeout).
+**Poll interval**: Glob the progress directory, then check batch outputs, then repeat. Do this every 15-20 seconds (use TaskOutput with a short timeout).
 
 After all batches complete, show the final aggregated summary:
 

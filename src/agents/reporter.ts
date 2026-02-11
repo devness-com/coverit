@@ -60,7 +60,12 @@ function buildSummary(
     failed += result.failed;
     skipped += result.skipped;
 
-    if (result.status === "error" || result.status === "timeout") {
+    if (result.status === "skipped") {
+      // Skipped results don't affect the overall status
+    } else if (result.status === "error" || result.status === "timeout") {
+      errorCount++;
+    } else if (result.status === "failed" && result.totalTests === 0) {
+      // Runner failed before any test executed (e.g., binary not found)
       errorCount++;
     }
 

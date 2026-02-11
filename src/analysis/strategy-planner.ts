@@ -255,6 +255,7 @@ export async function planStrategy(
     if (file.status === "deleted") continue;
     if (file.fileType === "test") continue;
     if (file.fileType === "config" || file.fileType === "style" || file.fileType === "migration") continue;
+    if (file.fileType === "unknown") continue;
 
     const testTypes = FILE_TYPE_TEST_MAP[file.fileType] ?? ["unit"];
     const scan = scanMap.get(file.path);

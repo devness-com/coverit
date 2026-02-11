@@ -63,6 +63,13 @@ const FILE_TYPE_RULES: Array<[RegExp, FileType]> = [
   [/\/schemas?\//, "schema"],
   [/\/migrations?\//, "migration"],
 
+  // Infrastructure / config files by extension
+  [/\.(ya?ml|json|toml|ini|env)$/, "config"],
+  [/docker-compose/, "config"],
+  [/Dockerfile/, "config"],
+  [/Makefile/, "config"],
+  [/\.dockerignore/, "config"],
+
   // Config files
   [/\.(config|rc)\.[^/]+$/, "config"],
   [/\/config\//, "config"],

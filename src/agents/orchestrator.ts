@@ -43,7 +43,7 @@ import { logger } from "../utils/logger.js";
 const COVERIT_DIR = ".coverit";
 const REPORT_FILE = "last-report.json";
 const STRATEGY_FILE = "strategy.json";
-const PROGRESS_FILE = "progress.json";
+const PROGRESS_DIR = "progress";
 const STRATEGY_VERSION = 2; // Bump when strategy format or planner logic changes
 
 interface PlanProgress {
@@ -57,28 +57,16 @@ interface PlanProgress {
   updatedAt: string;
 }
 
-interface ProgressData {
-  plans: Record<string, PlanProgress>;
-  startedAt: string;
-  updatedAt: string;
-}
-
 async function updateProgress(
   coveritDir: string,
   planId: string,
   update: Omit<PlanProgress, "updatedAt">,
 ): Promise<void> {
-  const progressPath = join(coveritDir, PROGRESS_FILE);
-  let data: ProgressData;
-  try {
-    const raw = await readFile(progressPath, "utf-8");
-    data = JSON.parse(raw) as ProgressData;
-  } catch {
-    data = { plans: {}, startedAt: new Date().toISOString(), updatedAt: "" };
-  }
-  data.plans[planId] = { ...update, updatedAt: new Date().toISOString() };
-  data.updatedAt = new Date().toISOString();
-  await writeFile(progressPath, JSON.stringify(data, null, 2), "utf-8");
+  const progressDir = join(coveritDir, PROGRESS_DIR);
+  await ensureDir(progressDir);
+  const planFile = join(progressDir, `${planId}.json`);
+  const entry: PlanProgress = { ...update, updatedAt: new Date().toISOString() };
+  await writeFile(planFile, JSON.stringify(entry, null, 2), "utf-8");
 }
 
 function emit(handler: CoveritEventHandler | undefined, event: CoveritEvent): void {
@@ -267,12 +255,31 @@ export async function orchestrate(
   if (config.analyzeOnly) {
     const report = generateReport(projectInfo, strategy, []);
     emit(onEvent, { type: "report:complete", data: { report } });
-    await writeFile(
-      join(coveritDir, REPORT_FILE),
-      JSON.stringify(report, null, 2),
-      "utf-8",
-    );
     return report;
+  }
+
+  // ── Preflight: check test runner is available ─────────────
+  const preflightExecutor = createExecutor("local");
+  if ("preflight" in preflightExecutor && typeof (preflightExecutor as any).preflight === "function") {
+    const check = await (preflightExecutor as any).preflight(config.projectRoot, projectInfo.testFramework);
+    if (!check.ok) {
+      const errorResult: ExecutionResult = {
+        planId: "preflight",
+        status: "error",
+        totalTests: 0,
+        passed: 0,
+        failed: 0,
+        skipped: 0,
+        duration: 0,
+        coverage: null,
+        failures: [{ testName: "(preflight)", message: check.error }],
+        output: check.error,
+      };
+      const report = generateReport(projectInfo, strategy, [errorResult]);
+      emit(onEvent, { type: "report:complete", data: { report } });
+      await writeFile(join(coveritDir, REPORT_FILE), JSON.stringify(report, null, 2), "utf-8");
+      return report;
+    }
   }
 
   // ── Phase 2 & 3: Generation + Execution per phase ──────────
@@ -347,7 +354,13 @@ export async function orchestrate(
   // ── Phase 4: Reporting ─────────────────────────────────────
   // When running a batch, scope the report to only the executed plans
   const reportStrategy = config.planIds
-    ? { ...strategy, plans: strategy.plans.filter((p) => config.planIds!.includes(p.id)) }
+    ? {
+        ...strategy,
+        plans: strategy.plans.filter((p) => config.planIds!.includes(p.id)),
+        executionOrder: strategy.executionOrder
+          .map((phase) => ({ ...phase, plans: phase.plans.filter((id) => config.planIds!.includes(id)) }))
+          .filter((phase) => phase.plans.length > 0),
+      }
     : strategy;
   const report = generateReport(projectInfo, reportStrategy, allResults);
 
@@ -531,7 +544,7 @@ async function executePlan(
     emit(onEvent, { type: "execution:complete", data: { result: mergedResult } });
 
     // If all tests passed or no retries left, return the result
-    const isRetryable = mergedResult.failures.length > 0 || mergedResult.status === "timeout";
+    const isRetryable = mergedResult.status !== "error" && (mergedResult.failures.length > 0 || mergedResult.status === "timeout");
     if (!isRetryable || attempt >= maxRetries) {
       await updateProgress(coveritDir, plan.id, {
         planId: plan.id,

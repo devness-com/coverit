@@ -40,6 +40,30 @@ export class LocalRunner extends BaseExecutor {
     }
   }
 
+  async preflight(
+    projectRoot: string,
+    framework: string
+  ): Promise<{ ok: boolean; error?: string }> {
+    const binMap: Record<string, string> = {
+      jest: "node_modules/.bin/jest",
+      vitest: "node_modules/.bin/vitest",
+      playwright: "node_modules/.bin/playwright",
+    };
+
+    const bin = binMap[framework];
+    if (!bin) return { ok: true };
+
+    const fullPath = join(projectRoot, bin);
+    if (!existsSync(fullPath)) {
+      return {
+        ok: false,
+        error: `${framework} binary not found at ${fullPath}. Run "npm install" (or your package manager's install command) in ${projectRoot} first.`,
+      };
+    }
+
+    return { ok: true };
+  }
+
   async execute(
     test: GeneratedTest,
     config: ExecutionConfig
@@ -424,13 +448,29 @@ export class LocalRunner extends BaseExecutor {
     spawn: SpawnResult,
     result: ExecutionResult
   ): void {
-    result.status = spawn.exitCode === 0 ? "passed" : "failed";
+    if (spawn.exitCode === 0) {
+      result.status = "passed";
+    } else if (spawn.stderr && this.isInfrastructureError(spawn.stderr)) {
+      result.status = "error";
+    } else {
+      result.status = "failed";
+    }
+
     if (spawn.exitCode !== 0 && spawn.stderr) {
       result.failures.push({
         testName: "(runner)",
         message: spawn.stderr.slice(0, 2000),
       });
     }
+  }
+
+  private isInfrastructureError(stderr: string): boolean {
+    return (
+      /Command.*not found/i.test(stderr) ||
+      stderr.includes("ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL") ||
+      /ENOENT.*(jest|vitest|playwright)/i.test(stderr) ||
+      /Cannot find module.*(jest|vitest|playwright)/i.test(stderr)
+    );
   }
 
   // ── Coverage ──────────────────────────────────────────────────
