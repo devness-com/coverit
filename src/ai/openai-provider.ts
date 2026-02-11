@@ -112,6 +112,7 @@ export class OpenAIProvider implements AIProvider {
       content: firstChoice.message.content,
       model: data.model,
       tokensUsed: data.usage?.total_tokens,
+      truncated: firstChoice.finish_reason === "length",
     };
   }
 }

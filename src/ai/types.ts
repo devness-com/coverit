@@ -33,6 +33,7 @@ export interface AIResponse {
   content: string;
   model: string;
   tokensUsed?: number;
+  truncated?: boolean;
 }
 
 export interface AIGenerateOptions {

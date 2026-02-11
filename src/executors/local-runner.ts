@@ -565,8 +565,10 @@ export class LocalRunner extends BaseExecutor {
     const fullPath = this.projectRoot
       ? join(this.projectRoot, test.filePath)
       : resolve(test.filePath);
-    await mkdir(dirname(fullPath), { recursive: true });
-    await writeFile(fullPath, test.content, "utf-8");
+    if (!existsSync(fullPath)) {
+      await mkdir(dirname(fullPath), { recursive: true });
+      await writeFile(fullPath, test.content, "utf-8");
+    }
     return fullPath;
   }
 

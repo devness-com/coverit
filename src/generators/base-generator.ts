@@ -59,14 +59,32 @@ export abstract class BaseGenerator {
 
       const response = await this.aiProvider.generate(messages, {
         temperature: 0.2,
-        maxTokens: 4096,
+        maxTokens: 16384,
       });
 
       const content = response.content.trim();
       if (!content) return null;
 
-      // Strip markdown fences if the model wrapped its output in them
-      return this.extractCodeFromResponse(content);
+      const code = this.extractCodeFromResponse(content);
+
+      // Detect truncation via provider signal or syntax check
+      if (response.truncated || this.isTruncated(code)) {
+        console.warn(`[coverit] AI generation truncated, retrying with higher limit...`);
+        const retryResponse = await this.aiProvider!.generate(messages, {
+          temperature: 0.2,
+          maxTokens: 32768,
+        });
+        const retryContent = retryResponse.content.trim();
+        if (!retryContent) return null;
+        const retryCode = this.extractCodeFromResponse(retryContent);
+        if (retryResponse.truncated || this.isTruncated(retryCode)) {
+          console.error(`[coverit] AI generation still truncated after retry, falling back to template`);
+          return null;
+        }
+        return retryCode;
+      }
+
+      return code;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[coverit] AI generation failed: ${msg}`);
@@ -95,18 +113,60 @@ export abstract class BaseGenerator {
 
       const response = await this.aiProvider.generate(messages, {
         temperature: 0.2,
-        maxTokens: 4096,
+        maxTokens: 16384,
       });
 
       const content = response.content.trim();
       if (!content) return null;
 
-      return this.extractCodeFromResponse(content);
+      const code = this.extractCodeFromResponse(content);
+
+      if (response.truncated || this.isTruncated(code)) {
+        console.warn(`[coverit] AI refinement truncated, retrying with higher limit...`);
+        const retryResponse = await this.aiProvider!.generate(messages, {
+          temperature: 0.2,
+          maxTokens: 32768,
+        });
+        const retryContent = retryResponse.content.trim();
+        if (!retryContent) return null;
+        const retryCode = this.extractCodeFromResponse(retryContent);
+        if (retryResponse.truncated || this.isTruncated(retryCode)) {
+          console.error(`[coverit] AI refinement still truncated after retry`);
+          return null;
+        }
+        return retryCode;
+      }
+
+      return code;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[coverit] AI refinement failed: ${msg}`);
       return null;
     }
+  }
+
+  /**
+   * Detects if generated code was truncated by counting unbalanced
+   * braces and backticks (ignoring those inside string literals).
+   */
+  private isTruncated(code: string): boolean {
+    let braces = 0;
+    let backticks = 0;
+    let inStr = false;
+    let strCh = "";
+    for (let i = 0; i < code.length; i++) {
+      const ch = code[i]!;
+      const prev = code[i - 1] ?? "";
+      if (inStr) {
+        if (ch === strCh && prev !== "\\") inStr = false;
+        continue;
+      }
+      if (ch === "`") { backticks++; continue; }
+      if (ch === '"' || ch === "'") { inStr = true; strCh = ch; continue; }
+      if (ch === "{") braces++;
+      if (ch === "}") braces--;
+    }
+    return braces > 0 || backticks % 2 !== 0;
   }
 
   /**

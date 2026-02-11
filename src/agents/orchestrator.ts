@@ -8,8 +8,9 @@
  * block others. Errors are captured per-plan and included in the final report.
  */
 
-import { mkdir, writeFile, readFile, readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, writeFile, readFile, readdir, unlink, rmdir } from "node:fs/promises";
+import { join, dirname } from "node:path";
+import { existsSync } from "node:fs";
 import type {
   CoveritConfig,
   CoveritEvent,
@@ -81,6 +82,28 @@ function emit(handler: CoveritEventHandler | undefined, event: CoveritEvent): vo
 
 async function ensureDir(dirPath: string): Promise<void> {
   await mkdir(dirPath, { recursive: true });
+}
+
+/**
+ * Ensures `.coverit` is listed in the project's `.gitignore`.
+ * Only touches git-tracked projects (checks for `.git` directory).
+ */
+async function ensureGitignore(projectRoot: string): Promise<void> {
+  if (!existsSync(join(projectRoot, ".git"))) return;
+
+  const gitignorePath = join(projectRoot, ".gitignore");
+  let content = "";
+  try {
+    content = await readFile(gitignorePath, "utf-8");
+  } catch {
+    // .gitignore doesn't exist yet — we'll create it
+  }
+
+  // Check if .coverit is already ignored (handles .coverit, .coverit/, .coverit/*)
+  if (/^\.coverit\b/m.test(content)) return;
+
+  const suffix = content.length > 0 && !content.endsWith("\n") ? "\n" : "";
+  await writeFile(gitignorePath, `${content}${suffix}\n# coverit\n.coverit/\n`, "utf-8");
 }
 
 async function findExistingTests(projectRoot: string): Promise<string[]> {
@@ -179,6 +202,10 @@ export async function orchestrate(
 ): Promise<CoveritReport> {
   const coveritDir = join(config.projectRoot, COVERIT_DIR);
   await ensureDir(coveritDir);
+  await ensureGitignore(config.projectRoot);
+
+  // Track generated test files for cleanup
+  const generatedFiles = new Set<string>();
 
   // ── AI provider initialization ──────────────────────────────
   // Attempt to stand up an LLM provider for intelligent test generation.
@@ -312,6 +339,7 @@ export async function orchestrate(
             phase,
             onEvent,
             aiProvider,
+            generatedFiles,
           });
         } catch (err) {
           const message =
@@ -383,6 +411,28 @@ export async function orchestrate(
     );
   }
 
+  // ── Cleanup generated test files ─────────────────────────────
+  if (!config.keepTestFiles && generatedFiles.size > 0) {
+    const dirsToCheck = new Set<string>();
+    for (const filePath of generatedFiles) {
+      try {
+        await unlink(filePath);
+        dirsToCheck.add(dirname(filePath));
+      } catch {
+        // File may already be gone — skip
+      }
+    }
+    // Remove empty parent directories that coverit may have created
+    for (const dir of dirsToCheck) {
+      try {
+        const entries = await readdir(dir);
+        if (entries.length === 0) await rmdir(dir);
+      } catch {
+        // Directory not empty or doesn't exist — skip
+      }
+    }
+  }
+
   return report;
 }
 
@@ -397,6 +447,7 @@ interface PlanExecutionContext {
   phase: TestStrategy["executionOrder"][number];
   onEvent?: CoveritEventHandler;
   aiProvider: AIProvider | null;
+  generatedFiles: Set<string>;
 }
 
 async function executePlan(
@@ -440,6 +491,7 @@ async function executePlan(
     const outPath = join(config.projectRoot, test.filePath);
     await ensureDir(join(outPath, ".."));
     await writeFile(outPath, test.content, "utf-8");
+    ctx.generatedFiles.add(outPath);
   }
 
   // If no tests were generated, skip execution — don't count as "passed"
@@ -614,6 +666,7 @@ async function executePlan(
         // Write refined test file
         const outPath = join(config.projectRoot, test.filePath);
         await writeFile(outPath, refined, "utf-8");
+        ctx.generatedFiles.add(outPath);
       } else {
         refinedTests.push(test);
       }

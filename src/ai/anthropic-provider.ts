@@ -24,6 +24,7 @@ interface AnthropicResponse {
   id: string;
   model: string;
   content: Array<{ type: string; text?: string }>;
+  stop_reason: string | null;
   usage?: { input_tokens: number; output_tokens: number };
   error?: { type: string; message: string };
 }
@@ -121,6 +122,7 @@ export class AnthropicProvider implements AIProvider {
       content: textBlocks.join(""),
       model: data.model,
       tokensUsed,
+      truncated: data.stop_reason === "max_tokens",
     };
   }
 }
