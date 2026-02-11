@@ -109,16 +109,39 @@ async function ensureGitignore(projectRoot: string): Promise<void> {
 }
 
 async function findExistingTests(projectRoot: string): Promise<string[]> {
-  const testDirs = ["__tests__", "tests", "test"];
   const found: string[] = [];
+  const testPattern = /\.(test|spec)\.[jt]sx?$/;
 
+  // Scan conventional test directories
+  const testDirs = ["__tests__", "tests", "test"];
   for (const dir of testDirs) {
     try {
       const entries = await readdir(join(projectRoot, dir), {
         recursive: true,
       });
       for (const entry of entries) {
-        if (typeof entry === "string" && /\.(test|spec)\.[jt]sx?$/.test(entry)) {
+        if (typeof entry === "string" && testPattern.test(entry)) {
+          found.push(join(dir, entry));
+        }
+      }
+    } catch {
+      // Directory doesn't exist — skip
+    }
+  }
+
+  // Scan source directories for colocated test files (e.g., src/foo.test.ts)
+  const sourceDirs = ["src", "apps", "libs", "packages", "app", "lib"];
+  for (const dir of sourceDirs) {
+    try {
+      const entries = await readdir(join(projectRoot, dir), {
+        recursive: true,
+      });
+      for (const entry of entries) {
+        if (
+          typeof entry === "string" &&
+          testPattern.test(entry) &&
+          !entry.includes("node_modules")
+        ) {
           found.push(join(dir, entry));
         }
       }
