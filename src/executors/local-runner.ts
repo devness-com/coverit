@@ -29,6 +29,7 @@ interface SpawnResult {
 
 export class LocalRunner extends BaseExecutor {
   private packageManager: string = "npx";
+  private projectRoot: string = "";
 
   /** Set the package manager runner (npx, bunx, pnpm exec, yarn) */
   setPackageManager(pm: string): void {
@@ -38,6 +39,11 @@ export class LocalRunner extends BaseExecutor {
       case "yarn": this.packageManager = "yarn"; break;
       default: this.packageManager = "npx"; break;
     }
+  }
+
+  /** Set the project root so the runner can resolve binary paths in workspaces */
+  setProjectRoot(root: string): void {
+    this.projectRoot = root;
   }
 
   async preflight(
@@ -142,24 +148,34 @@ export class LocalRunner extends BaseExecutor {
     }
   }
 
-  private pmExec(): string[] {
-    return this.packageManager.split(" ");
+  /**
+   * Resolve the runner prefix. For pnpm workspaces, use the direct binary
+   * from the project root's node_modules so sub-package cwd doesn't break.
+   */
+  private resolveBin(tool: string): string[] {
+    if (this.projectRoot && this.packageManager === "pnpm exec") {
+      const directBin = join(this.projectRoot, "node_modules", ".bin", tool);
+      if (existsSync(directBin)) {
+        return [directBin];
+      }
+    }
+    return [...this.packageManager.split(" "), tool];
   }
 
   private vitestCommand(file: string, coverage: boolean): string[] {
-    const args = [...this.pmExec(), "vitest", "run", file, "--reporter=json"];
+    const args = [...this.resolveBin("vitest"), "run", file, "--reporter=json"];
     if (coverage) args.push("--coverage", "--coverage.reporter=json");
     return args;
   }
 
   private jestCommand(file: string, coverage: boolean): string[] {
-    const args = [...this.pmExec(), "jest", file, "--json", "--no-cache"];
+    const args = [...this.resolveBin("jest"), file, "--json", "--no-cache"];
     if (coverage) args.push("--coverage", "--coverageReporters=json-summary");
     return args;
   }
 
   private playwrightCommand(file: string): string[] {
-    return [...this.pmExec(), "playwright", "test", file, "--reporter=json"];
+    return [...this.resolveBin("playwright"), "test", file, "--reporter=json"];
   }
 
   private pytestCommand(file: string): string[] {
@@ -448,28 +464,34 @@ export class LocalRunner extends BaseExecutor {
     spawn: SpawnResult,
     result: ExecutionResult
   ): void {
+    // Check both stderr and stdout — some tools (pnpm) write errors to stdout
+    const combined = `${spawn.stderr}\n${spawn.stdout}`;
+
     if (spawn.exitCode === 0) {
       result.status = "passed";
-    } else if (spawn.stderr && this.isInfrastructureError(spawn.stderr)) {
+    } else if (this.isInfrastructureError(combined)) {
       result.status = "error";
     } else {
       result.status = "failed";
     }
 
-    if (spawn.exitCode !== 0 && spawn.stderr) {
-      result.failures.push({
-        testName: "(runner)",
-        message: spawn.stderr.slice(0, 2000),
-      });
+    if (spawn.exitCode !== 0) {
+      const errorOutput = spawn.stderr || spawn.stdout;
+      if (errorOutput) {
+        result.failures.push({
+          testName: "(runner)",
+          message: errorOutput.slice(0, 2000),
+        });
+      }
     }
   }
 
-  private isInfrastructureError(stderr: string): boolean {
+  private isInfrastructureError(output: string): boolean {
     return (
-      /Command.*not found/i.test(stderr) ||
-      stderr.includes("ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL") ||
-      /ENOENT.*(jest|vitest|playwright)/i.test(stderr) ||
-      /Cannot find module.*(jest|vitest|playwright)/i.test(stderr)
+      /Command.*not found/i.test(output) ||
+      output.includes("ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL") ||
+      /ENOENT.*(jest|vitest|playwright)/i.test(output) ||
+      /Cannot find module.*(jest|vitest|playwright)/i.test(output)
     );
   }
 

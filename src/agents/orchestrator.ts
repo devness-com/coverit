@@ -487,9 +487,12 @@ async function executePlan(
   // ── Execute (with retry loop) ───────────────────────────────
   const maxRetries = config.maxRetries ?? 2;
   const executor = createExecutor(phase.environment);
-  // Set the project's package manager so the runner uses the correct exec command
+  // Set the project's package manager and root so the runner uses the correct exec command
   if ("setPackageManager" in executor && typeof (executor as any).setPackageManager === "function") {
     (executor as any).setPackageManager(ctx.projectInfo.packageManager);
+  }
+  if ("setProjectRoot" in executor && typeof (executor as any).setProjectRoot === "function") {
+    (executor as any).setProjectRoot(config.projectRoot);
   }
   let currentTests = genResult.tests;
 
