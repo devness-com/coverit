@@ -79,10 +79,10 @@ export class LocalRunner extends BaseExecutor {
 
     try {
       // Write the test file to disk so the runner can find it
-      await this.ensureTestFile(test);
+      const absTestFile = await this.ensureTestFile(test);
 
-      const cmd = this.buildCommand(test, config);
-      const cwd = this.resolveWorkingDir(test);
+      const cmd = this.buildCommand(test, config, absTestFile);
+      const cwd = this.resolveWorkingDir(absTestFile);
 
       const spawnResult = await this.withTimeout(
         this.withRetry(() => this.runProcess(cmd, cwd), config.retries),
@@ -126,9 +126,10 @@ export class LocalRunner extends BaseExecutor {
 
   private buildCommand(
     test: GeneratedTest,
-    config: ExecutionConfig
+    config: ExecutionConfig,
+    absTestFile: string
   ): string[] {
-    const file = test.filePath;
+    const file = absTestFile;
     const coverageFlag = config.collectCoverage;
 
     switch (test.framework) {
@@ -170,6 +171,13 @@ export class LocalRunner extends BaseExecutor {
 
   private jestCommand(file: string, coverage: boolean): string[] {
     const args = [...this.resolveBin("jest"), file, "--json", "--no-cache"];
+    // Pass project jest config so ts-jest and moduleNameMapper are applied
+    const jestConfig = this.findJestConfig();
+    if (jestConfig) {
+      args.push("--config", jestConfig);
+    }
+    // Accept both .test.ts and .spec.ts files
+    args.push("--testRegex", ".*\\.(test|spec)\\.[jt]sx?$");
     if (coverage) args.push("--coverage", "--coverageReporters=json-summary");
     return args;
   }
@@ -486,6 +494,23 @@ export class LocalRunner extends BaseExecutor {
     }
   }
 
+  /** Walk up from projectRoot to find the nearest jest config file. */
+  private findJestConfig(): string | null {
+    if (!this.projectRoot) return null;
+    const configNames = [
+      "jest.config.ts",
+      "jest.config.js",
+      "jest.config.cjs",
+      "jest.config.mjs",
+      "jest.config.json",
+    ];
+    for (const name of configNames) {
+      const candidate = join(this.projectRoot, name);
+      if (existsSync(candidate)) return candidate;
+    }
+    return null;
+  }
+
   private isInfrastructureError(output: string): boolean {
     return (
       /Command.*not found/i.test(output) ||
@@ -521,20 +546,28 @@ export class LocalRunner extends BaseExecutor {
 
   // ── Helpers ───────────────────────────────────────────────────
 
-  private resolveWorkingDir(test: GeneratedTest): string {
-    // Walk up from the test file to find the nearest package.json
-    let dir = dirname(resolve(test.filePath));
+  private resolveWorkingDir(absTestFile: string): string {
+    // When projectRoot is set, always use it — avoids sub-package cwd issues
+    // in monorepos where jest config and node_modules live at the root.
+    if (this.projectRoot) return this.projectRoot;
+
+    // Fallback: walk up from the test file to find the nearest package.json
+    let dir = dirname(absTestFile);
     while (dir !== "/" && dir !== ".") {
       if (existsSync(join(dir, "package.json"))) return dir;
       dir = dirname(dir);
     }
-    return dirname(resolve(test.filePath));
+    return dirname(absTestFile);
   }
 
-  private async ensureTestFile(test: GeneratedTest): Promise<void> {
-    const fullPath = resolve(test.filePath);
+  private async ensureTestFile(test: GeneratedTest): Promise<string> {
+    // Use projectRoot to resolve relative file paths, not process.cwd()
+    const fullPath = this.projectRoot
+      ? join(this.projectRoot, test.filePath)
+      : resolve(test.filePath);
     await mkdir(dirname(fullPath), { recursive: true });
     await writeFile(fullPath, test.content, "utf-8");
+    return fullPath;
   }
 
   private combineOutput(spawn: SpawnResult): string {
