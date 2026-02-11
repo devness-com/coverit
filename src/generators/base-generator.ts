@@ -174,10 +174,25 @@ export abstract class BaseGenerator {
    * markdown code fences (```typescript ... ``` or ``` ... ```).
    */
   private extractCodeFromResponse(raw: string): string {
-    const fenceMatch = raw.match(
+    // Try anchored first (entire response is a code fence)
+    const anchoredMatch = raw.match(
       /^```(?:typescript|ts|javascript|js|tsx|jsx)?\s*\n([\s\S]*?)\n```\s*$/
     );
-    return fenceMatch?.[1] ? fenceMatch[1].trim() : raw;
+    if (anchoredMatch?.[1]) return anchoredMatch[1].trim();
+
+    // Fallback: find the largest code fence anywhere in the response
+    // (handles AI preamble text before the fence)
+    const fenceMatches = [...raw.matchAll(
+      /```(?:typescript|ts|javascript|js|tsx|jsx)?\s*\n([\s\S]*?)\n```/g
+    )];
+    if (fenceMatches.length > 0) {
+      const longest = fenceMatches.reduce((a, b) =>
+        (a[1]?.length ?? 0) >= (b[1]?.length ?? 0) ? a : b
+      );
+      if (longest[1]) return longest[1].trim();
+    }
+
+    return raw;
   }
 
   /**
