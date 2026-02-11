@@ -91,18 +91,27 @@ export class OllamaProvider implements AIProvider {
       body["options"] = ollamaOptions;
     }
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 120_000);
+
     let response: Response;
     try {
       response = await fetch(`${this.baseUrl}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
+        signal: controller.signal,
       });
     } catch (err) {
+      clearTimeout(timeout);
+      if (err instanceof Error && err.name === "AbortError") {
+        throw new Error("Ollama request timed out after 120s");
+      }
       throw new Error(
         `Failed to connect to Ollama at ${this.baseUrl}. Is Ollama running? Error: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+    clearTimeout(timeout);
 
     if (!response.ok) {
       const errorBody = await response.text();

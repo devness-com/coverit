@@ -226,6 +226,13 @@ export class ClaudeCliProvider implements AIProvider {
 
       let stdout = "";
       let stderr = "";
+      let killed = false;
+
+      const timeout = setTimeout(() => {
+        killed = true;
+        proc.kill("SIGTERM");
+        reject(new Error("Claude CLI timed out after 120s"));
+      }, 120_000);
 
       proc.stdout.on("data", (chunk: Buffer) => {
         stdout += chunk.toString();
@@ -235,13 +242,19 @@ export class ClaudeCliProvider implements AIProvider {
       });
 
       proc.on("close", (code) => {
-        resolve({ stdout, stderr, exitCode: code ?? 1 });
+        clearTimeout(timeout);
+        if (!killed) {
+          resolve({ stdout, stderr, exitCode: code ?? 1 });
+        }
       });
 
       proc.on("error", (err) => {
-        reject(
-          new Error(`Failed to spawn Claude CLI: ${err.message}`),
-        );
+        clearTimeout(timeout);
+        if (!killed) {
+          reject(
+            new Error(`Failed to spawn Claude CLI: ${err.message}`),
+          );
+        }
       });
 
       // Pipe prompt via stdin and close to signal EOF

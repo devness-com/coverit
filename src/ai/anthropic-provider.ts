@@ -80,15 +80,29 @@ export class AnthropicProvider implements AIProvider {
       body["temperature"] = temperature;
     }
 
-    const response = await fetch(API_URL, {
-      method: "POST",
-      headers: {
-        "x-api-key": apiKey,
-        "anthropic-version": API_VERSION,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 120_000);
+
+    let response: Response;
+    try {
+      response = await fetch(API_URL, {
+        method: "POST",
+        headers: {
+          "x-api-key": apiKey,
+          "anthropic-version": API_VERSION,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      clearTimeout(timeout);
+      if (err instanceof Error && err.name === "AbortError") {
+        throw new Error("Anthropic API request timed out after 120s");
+      }
+      throw err;
+    }
+    clearTimeout(timeout);
 
     if (!response.ok) {
       const errorBody = await response.text();
