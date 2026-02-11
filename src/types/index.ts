@@ -377,6 +377,14 @@ export interface CoveritConfig {
     apiKey?: string;
     baseUrl?: string;
   };
+  fixMode?: boolean;
+}
+
+export interface CoveritFixConfig {
+  projectRoot: string;
+  planIds?: string[];
+  maxRetries?: number;
+  ai?: CoveritConfig["ai"];
 }
 
 // ─── Event Types (for progress reporting) ────────────────────

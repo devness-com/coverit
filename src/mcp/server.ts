@@ -8,7 +8,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { orchestrate } from "../agents/orchestrator.js";
+import { orchestrate, fixFailingTests } from "../agents/orchestrator.js";
 import { logger } from "../utils/logger.js";
 import type { TestType, DiffSource, CoveritConfig } from "../types/index.js";
 
@@ -290,6 +290,53 @@ server.tool(
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       logger.error("coverit_execute_batch failed:", message);
+      return {
+        content: [{ type: "text" as const, text: `Error: ${message}` }],
+        isError: true,
+      };
+    }
+  },
+);
+
+// ─── coverit_fix ─────────────────────────────────────────────
+// Fix failing tests from the last coverit run using AI refinement.
+
+server.tool(
+  "coverit_fix",
+  "Fix failing tests from the last coverit run using AI refinement. Reads failure details, fixes test code, and re-executes.",
+  {
+    projectRoot: z.string().describe("Absolute path to the project root"),
+    planIds: z
+      .array(z.string())
+      .optional()
+      .describe("Specific plan IDs to fix. Omit to fix all failed plans."),
+    maxRetries: z
+      .number()
+      .optional()
+      .describe("Max fix attempts per plan (default: 2)"),
+  },
+  async ({ projectRoot, planIds, maxRetries }) => {
+    try {
+      const report = await fixFailingTests({ projectRoot, planIds, maxRetries });
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                summary: report.summary,
+                results: report.results,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error("coverit_fix failed:", message);
       return {
         content: [{ type: "text" as const, text: `Error: ${message}` }],
         isError: true,

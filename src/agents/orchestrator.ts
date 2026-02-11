@@ -13,6 +13,7 @@ import { join, dirname } from "node:path";
 import { existsSync } from "node:fs";
 import type {
   CoveritConfig,
+  CoveritFixConfig,
   CoveritEvent,
   CoveritEventHandler,
   CoveritReport,
@@ -21,6 +22,7 @@ import type {
   GeneratorContext,
   TestStrategy,
   TestPlan,
+  TestFailure,
   GeneratorResult,
 } from "../types/index.js";
 import type { AIProvider, AIProviderConfig } from "../ai/types.js";
@@ -432,6 +434,260 @@ export async function orchestrate(
       }
     }
   }
+
+  return report;
+}
+
+// ─── Fix failing tests from a prior run ──────────────────────
+
+/**
+ * Reads previous run results, identifies failed plans, uses AI to
+ * refine their test files, and re-executes them.
+ */
+export async function fixFailingTests(
+  config: CoveritFixConfig,
+  onEvent?: CoveritEventHandler,
+): Promise<CoveritReport> {
+  const coveritDir = join(config.projectRoot, COVERIT_DIR);
+  const progressDir = join(coveritDir, PROGRESS_DIR);
+  const strategyPath = join(coveritDir, STRATEGY_FILE);
+
+  // ── Load cached strategy ────────────────────────────────────
+  if (!existsSync(strategyPath)) {
+    throw new Error("No prior run found — run /coverit:run first (.coverit/strategy.json missing)");
+  }
+  const cachedData = JSON.parse(await readFile(strategyPath, "utf-8")) as {
+    version?: number;
+    strategy: TestStrategy;
+  };
+  const strategy = cachedData.strategy;
+
+  // ── Load progress files to find failures ────────────────────
+  if (!existsSync(progressDir)) {
+    throw new Error("No progress files found — run /coverit:run first (.coverit/progress/ missing)");
+  }
+  const progressFiles = await readdir(progressDir);
+  const failedPlans: Array<{ progress: PlanProgress; plan: TestPlan }> = [];
+
+  for (const file of progressFiles) {
+    if (!file.endsWith(".json")) continue;
+    const progress = JSON.parse(
+      await readFile(join(progressDir, file), "utf-8"),
+    ) as PlanProgress;
+
+    if (progress.status !== "failed" && progress.status !== "error") continue;
+
+    // If specific planIds requested, filter
+    if (config.planIds && !config.planIds.includes(progress.planId)) continue;
+
+    const plan = strategy.plans.find((p) => p.id === progress.planId);
+    if (!plan) continue;
+
+    failedPlans.push({ progress, plan });
+  }
+
+  if (failedPlans.length === 0) {
+    // Nothing to fix — return an empty report
+    const projectInfo = await detectProjectInfo(config.projectRoot);
+    return generateReport(projectInfo, { ...strategy, plans: [] }, []);
+  }
+
+  // ── AI provider ─────────────────────────────────────────────
+  let aiProvider: AIProvider | null = null;
+  try {
+    if (config.ai?.provider) {
+      aiProvider = await createAIProvider(config.ai as AIProviderConfig);
+    } else {
+      aiProvider = await detectBestProvider();
+    }
+    logger.info(`[fix] Using AI provider: ${aiProvider.name}`);
+  } catch {
+    throw new Error("AI provider required for fix mode but none available");
+  }
+
+  // ── Fix loop ────────────────────────────────────────────────
+  const maxRetries = config.maxRetries ?? 2;
+  const projectInfo = await detectProjectInfo(config.projectRoot);
+  const allResults: ExecutionResult[] = [];
+
+  for (const { progress, plan } of failedPlans) {
+    emit(onEvent, { type: "generation:start", data: { plan } });
+
+    const testFilePath = progress.testFile;
+    if (!testFilePath) {
+      logger.warn(`[fix] Plan ${plan.id}: no test file recorded, skipping`);
+      allResults.push({
+        planId: plan.id,
+        status: "error",
+        totalTests: 0, passed: 0, failed: 0, skipped: 0,
+        duration: 0, coverage: null, failures: [],
+        output: "No test file from prior run",
+      });
+      continue;
+    }
+
+    // Read the current (failing) test file
+    const testAbsPath = join(config.projectRoot, testFilePath);
+    let testCode: string;
+    try {
+      testCode = await readFile(testAbsPath, "utf-8");
+    } catch {
+      logger.warn(`[fix] Plan ${plan.id}: test file not found at ${testFilePath}, skipping`);
+      allResults.push({
+        planId: plan.id,
+        status: "error",
+        totalTests: 0, passed: 0, failed: 0, skipped: 0,
+        duration: 0, coverage: null, failures: [],
+        output: `Test file not found: ${testFilePath}`,
+      });
+      continue;
+    }
+
+    // Read source file being tested
+    let sourceCode = "";
+    try {
+      const sourceFile = plan.target.files[0];
+      if (sourceFile) {
+        sourceCode = await readFile(join(config.projectRoot, sourceFile), "utf-8");
+      }
+    } catch {
+      // Source may be deleted
+    }
+
+    // Load failure details from last report (if available)
+    let lastFailures: TestFailure[] = [];
+    try {
+      const reportPath = join(coveritDir, REPORT_FILE);
+      if (existsSync(reportPath)) {
+        const report = JSON.parse(await readFile(reportPath, "utf-8")) as CoveritReport;
+        const planResult = report.results.find((r) => r.planId === plan.id);
+        if (planResult) lastFailures = planResult.failures;
+      }
+      // Also check batch reports
+      if (lastFailures.length === 0) {
+        const batchFiles = (await readdir(coveritDir)).filter((f) => f.startsWith("batch-") && f.endsWith(".json"));
+        for (const bf of batchFiles) {
+          const batchReport = JSON.parse(await readFile(join(coveritDir, bf), "utf-8")) as CoveritReport;
+          const planResult = batchReport.results.find((r) => r.planId === plan.id);
+          if (planResult && planResult.failures.length > 0) {
+            lastFailures = planResult.failures;
+            break;
+          }
+        }
+      }
+    } catch {
+      // No report — failures will be empty, AI will still try based on test code
+    }
+
+    // If no failure details found, create a generic one from progress
+    if (lastFailures.length === 0) {
+      lastFailures = [{
+        testName: testFilePath,
+        message: `${progress.failed ?? 0} test(s) failed in previous run`,
+      }];
+    }
+
+    // ── Retry loop: refine → execute ────────────────────────
+    const generator = createGenerator(plan.type, projectInfo, aiProvider);
+    const executor = createExecutor("local");
+    if ("setPackageManager" in executor && typeof (executor as any).setPackageManager === "function") {
+      (executor as any).setPackageManager(projectInfo.packageManager);
+    }
+    if ("setProjectRoot" in executor && typeof (executor as any).setProjectRoot === "function") {
+      (executor as any).setProjectRoot(config.projectRoot);
+    }
+
+    let currentTestCode = testCode;
+    let finalResult: ExecutionResult | null = null;
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      // Refine with AI
+      await updateProgress(coveritDir, plan.id, {
+        planId: plan.id,
+        status: "generating",
+        description: `${plan.description} (fix attempt ${attempt + 1}/${maxRetries})`,
+        testFile: testFilePath,
+      });
+
+      const refined = await generator.refineWithAI({
+        testCode: currentTestCode,
+        failures: lastFailures,
+        sourceCode,
+      });
+
+      if (refined) {
+        currentTestCode = refined;
+        await writeFile(testAbsPath, refined, "utf-8");
+      }
+
+      // Re-execute
+      await updateProgress(coveritDir, plan.id, {
+        planId: plan.id,
+        status: "running",
+        description: `${plan.description} (fix attempt ${attempt + 1}/${maxRetries})`,
+        testFile: testFilePath,
+      });
+
+      const execResult = await executor.execute(
+        {
+          planId: plan.id,
+          filePath: testFilePath,
+          content: currentTestCode,
+          testType: plan.type,
+          testCount: 0,
+          framework: projectInfo.testFramework,
+        },
+        {
+          environment: "local",
+          timeout: 120_000,
+          retries: 0,
+          parallel: false,
+          collectCoverage: false,
+        },
+      );
+
+      emit(onEvent, { type: "execution:complete", data: { result: execResult } });
+
+      if (execResult.status === "passed" || execResult.failures.length === 0) {
+        finalResult = execResult;
+        break;
+      }
+
+      // Update failure context for next attempt
+      lastFailures = execResult.failures;
+      finalResult = execResult;
+    }
+
+    const result = finalResult!;
+    const status = result.status === "passed" ? "passed" : result.status === "failed" ? "failed" : "error";
+    await updateProgress(coveritDir, plan.id, {
+      planId: plan.id,
+      status,
+      description: plan.description,
+      testFile: testFilePath,
+      passed: result.passed,
+      failed: result.failed,
+      duration: result.duration,
+    });
+
+    allResults.push(result);
+  }
+
+  // ── Report ──────────────────────────────────────────────────
+  const fixedStrategy: TestStrategy = {
+    ...strategy,
+    plans: failedPlans.map((fp) => fp.plan),
+  };
+  const report = generateReport(projectInfo, fixedStrategy, allResults);
+
+  emit(onEvent, { type: "report:complete", data: { report } });
+
+  // Persist fix report
+  await writeFile(
+    join(coveritDir, "last-fix-report.json"),
+    JSON.stringify(report, null, 2),
+    "utf-8",
+  );
 
   return report;
 }
