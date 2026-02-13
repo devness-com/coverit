@@ -231,6 +231,63 @@ export type ExecutionEnvironment =
   | "mobile-simulator"
   | "desktop-app";
 
+// ─── AI Triage Types ────────────────────────────────────────
+
+export interface FileContext {
+  path: string;
+  status: ChangedFile["status"];
+  additions: number;
+  deletions: number;
+  sourceCode: string;
+  hunks: DiffHunk[];
+}
+
+export interface ExistingTestFile {
+  path: string;
+  content: string;
+  /** Source files this test imports (best-effort regex detection) */
+  importsFrom: string[];
+}
+
+export interface ContextBundle {
+  changedFiles: FileContext[];
+  existingTests: ExistingTestFile[];
+  project: ProjectInfo;
+  diffSummary: string;
+}
+
+export interface TriagePlan {
+  id: string;
+  targetFiles: string[];
+  testTypes: TestType[];
+  existingTestFile: string | null;
+  outputTestFile: string;
+  description: string;
+  priority: "critical" | "high" | "medium" | "low";
+  environment: ExecutionEnvironment;
+}
+
+export interface TriageSkipped {
+  path: string;
+  reason: string;
+}
+
+export interface TriageResult {
+  plans: TriagePlan[];
+  skipped: TriageSkipped[];
+}
+
+export interface GenerationInput {
+  plan: TriagePlan;
+  project: ProjectInfo;
+  /** Full source code of target files */
+  sourceFiles: Array<{ path: string; content: string; hunks: DiffHunk[] }>;
+  /** Full content of existing test file (when extending) */
+  existingTestContent: string | null;
+  /** Test framework instructions (reused from getTestTypeInstructions) */
+  testTypes: TestType[];
+}
+
 // ─── Generator Types ─────────────────────────────────────────
 
 export interface GeneratedTest {

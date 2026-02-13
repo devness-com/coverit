@@ -33,3 +33,9 @@ export type {
   TestGenerationParams,
   TestRefinementParams,
 } from "./prompts.js";
+
+// Triage prompts
+export {
+  buildTriagePrompt,
+  parseTriageResponse,
+} from "./triage-prompts.js";

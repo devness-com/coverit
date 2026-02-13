@@ -39,6 +39,13 @@ export type {
   TestTarget,
   ExecutionPhase,
   ExecutionEnvironment,
+  // AI Triage (V2)
+  ContextBundle,
+  FileContext,
+  ExistingTestFile,
+  TriagePlan,
+  TriageResult,
+  GenerationInput,
   // Generator
   GeneratedTest,
   GeneratorContext,

@@ -1,57 +1,45 @@
 /**
  * Prompt Templates for AI-Powered Test Generation
  *
- * These prompts combine AST analysis context with structured LLM
- * instructions to produce high-quality, runnable test files.
+ * These prompts combine raw source code, diff hunks, and existing tests
+ * to produce high-quality, runnable test files.
  * Each prompt is designed to be provider-agnostic — they work
  * identically whether sent to Claude, GPT, or a local model.
  */
 
 import type { AIMessage } from "./types.js";
 import type {
-  CodeScanResult,
   TestType,
   TestFramework,
   TestFailure,
+  GenerationInput,
+  DiffHunk,
 } from "../types/index.js";
 
 // ─── Test Generation ─────────────────────────────────────────
 
-export interface TestGenerationParams {
-  sourceCode: string;
-  scanResult: CodeScanResult;
-  testType: TestType;
-  framework: TestFramework;
-  existingTests?: string[];
-  projectContext?: string;
-}
+export type TestGenerationParams = GenerationInput;
 
 /**
- * Build the message array for generating tests from source code
- * and AST analysis results. The system message establishes the
- * persona and hard constraints; the user message provides all
- * the context needed to write tests.
+ * Build the message array for generating tests from source code,
+ * diff hunks, and optional existing test files. The system message
+ * establishes the persona and hard constraints; the user message
+ * provides all context needed to write tests.
  */
 export function buildTestGenerationPrompt(
   params: TestGenerationParams,
 ): AIMessage[] {
-  const {
-    sourceCode,
-    scanResult,
-    testType,
-    framework,
-    existingTests,
-    projectContext,
-  } = params;
+  const { plan, project, sourceFiles, existingTestContent, testTypes } = params;
+  const framework = project.testFramework;
 
   const systemPrompt = buildSystemPrompt(framework);
   const userPrompt = buildUserPrompt(
-    sourceCode,
-    scanResult,
-    testType,
+    plan,
+    project,
+    sourceFiles,
+    existingTestContent,
+    testTypes,
     framework,
-    existingTests,
-    projectContext,
   );
 
   return [
@@ -79,96 +67,64 @@ HARD RULES — follow these exactly:
 }
 
 function buildUserPrompt(
-  sourceCode: string,
-  scanResult: CodeScanResult,
-  testType: TestType,
+  plan: TestGenerationParams["plan"],
+  project: TestGenerationParams["project"],
+  sourceFiles: TestGenerationParams["sourceFiles"],
+  existingTestContent: string | null,
+  testTypes: TestType[],
   framework: TestFramework,
-  existingTests?: string[],
-  projectContext?: string,
 ): string {
   const sections: string[] = [];
 
-  // Project context (optional)
-  if (projectContext) {
-    sections.push(`## Project Context\n${projectContext}`);
+  // Project context
+  sections.push(
+    `## Project\n- Framework: ${project.framework}\n- Test framework: ${framework}\n- Language: ${project.language}`,
+  );
+
+  // Plan description
+  sections.push(`## Task\n${plan.description}`);
+
+  // Source code for each target file
+  for (const file of sourceFiles) {
+    sections.push(
+      `## Source Code (${file.path})\n\`\`\`${project.language}\n${file.content}\n\`\`\``,
+    );
+
+    // Diff hunks — highlight what changed
+    if (file.hunks.length > 0) {
+      const hunkText = formatDiffHunks(file.hunks);
+      sections.push(`## What Changed (${file.path})\n\`\`\`diff\n${hunkText}\n\`\`\``);
+    }
   }
 
-  // Source code
-  sections.push(`## Source Code (${scanResult.file})\n\`\`\`${scanResult.language}\n${sourceCode}\n\`\`\``);
-
-  // AST analysis — give the LLM structured insight into the code
-  sections.push(`## Code Analysis (AST Scan Result)\n\`\`\`json\n${JSON.stringify(formatScanResult(scanResult), null, 2)}\n\`\`\``);
-
-  // Test type instructions
-  sections.push(`## Test Type: ${testType}\n${getTestTypeInstructions(testType, framework)}`);
-
-  // Existing tests to avoid duplication
-  if (existingTests && existingTests.length > 0) {
+  // Existing test file — extend instead of creating new
+  if (existingTestContent) {
     sections.push(
-      `## Existing Test Files (do NOT duplicate these)\nThe following test files already exist for this module. Do not re-test anything they already cover.\n\n${existingTests.map((t) => `- ${t}`).join("\n")}`,
+      `## Existing Tests — extend this file\nAdd new test cases to this existing file for the described changes. Do not remove or modify existing tests. Output the complete updated file.\n\n\`\`\`${project.language}\n${existingTestContent}\n\`\`\``,
     );
   }
 
-  // Import guidance based on framework
-  sections.push(`## Import Instructions\n${getImportInstructions(framework, scanResult)}`);
+  // Test type instructions
+  for (const testType of testTypes) {
+    sections.push(
+      `## Test Type: ${testType}\n${getTestTypeInstructions(testType, framework)}`,
+    );
+  }
+
+  // Import guidance
+  if (sourceFiles.length > 0) {
+    sections.push(
+      `## Import Instructions\n${getImportInstructionsFromPaths(framework, sourceFiles.map((f) => f.path))}`,
+    );
+  }
 
   return sections.join("\n\n");
 }
 
-/**
- * Format the scan result for prompt inclusion — strip noise and
- * keep only the fields the LLM needs to reason about test targets.
- */
-function formatScanResult(
-  scanResult: CodeScanResult,
-): Record<string, unknown> {
-  return {
-    file: scanResult.file,
-    language: scanResult.language,
-    fileType: scanResult.fileType,
-    exports: scanResult.exports.map((e) => ({
-      name: e.name,
-      kind: e.kind,
-      isDefault: e.isDefault,
-    })),
-    functions: scanResult.functions.map((f) => ({
-      name: f.name,
-      params: f.params.map((p) => ({
-        name: p.name,
-        type: p.type,
-        isOptional: p.isOptional,
-      })),
-      returnType: f.returnType,
-      isAsync: f.isAsync,
-      isExported: f.isExported,
-      complexity: f.complexity,
-    })),
-    classes: scanResult.classes.map((c) => ({
-      name: c.name,
-      methods: c.methods.map((m) => ({
-        name: m.name,
-        params: m.params.length,
-        isAsync: m.isAsync,
-      })),
-      isExported: c.isExported,
-    })),
-    endpoints: scanResult.endpoints.map((e) => ({
-      method: e.method,
-      path: e.path,
-      handler: e.handler,
-      middleware: e.middleware,
-    })),
-    components: scanResult.components.map((c) => ({
-      name: c.name,
-      props: c.props.map((p) => ({
-        name: p.name,
-        type: p.type,
-        isOptional: p.isOptional,
-      })),
-      hooks: c.hooks,
-      isPage: c.isPage,
-    })),
-  };
+function formatDiffHunks(hunks: DiffHunk[]): string {
+  return hunks
+    .map((h) => h.content)
+    .join("\n...\n");
 }
 
 function getTestTypeInstructions(
@@ -269,30 +225,34 @@ Test:
   }
 }
 
-function getImportInstructions(
+function getImportInstructionsFromPaths(
   framework: TestFramework,
-  scanResult: CodeScanResult,
+  sourcePaths: string[],
 ): string {
-  const sourceFile = scanResult.file;
-
-  // Compute a relative import path assuming the test file is co-located
-  // or in a __tests__ directory adjacent to the source
-  const importPath = `./${sourceFile.split("/").pop()?.replace(/\.(ts|tsx|js|jsx)$/, "")}`;
-
   const lines: string[] = [];
+
+  // Compute import paths for each source file (assuming colocated test)
+  const importPaths = sourcePaths.map((p) => {
+    const name = p.split("/").pop()?.replace(/\.(ts|tsx|js|jsx)$/, "");
+    return `./${name}`;
+  });
 
   switch (framework) {
     case "vitest":
       lines.push(
         `Import test utilities from "vitest": { describe, it, expect, vi, beforeEach, afterEach }`,
-        `Import the module under test from "${importPath}" using relative path.`,
       );
+      for (const ip of importPaths) {
+        lines.push(`Import the module under test from "${ip}" using relative path.`);
+      }
       break;
     case "jest":
       lines.push(
         `Use global Jest functions: describe, it, expect, jest, beforeEach, afterEach`,
-        `Import the module under test from "${importPath}" using relative path.`,
       );
+      for (const ip of importPaths) {
+        lines.push(`Import the module under test from "${ip}" using relative path.`);
+      }
       break;
     case "playwright":
       lines.push(
@@ -307,10 +267,10 @@ function getImportInstructions(
       );
       break;
     default:
-      lines.push(
-        `Import the module under test from "${importPath}".`,
-        `Use the standard testing imports for ${framework}.`,
-      );
+      for (const ip of importPaths) {
+        lines.push(`Import the module under test from "${ip}".`);
+      }
+      lines.push(`Use the standard testing imports for ${framework}.`);
   }
 
   return lines.join("\n");

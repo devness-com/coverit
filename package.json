@@ -1,6 +1,6 @@
 {
   "name": "@devness/coverit",
-  "version": "0.1.29",
+  "version": "0.2.1",
   "description": "AI-powered test generation and execution platform. Analyze features, generate tests, run them — one command.",
   "type": "module",
   "main": "dist/index.js",
@@ -67,7 +67,6 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
-    "ts-morph": "^25.0.0",
     "commander": "^13.1.0",
     "chalk": "^5.4.1",
     "ora": "^8.2.0",
