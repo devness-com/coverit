@@ -10,14 +10,23 @@ Fix failing tests from a previous `/coverit:run`. Reads failure details from `.c
 
 Parse from user input:
 - `[path]` - Project root path (defaults to current working directory)
+- `--run <runId>` - Target a specific run ID
+- `--pr <number>` - Target the latest run for a specific PR
 - `--plan-ids <ids>` - Comma-separated plan IDs to fix (default: all failed plans)
 - `--retries <n>` - Max fix attempts per plan (default: 2)
 
 ## Execution
 
-### Phase 1: Discover Failures
+### Phase 1: Find Target Run
 
-Read progress files from `<projectRoot>/.coverit/progress/*.json` to identify failed plans.
+Determine which run to fix:
+- If `--run` given: use that runId directly
+- If `--pr` given: call `mcp__plugin_coverit_coverit__coverit_runs` with `scope: "pr-<number>"`, pick the first (latest) result's runId
+- Otherwise: use the latest run (no runId needed, MCP tool defaults to latest)
+
+### Phase 2: Discover Failures
+
+Read progress files from `<projectRoot>/.coverit/runs/<runId>/progress/*.json` to identify failed plans. If no `--run` or `--pr` was given, first read `<projectRoot>/.coverit/latest.json` to get the current runId.
 
 Use the Glob tool to list all progress files, then Read each one. Filter for plans with `"status": "failed"` or `"status": "error"`.
 
@@ -32,38 +41,15 @@ Found N failed plans from the last run:
   ...
 ```
 
-### Phase 2: Fix via Sub-Agent
+### Phase 3: Fix via Sub-Agents (1 per plan)
 
-#### Small fix (10 or fewer failed plans)
+Create a **task for each failed plan** using TaskCreate so progress is visible:
+- Subject: `Fix plan_XXX: <description>`
+- activeForm: `Fixing plan_XXX`
 
-Spawn a single sub-agent using the Task tool with `subagent_type: "general-purpose"`:
+Spawn **one sub-agent per failed plan** using the Task tool with `subagent_type: "general-purpose"` and `run_in_background: true`.
 
-```
-Call the `mcp__plugin_coverit_coverit__coverit_fix` MCP tool with:
-{
-  "projectRoot": "<absolute path>",
-  "planIds": ["<id1>", "<id2>", ...],   // only include if user specified --plan-ids
-  "maxRetries": <n>                      // only include if user specified --retries
-}
-
-Return a concise summary (NOT the full JSON):
-- For each plan: planId, status (passed/failed/error), tests passed/failed, duration
-- Total: plans fixed, still failing
-```
-
-**CRITICAL**: The sub-agent MUST use the `mcp__plugin_coverit_coverit__coverit_fix` MCP tool. It must NOT use the CLI, shell commands, or attempt to fix tests manually.
-
-#### Large fix (more than 10 failed plans)
-
-Group failed plan IDs into batches of **10** each.
-
-Create a **task for each batch** using TaskCreate:
-- Subject: `Fix Coverit Batch K/N: plans XXX–YYY`
-- activeForm: `Fixing Coverit batch K (plans XXX–YYY)`
-
-For each batch, spawn a sub-agent using the Task tool with `subagent_type: "general-purpose"` and `run_in_background: true`.
-
-**Spawn all batch sub-agents in a single message** so they run in parallel.
+**Spawn all sub-agents in a single message** so they run in parallel. Each plan gets its own isolated sub-agent with full context and token budget.
 
 Each sub-agent prompt:
 
@@ -71,27 +57,27 @@ Each sub-agent prompt:
 Call the `mcp__plugin_coverit_coverit__coverit_fix` MCP tool with:
 {
   "projectRoot": "<absolute path>",
-  "planIds": ["<id1>", "<id2>", ...],
-  "maxRetries": <n>
+  "runId": "<runId>",
+  "planIds": ["<planId>"],
+  "maxRetries": <n>                      // only include if user specified --retries
 }
 
 Return a concise summary (NOT the full JSON):
-- For each plan: planId, status (passed/failed/error), tests passed/failed, duration
-- Total: plans fixed, still failing
+- planId, status (passed/failed/error), tests passed/failed, duration
 ```
 
-### Phase 3: Monitor & Report
+**CRITICAL**: Each sub-agent MUST use the `mcp__plugin_coverit_coverit__coverit_fix` MCP tool. It must NOT use the CLI, shell commands, or attempt to fix tests manually.
 
-#### If batched (>10 plans)
+### Phase 4: Monitor & Report
 
-Poll `.coverit/progress/*.json` files every 15-20 seconds (same pattern as `/coverit:run`):
+Poll `.coverit/runs/<runId>/progress/*.json` files every 15-20 seconds (same pattern as `/coverit:run`):
 
 1. Read progress files using Glob + Read
-2. Check batch completion via `TaskOutput` with `block: false` and `timeout: 5000`
+2. Check sub-agent completion via `TaskOutput` with `block: false` and `timeout: 5000`
 3. Print progress each poll cycle:
 
 ```
-Fix Progress: 8/15 plans processed (3 running, 4 remaining)
+Fix Progress: 8/10 plans processed (2 running)
   Recently fixed:
     plan_001: passed (5/5 tests, 1.2s) — was: 3/5 passed
     plan_002: still failing (2/4 tests, 0.8s)

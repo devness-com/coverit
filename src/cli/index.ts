@@ -15,6 +15,7 @@ import { resolve, join } from "node:path";
 import { orchestrate } from "../agents/orchestrator.js";
 import { detectProjectInfo } from "../utils/framework-detector.js";
 import { isGitRepo } from "../utils/git.js";
+import { resolveRunId, listRuns, getRunStatus, getRunDir } from "../utils/run-manager.js";
 import { logger } from "../utils/logger.js";
 import type { TestType, DiffSource, CoveritConfig, CoveritEvent } from "../types/index.js";
 
@@ -46,6 +47,17 @@ function parseTestTypes(raw?: string): TestType[] | undefined {
 
 function resolveProjectRoot(pathArg?: string): string {
   return resolve(pathArg ?? process.cwd());
+}
+
+function formatRelativeTime(isoDate: string): string {
+  const diff = Date.now() - new Date(isoDate).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
 }
 
 function parseDiffSource(opts: Record<string, unknown>): DiffSource | undefined {
@@ -99,9 +111,13 @@ function createEventHandler(verbose: boolean): (event: CoveritEvent) => void {
         );
         break;
       }
-      case "report:complete":
-        logger.success("Report saved to .coverit/last-report.json");
+      case "report:complete": {
+        const runId = event.data.report.runId;
+        logger.success(runId
+          ? `Report saved to .coverit/runs/${runId}/report.json`
+          : "Report saved");
         break;
+      }
       case "error":
         logger.error(event.data.message);
         break;
@@ -348,11 +364,16 @@ program
   .command("report")
   .description("Show the last saved report")
   .action(async () => {
-    const reportPath = join(process.cwd(), ".coverit", "last-report.json");
+    const projectRoot = process.cwd();
 
     try {
+      const runId = await resolveRunId(projectRoot, {});
+      const runDir = getRunDir(projectRoot, runId);
+      const reportPath = join(runDir, "report.json");
+
       const raw = await readFile(reportPath, "utf-8");
       const report = JSON.parse(raw) as {
+        runId?: string;
         summary: {
           status: string;
           totalTests: number;
@@ -365,7 +386,8 @@ program
         timestamp: string;
       };
 
-      console.log(chalk.bold("\n  Last Report"));
+      console.log(chalk.bold("\n  Report"));
+      console.log(chalk.gray(`  Run: ${runId}`));
       console.log(chalk.gray(`  ${report.timestamp}\n`));
 
       const s = report.summary;
@@ -382,6 +404,147 @@ program
       logger.warn(
         "No report found. Run `coverit run` to generate one.",
       );
+    }
+  });
+
+// ─── runs ───────────────────────────────────────────────────
+
+program
+  .command("runs")
+  .argument("[path]", "Project root path", ".")
+  .option("--scope <scope>", "Filter by scope (e.g. pr-99, staged)")
+  .description("List all coverit runs")
+  .action(async (pathArg: string, cmdOpts: { scope?: string }) => {
+    const projectRoot = resolveProjectRoot(pathArg);
+
+    try {
+      const runs = await listRuns(projectRoot, cmdOpts.scope);
+
+      if (runs.length === 0) {
+        logger.warn("No coverit runs found. Run `coverit run` to create one.");
+        return;
+      }
+
+      console.log(chalk.bold("\n  Coverit Runs\n"));
+      console.log(
+        chalk.gray(
+          "  " +
+            "Run ID".padEnd(32) +
+            "Scope".padEnd(12) +
+            "Status".padEnd(12) +
+            "Plans".padEnd(8) +
+            "Tests".padEnd(12) +
+            "Created",
+        ),
+      );
+
+      for (const run of runs) {
+        const tests = run.summary
+          ? `${run.summary.passed}/${run.summary.totalTests}`
+          : "-";
+        const statusColor =
+          run.status === "completed"
+            ? chalk.green
+            : run.status === "failed"
+              ? chalk.red
+              : run.status === "running"
+                ? chalk.yellow
+                : chalk.gray;
+        const age = formatRelativeTime(run.createdAt);
+
+        console.log(
+          "  " +
+            chalk.white(run.runId.padEnd(32)) +
+            run.scope.padEnd(12) +
+            statusColor(run.status.padEnd(12)) +
+            String(run.planCount).padEnd(8) +
+            tests.padEnd(12) +
+            chalk.gray(age),
+        );
+      }
+      console.log();
+    } catch (err) {
+      logger.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+  });
+
+// ─── status ─────────────────────────────────────────────────
+
+program
+  .command("status")
+  .argument("[path]", "Project root path", ".")
+  .option("--run <runId>", "Run ID to inspect")
+  .description("Show details for a specific coverit run")
+  .action(async (pathArg: string, cmdOpts: { run?: string }) => {
+    const projectRoot = resolveProjectRoot(pathArg);
+
+    try {
+      const runId = cmdOpts.run ?? (await resolveRunId(projectRoot, {}));
+      const { meta, plans } = await getRunStatus(projectRoot, runId);
+
+      console.log(chalk.bold("\n  Run Details\n"));
+      logger.table({
+        "Run ID": meta.runId,
+        Scope: meta.scope,
+        Status: meta.status,
+        Created: meta.createdAt,
+        Completed: meta.completedAt ?? "in progress",
+        Plans: meta.planCount,
+      });
+
+      if (meta.summary) {
+        const s = meta.summary;
+        console.log(chalk.bold("\n  Summary\n"));
+        logger.table({
+          "Total Tests": s.totalTests,
+          Passed: chalk.green(String(s.passed)),
+          Failed: s.failed > 0 ? chalk.red(String(s.failed)) : String(s.failed),
+          Skipped: String(s.skipped),
+          Errors: s.errorCount > 0 ? chalk.red(String(s.errorCount)) : String(s.errorCount),
+          Duration: `${s.duration}ms`,
+        });
+      }
+
+      if (plans.length > 0) {
+        console.log(chalk.bold("\n  Per-Plan Breakdown\n"));
+        console.log(
+          chalk.gray(
+            "  " +
+              "Plan ID".padEnd(16) +
+              "Status".padEnd(12) +
+              "Tests".padEnd(10) +
+              "Duration".padEnd(10) +
+              "Description",
+          ),
+        );
+
+        for (const p of plans) {
+          const tests =
+            p.passed !== undefined ? `${p.passed}/${(p.passed ?? 0) + (p.failed ?? 0)}` : "-";
+          const dur = p.duration !== undefined ? `${(p.duration / 1000).toFixed(1)}s` : "-";
+          const statusColor =
+            p.status === "passed"
+              ? chalk.green
+              : p.status === "failed"
+                ? chalk.red
+                : p.status === "error"
+                  ? chalk.red
+                  : chalk.gray;
+          console.log(
+            "  " +
+              chalk.white(p.planId.padEnd(16)) +
+              statusColor(p.status.padEnd(12)) +
+              tests.padEnd(10) +
+              dur.padEnd(10) +
+              chalk.gray(p.description),
+          );
+        }
+        console.log();
+      }
+    } catch (err) {
+      logger.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
     }
   });
 

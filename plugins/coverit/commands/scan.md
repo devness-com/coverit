@@ -31,7 +31,11 @@ Call the `mcp__plugin_coverit_coverit__coverit_analyze` MCP tool with:
   <...only include diff params the user specified...>
 }
 
+The response JSON includes a "runId" field. Extract it.
+
 Then format the JSON response as a concise readable summary:
+
+Run: <runId> (scope: <derived from diff params>)
 
 Project Info
   Name / Framework / Test Framework / Language
@@ -39,6 +43,8 @@ Project Info
 Test Plans (group by priority, show type, description, estimated tests)
 
 Summary: total plans, total estimated tests, execution phases
+
+Note: "Use this runId with `coverit_execute_batch` or `/coverit:run` to execute plans."
 ```
 
 **CRITICAL**: The sub-agent MUST use the `mcp__plugin_coverit_coverit__coverit_analyze` MCP tool. It must NOT use the `coverit` CLI binary, shell commands, or `gh` to fetch diffs manually.
@@ -46,7 +52,3 @@ Summary: total plans, total estimated tests, execution phases
 ## Display
 
 Show the sub-agent's formatted summary to the user. Do NOT expand or re-process the raw JSON.
-
-## Tip
-
-The plan IDs from the scan output can be passed to `coverit_execute_batch` (or `coverit run --plan-ids`) to execute specific plans without re-running the full pipeline.

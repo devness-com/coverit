@@ -43,6 +43,7 @@ RULES:
 - For React components, include "unit" (and optionally "e2e-browser" for pages)
 - For services/utilities, include "unit"
 - Set priority: "critical" for directly changed files, "high" for files depended on by changes
+- CRITICAL: Every plan MUST have a unique outputTestFile. Never assign the same outputTestFile to multiple plans. If multiple changed files would share the same test file, merge them into a single plan with multiple targetFiles.
 
 OUTPUT FORMAT — respond with ONLY valid JSON, no markdown fences, no commentary:
 {
@@ -116,6 +117,52 @@ OUTPUT FORMAT — respond with ONLY valid JSON, no markdown fences, no commentar
 }
 
 /**
+ * Merge plans that share the same outputTestFile into a single plan.
+ * Prevents parallel sub-agents from writing to the same file.
+ */
+function deduplicatePlans(plans: TriagePlan[]): TriagePlan[] {
+  const byOutput = new Map<string, TriagePlan[]>();
+  for (const plan of plans) {
+    const key = plan.outputTestFile;
+    const group = byOutput.get(key);
+    if (group) {
+      group.push(plan);
+    } else {
+      byOutput.set(key, [plan]);
+    }
+  }
+
+  const merged: TriagePlan[] = [];
+  let idx = 0;
+  for (const group of byOutput.values()) {
+    idx++;
+    if (group.length === 1) {
+      merged.push({ ...group[0]!, id: `plan_${String(idx).padStart(3, "0")}` });
+    } else {
+      // Merge: combine targetFiles, testTypes, descriptions; keep highest priority
+      const targetFiles = [...new Set(group.flatMap((p) => p.targetFiles))];
+      const testTypes = [...new Set(group.flatMap((p) => p.testTypes))] as TriagePlan["testTypes"];
+      const descriptions = group.map((p) => p.description).join("; ");
+      const priorityOrder: TriagePlan["priority"][] = ["critical", "high", "medium", "low"];
+      const priority = priorityOrder.find((pr) => group.some((p) => p.priority === pr)) ?? "medium";
+
+      merged.push({
+        id: `plan_${String(idx).padStart(3, "0")}`,
+        targetFiles,
+        testTypes,
+        existingTestFile: group[0]!.existingTestFile,
+        outputTestFile: group[0]!.outputTestFile,
+        description: descriptions,
+        priority,
+        environment: group[0]!.environment,
+      });
+    }
+  }
+
+  return merged;
+}
+
+/**
  * Parse the AI triage response JSON into a TriageResult.
  * Handles malformed responses gracefully.
  */
@@ -144,7 +191,7 @@ export function parseTriageResponse(response: string): TriageResult {
       }>;
     };
 
-    const plans: TriagePlan[] = (parsed.plans ?? []).map((p, i) => ({
+    const rawPlans: TriagePlan[] = (parsed.plans ?? []).map((p, i) => ({
       id: `plan_${String(i + 1).padStart(3, "0")}`,
       targetFiles: p.targetFiles ?? [],
       testTypes: (p.testTypes ?? ["unit"]) as TestType[],
@@ -154,6 +201,9 @@ export function parseTriageResponse(response: string): TriageResult {
       priority: (p.priority as TriagePlan["priority"]) ?? "medium",
       environment: (p.environment as TriagePlan["environment"]) ?? "local",
     }));
+
+    // Deduplicate: merge plans that share the same outputTestFile
+    const plans = deduplicatePlans(rawPlans);
 
     const skipped: TriageSkipped[] = (parsed.skipped ?? []).map((s) => ({
       path: s.path ?? "unknown",

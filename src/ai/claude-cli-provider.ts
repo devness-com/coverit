@@ -228,11 +228,12 @@ export class ClaudeCliProvider implements AIProvider {
       let stderr = "";
       let killed = false;
 
+      const timeoutMs = 300_000; // 5 minutes — allows for rate-limited concurrent requests
       const timeout = setTimeout(() => {
         killed = true;
         proc.kill("SIGTERM");
-        reject(new Error("Claude CLI timed out after 120s"));
-      }, 120_000);
+        reject(new Error(`Claude CLI timed out after ${timeoutMs / 1000}s`));
+      }, timeoutMs);
 
       proc.stdout.on("data", (chunk: Buffer) => {
         stdout += chunk.toString();

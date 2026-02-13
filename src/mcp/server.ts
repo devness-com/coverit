@@ -9,6 +9,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { orchestrate, fixFailingTests } from "../agents/orchestrator.js";
+import { listRuns, resolveRunId, getRunStatus } from "../utils/run-manager.js";
 import { logger } from "../utils/logger.js";
 import type { TestType, DiffSource, CoveritConfig } from "../types/index.js";
 
@@ -104,7 +105,7 @@ server.tool(
         content: [
           {
             type: "text" as const,
-            text: JSON.stringify(report.strategy, null, 2),
+            text: JSON.stringify({ runId: report.runId, strategy: report.strategy }, null, 2),
           },
         ],
       };
@@ -158,6 +159,7 @@ server.tool(
             type: "text" as const,
             text: JSON.stringify(
               {
+                runId: report.runId,
                 generated: generatedFiles,
                 strategy: report.strategy,
               },
@@ -218,6 +220,7 @@ server.tool(
             type: "text" as const,
             text: JSON.stringify(
               {
+                runId: report.runId,
                 summary: report.summary,
                 results: report.results,
               },
@@ -249,6 +252,10 @@ server.tool(
     planIds: z
       .array(z.string())
       .describe("Plan IDs to execute (from coverit_analyze output)"),
+    runId: z
+      .string()
+      .optional()
+      .describe("Run ID from a prior coverit_analyze call. Defaults to latest run."),
     environment: z
       .enum(["local", "cloud-sandbox", "browser", "mobile-simulator", "desktop-app"])
       .optional()
@@ -259,11 +266,12 @@ server.tool(
       .describe("Collect coverage data (defaults to false)"),
     ...diffSourceSchema,
   },
-  async ({ projectRoot, planIds, environment, coverage, baseBranch, commit, pr, files, staged }) => {
+  async ({ projectRoot, planIds, runId, environment, coverage, baseBranch, commit, pr, files, staged }) => {
     try {
       const config: CoveritConfig = {
         projectRoot,
         planIds,
+        runId,
         useCache: true,
         diffSource: parseDiffSource({ baseBranch, commit, pr, files, staged }),
         environment: environment ?? "local",
@@ -278,6 +286,7 @@ server.tool(
             type: "text" as const,
             text: JSON.stringify(
               {
+                runId: report.runId,
                 summary: report.summary,
                 results: report.results,
               },
@@ -310,14 +319,18 @@ server.tool(
       .array(z.string())
       .optional()
       .describe("Specific plan IDs to fix. Omit to fix all failed plans."),
+    runId: z
+      .string()
+      .optional()
+      .describe("Target a specific run ID. Defaults to latest run."),
     maxRetries: z
       .number()
       .optional()
       .describe("Max fix attempts per plan (default: 2)"),
   },
-  async ({ projectRoot, planIds, maxRetries }) => {
+  async ({ projectRoot, planIds, runId, maxRetries }) => {
     try {
-      const report = await fixFailingTests({ projectRoot, planIds, maxRetries });
+      const report = await fixFailingTests({ projectRoot, planIds, runId, maxRetries });
 
       return {
         content: [
@@ -325,6 +338,7 @@ server.tool(
             type: "text" as const,
             text: JSON.stringify(
               {
+                runId: report.runId,
                 summary: report.summary,
                 results: report.results,
               },
@@ -390,6 +404,61 @@ server.tool(
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       logger.error("coverit_full failed:", message);
+      return {
+        content: [{ type: "text" as const, text: `Error: ${message}` }],
+        isError: true,
+      };
+    }
+  },
+);
+
+// ─── coverit_runs ────────────────────────────────────────────
+// List all coverit runs with metadata.
+
+server.tool(
+  "coverit_runs",
+  "List all coverit test runs with metadata. Filter by scope (e.g. 'pr-99', 'staged').",
+  {
+    projectRoot: z.string().describe("Absolute path to the project root"),
+    scope: z.string().optional().describe("Filter by scope (e.g. 'pr-99', 'staged')"),
+  },
+  async ({ projectRoot, scope }) => {
+    try {
+      const runs = await listRuns(projectRoot, scope);
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(runs, null, 2) }],
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error("coverit_runs failed:", message);
+      return {
+        content: [{ type: "text" as const, text: `Error: ${message}` }],
+        isError: true,
+      };
+    }
+  },
+);
+
+// ─── coverit_status ──────────────────────────────────────────
+// Show details for a specific coverit run.
+
+server.tool(
+  "coverit_status",
+  "Show details for a specific coverit run including per-plan breakdown.",
+  {
+    projectRoot: z.string().describe("Absolute path to the project root"),
+    runId: z.string().optional().describe("Run ID. Defaults to latest run."),
+  },
+  async ({ projectRoot, runId }) => {
+    try {
+      const id = runId ?? (await resolveRunId(projectRoot, {}));
+      const status = await getRunStatus(projectRoot, id);
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(status, null, 2) }],
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error("coverit_status failed:", message);
       return {
         content: [{ type: "text" as const, text: `Error: ${message}` }],
         isError: true,

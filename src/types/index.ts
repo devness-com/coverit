@@ -375,6 +375,7 @@ export interface TestFailure {
 
 export interface CoveritReport {
   id: string;
+  runId?: string;
   timestamp: string;
   duration: number;
   project: ProjectInfo;
@@ -402,6 +403,26 @@ export interface TypeSummary {
   duration: number;
 }
 
+// ─── Run Types ───────────────────────────────────────────────
+
+export interface RunMeta {
+  runId: string;
+  scope: string;
+  diffSource?: DiffSource;
+  createdAt: string;
+  completedAt?: string;
+  status: "running" | "completed" | "failed" | "partial";
+  planCount: number;
+  summary?: {
+    totalTests: number;
+    passed: number;
+    failed: number;
+    skipped: number;
+    errorCount: number;
+    duration: number;
+  };
+}
+
 // ─── MCP Types ───────────────────────────────────────────────
 
 export type DiffSource =
@@ -418,6 +439,7 @@ export interface CoveritConfig {
   targetPaths?: string[];
   testTypes?: TestType[];
   planIds?: string[];
+  runId?: string;
   useCache?: boolean;
   maxRetries?: number;
   environment?: ExecutionEnvironment;
@@ -440,6 +462,7 @@ export interface CoveritConfig {
 export interface CoveritFixConfig {
   projectRoot: string;
   planIds?: string[];
+  runId?: string;
   maxRetries?: number;
   ai?: CoveritConfig["ai"];
 }

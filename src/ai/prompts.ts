@@ -8,6 +8,7 @@
  */
 
 import type { AIMessage } from "./types.js";
+import { dirname, relative } from "node:path";
 import type {
   TestType,
   TestFramework,
@@ -85,10 +86,23 @@ function buildUserPrompt(
   sections.push(`## Task\n${plan.description}`);
 
   // Source code for each target file
+  // For large files (>30KB), send only the changed regions with context
+  // to avoid exceeding AI token limits
+  const SOURCE_SIZE_LIMIT = 15_000;
+
   for (const file of sourceFiles) {
-    sections.push(
-      `## Source Code (${file.path})\n\`\`\`${project.language}\n${file.content}\n\`\`\``,
-    );
+    if (file.content.length <= SOURCE_SIZE_LIMIT || file.hunks.length === 0) {
+      // Small file or no hunks: send full source
+      sections.push(
+        `## Source Code (${file.path})\n\`\`\`${project.language}\n${file.content}\n\`\`\``,
+      );
+    } else {
+      // Large file: extract changed regions with surrounding context
+      const excerpt = extractChangedRegions(file.content, file.hunks);
+      sections.push(
+        `## Source Code — changed regions with context (${file.path})\nThis file is large (${Math.round(file.content.length / 1024)}KB). Only the changed regions with surrounding context are shown.\n\n\`\`\`${project.language}\n${excerpt}\n\`\`\``,
+      );
+    }
 
     // Diff hunks — highlight what changed
     if (file.hunks.length > 0) {
@@ -114,11 +128,59 @@ function buildUserPrompt(
   // Import guidance
   if (sourceFiles.length > 0) {
     sections.push(
-      `## Import Instructions\n${getImportInstructionsFromPaths(framework, sourceFiles.map((f) => f.path))}`,
+      `## Import Instructions\nThe test file will be at: ${plan.outputTestFile}\n${getImportInstructionsFromPaths(framework, sourceFiles.map((f) => f.path), plan.outputTestFile)}`,
     );
   }
 
   return sections.join("\n\n");
+}
+
+/**
+ * Extract changed regions from source code using diff hunk line numbers.
+ * Includes ~30 lines of context around each change for AI comprehension.
+ */
+function extractChangedRegions(source: string, hunks: DiffHunk[]): string {
+  const lines = source.split("\n");
+  const CONTEXT_LINES = 30;
+  const regions: Array<{ start: number; end: number }> = [];
+
+  for (const hunk of hunks) {
+    // Parse hunk header: @@ -old,count +new,count @@
+    const match = hunk.content.match(/@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/);
+    if (!match) continue;
+    const startLine = parseInt(match[1]!, 10) - 1; // 0-indexed
+    const count = parseInt(match[2] ?? "1", 10);
+    const endLine = startLine + count;
+
+    regions.push({
+      start: Math.max(0, startLine - CONTEXT_LINES),
+      end: Math.min(lines.length, endLine + CONTEXT_LINES),
+    });
+  }
+
+  if (regions.length === 0) return source;
+
+  // Merge overlapping regions
+  regions.sort((a, b) => a.start - b.start);
+  const merged: typeof regions = [regions[0]!];
+  for (let i = 1; i < regions.length; i++) {
+    const prev = merged[merged.length - 1]!;
+    const curr = regions[i]!;
+    if (curr.start <= prev.end) {
+      prev.end = Math.max(prev.end, curr.end);
+    } else {
+      merged.push(curr);
+    }
+  }
+
+  // Build excerpt with separators between non-adjacent regions
+  const parts: string[] = [];
+  for (const region of merged) {
+    if (parts.length > 0) parts.push("\n// ... (lines omitted) ...\n");
+    parts.push(lines.slice(region.start, region.end).join("\n"));
+  }
+
+  return parts.join("\n");
 }
 
 function formatDiffHunks(hunks: DiffHunk[]): string {
@@ -228,13 +290,16 @@ Test:
 function getImportInstructionsFromPaths(
   framework: TestFramework,
   sourcePaths: string[],
+  testFilePath: string,
 ): string {
   const lines: string[] = [];
 
-  // Compute import paths for each source file (assuming colocated test)
+  // Compute relative import paths from the test file to each source file
+  const testDir = dirname(testFilePath);
   const importPaths = sourcePaths.map((p) => {
-    const name = p.split("/").pop()?.replace(/\.(ts|tsx|js|jsx)$/, "");
-    return `./${name}`;
+    const rel = relative(testDir, p).replace(/\.(ts|tsx|js|jsx)$/, "");
+    // Ensure it starts with ./ or ../
+    return rel.startsWith(".") ? rel : `./${rel}`;
   });
 
   switch (framework) {

@@ -62,8 +62,11 @@ export type {
   CoveritReport,
   ReportSummary,
   TypeSummary,
+  // Run isolation
+  RunMeta,
   // Config & events
   CoveritConfig,
+  CoveritFixConfig,
   CoveritEvent,
   CoveritEventHandler,
 } from "./types/index.js";
@@ -86,3 +89,14 @@ export {
 } from "./utils/framework-detector.js";
 
 export { logger } from "./utils/logger.js";
+
+export {
+  createRun,
+  resolveRunId,
+  getRunDir,
+  listRuns,
+  getRunStatus,
+  completeRun,
+  updateRunMeta,
+  deriveScope,
+} from "./utils/run-manager.js";

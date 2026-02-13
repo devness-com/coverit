@@ -50,12 +50,16 @@ import { createExecutor } from "../executors/index.js";
 import { generateReport } from "../agents/reporter.js";
 import { detectProjectInfo } from "../utils/framework-detector.js";
 import { logger } from "../utils/logger.js";
+import {
+  createRun,
+  resolveRunId,
+  getRunDir,
+  completeRun,
+  updateRunMeta,
+} from "../utils/run-manager.js";
 
 const COVERIT_DIR = ".coverit";
-const REPORT_FILE = "last-report.json";
-const STRATEGY_FILE = "strategy.json";
-const PROGRESS_DIR = "progress";
-const STRATEGY_VERSION = 3; // Bumped: V2 pipeline stores TriageResult + ContextBundle
+const STRATEGY_VERSION = 4; // V4: per-run isolation in .coverit/runs/{runId}/
 
 const MAX_CONCURRENCY = 5;
 
@@ -67,15 +71,16 @@ interface PlanProgress {
   passed?: number;
   failed?: number;
   duration?: number;
+  reason?: string;
   updatedAt: string;
 }
 
 async function updateProgress(
-  coveritDir: string,
+  runDir: string,
   planId: string,
   update: Omit<PlanProgress, "updatedAt">,
 ): Promise<void> {
-  const progressDir = join(coveritDir, PROGRESS_DIR);
+  const progressDir = join(runDir, "progress");
   await ensureDir(progressDir);
   const planFile = join(progressDir, `${planId}.json`);
   const entry: PlanProgress = { ...update, updatedAt: new Date().toISOString() };
@@ -256,6 +261,24 @@ export async function orchestrate(
   // Track generated test files for cleanup
   const generatedFiles = new Set<string>();
 
+  // ── Run isolation: create or resolve run directory ─────────
+  let runId: string;
+  let runDir: string;
+
+  if (config.useCache && config.planIds) {
+    // Batch execution: resolve existing run
+    runId = await resolveRunId(config.projectRoot, {
+      runId: config.runId,
+      diffSource: config.diffSource,
+    });
+    runDir = getRunDir(config.projectRoot, runId);
+  } else {
+    // New run
+    const meta = await createRun(config.projectRoot, config.diffSource);
+    runId = meta.runId;
+    runDir = getRunDir(config.projectRoot, runId);
+  }
+
   // ── AI provider initialization ──────────────────────────────
   let aiProvider: AIProvider | null = null;
   try {
@@ -276,7 +299,7 @@ export async function orchestrate(
   let context!: ContextBundle;
   let strategy!: TestStrategy;
 
-  const strategyPath = join(coveritDir, STRATEGY_FILE);
+  const strategyPath = join(runDir, "strategy.json");
 
   // When useCache is set (batch execution), load previously cached triage
   if (config.useCache && config.planIds) {
@@ -330,10 +353,18 @@ export async function orchestrate(
     );
   }
 
+  // Update run meta with plan count
+  await updateRunMeta(config.projectRoot, runId, {
+    planCount: triage.plans.length,
+  });
+
   // ── Early return for analyze-only mode (scan command) ──────
   if (config.analyzeOnly) {
     const report = generateReport(projectInfo, strategy, []);
+    report.runId = runId;
     emit(onEvent, { type: "report:complete", data: { report } });
+    // Don't call completeRun here — it would overwrite meta with 0/0 summary.
+    // The meta stays as "running" with correct planCount until batches finalize it.
     return report;
   }
 
@@ -355,8 +386,9 @@ export async function orchestrate(
         output: check.error,
       };
       const report = generateReport(projectInfo, strategy, [errorResult]);
+      report.runId = runId;
       emit(onEvent, { type: "report:complete", data: { report } });
-      await writeFile(join(coveritDir, REPORT_FILE), JSON.stringify(report, null, 2), "utf-8");
+      await completeRun(config.projectRoot, runId, report);
       return report;
     }
   }
@@ -392,6 +424,7 @@ export async function orchestrate(
             onEvent,
             aiProvider,
             generatedFiles,
+            runDir,
           });
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
@@ -400,7 +433,7 @@ export async function orchestrate(
           const testPlan = triagePlanToTestPlan(triagePlan);
           emit(onEvent, { type: "error", data: { message, plan: testPlan } });
 
-          await updateProgress(coveritDir, triagePlan.id, {
+          await updateProgress(runDir, triagePlan.id, {
             planId: triagePlan.id,
             status: "error",
             description: triagePlan.description,
@@ -438,23 +471,21 @@ export async function orchestrate(
       }
     : strategy;
   const report = generateReport(projectInfo, reportStrategy, allResults);
+  report.runId = runId;
 
   emit(onEvent, { type: "report:complete", data: { report } });
 
-  // Persist report
   if (config.planIds && config.planIds.length > 0) {
+    // Batch mode: write batch-specific file only (avoid race with parallel batches)
     const batchFile = `batch-${config.planIds[0]}-${config.planIds[config.planIds.length - 1]}.json`;
     await writeFile(
-      join(coveritDir, batchFile),
+      join(runDir, batchFile),
       JSON.stringify(report, null, 2),
       "utf-8",
     );
   } else {
-    await writeFile(
-      join(coveritDir, REPORT_FILE),
-      JSON.stringify(report, null, 2),
-      "utf-8",
-    );
+    // Full run: persist report and update meta
+    await completeRun(config.projectRoot, runId, report);
   }
 
   // ── Cleanup generated test files (opt-in) ──────────────────
@@ -491,13 +522,17 @@ export async function fixFailingTests(
   config: CoveritFixConfig,
   onEvent?: CoveritEventHandler,
 ): Promise<CoveritReport> {
-  const coveritDir = join(config.projectRoot, COVERIT_DIR);
-  const progressDir = join(coveritDir, PROGRESS_DIR);
-  const strategyPath = join(coveritDir, STRATEGY_FILE);
+  // ── Resolve target run ────────────────────────────────────
+  const runId = await resolveRunId(config.projectRoot, {
+    runId: config.runId,
+  });
+  const runDir = getRunDir(config.projectRoot, runId);
+  const progressDir = join(runDir, "progress");
+  const strategyPath = join(runDir, "strategy.json");
 
   // ── Load cached triage/strategy ────────────────────────────
   if (!existsSync(strategyPath)) {
-    throw new Error("No prior run found — run /coverit:run first (.coverit/strategy.json missing)");
+    throw new Error(`No strategy found for run ${runId} — run /coverit:run first`);
   }
   const cachedData = JSON.parse(await readFile(strategyPath, "utf-8")) as {
     version?: number;
@@ -506,7 +541,7 @@ export async function fixFailingTests(
     strategy?: TestStrategy;
   };
 
-  // Support both V3 (triage) and V2 (strategy) cache formats
+  // Support both V4/V3 (triage) and V2 (strategy) cache formats
   let triagePlans: TriagePlan[];
   if (cachedData.triage) {
     triagePlans = cachedData.triage.plans;
@@ -528,7 +563,7 @@ export async function fixFailingTests(
 
   // ── Load progress files to find failures ────────────────────
   if (!existsSync(progressDir)) {
-    throw new Error("No progress files found — run /coverit:run first (.coverit/progress/ missing)");
+    throw new Error(`No progress files found for run ${runId} — run /coverit:run first`);
   }
   const progressFiles = await readdir(progressDir);
   const failedPlans: Array<{ progress: PlanProgress; plan: TriagePlan }> = [];
@@ -617,20 +652,21 @@ export async function fixFailingTests(
       // Source may be deleted
     }
 
-    // Load failure details from last report (if available)
+    // Load failure details from report (if available)
     let lastFailures: TestFailure[] = [];
     try {
-      const reportPath = join(coveritDir, REPORT_FILE);
+      const reportPath = join(runDir, "report.json");
       if (existsSync(reportPath)) {
         const report = JSON.parse(await readFile(reportPath, "utf-8")) as CoveritReport;
         const planResult = report.results.find((r) => r.planId === plan.id);
         if (planResult) lastFailures = planResult.failures;
       }
-      // Also check batch reports
+      // Also check batch reports in run directory
       if (lastFailures.length === 0) {
-        const batchFiles = (await readdir(coveritDir)).filter((f) => f.startsWith("batch-") && f.endsWith(".json"));
+        const runFiles = await readdir(runDir);
+        const batchFiles = runFiles.filter((f) => f.startsWith("batch-") && f.endsWith(".json"));
         for (const bf of batchFiles) {
-          const batchReport = JSON.parse(await readFile(join(coveritDir, bf), "utf-8")) as CoveritReport;
+          const batchReport = JSON.parse(await readFile(join(runDir, bf), "utf-8")) as CoveritReport;
           const planResult = batchReport.results.find((r) => r.planId === plan.id);
           if (planResult && planResult.failures.length > 0) {
             lastFailures = planResult.failures;
@@ -663,7 +699,7 @@ export async function fixFailingTests(
     let finalResult: ExecutionResult | null = null;
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
-      await updateProgress(coveritDir, plan.id, {
+      await updateProgress(runDir, plan.id, {
         planId: plan.id,
         status: "generating",
         description: `${plan.description} (fix attempt ${attempt + 1}/${maxRetries})`,
@@ -681,7 +717,7 @@ export async function fixFailingTests(
         await writeFile(testAbsPath, refined, "utf-8");
       }
 
-      await updateProgress(coveritDir, plan.id, {
+      await updateProgress(runDir, plan.id, {
         planId: plan.id,
         status: "running",
         description: `${plan.description} (fix attempt ${attempt + 1}/${maxRetries})`,
@@ -719,7 +755,7 @@ export async function fixFailingTests(
 
     const result = finalResult!;
     const status = result.status === "passed" ? "passed" : result.status === "failed" ? "failed" : "error";
-    await updateProgress(coveritDir, plan.id, {
+    await updateProgress(runDir, plan.id, {
       planId: plan.id,
       status,
       description: plan.description,
@@ -739,14 +775,21 @@ export async function fixFailingTests(
   };
   const fixedStrategy = triageToStrategy(fixedTriage, projectInfo);
   const report = generateReport(projectInfo, fixedStrategy, allResults);
+  report.runId = runId;
 
   emit(onEvent, { type: "report:complete", data: { report } });
 
   await writeFile(
-    join(coveritDir, "last-fix-report.json"),
+    join(runDir, "fix-report.json"),
     JSON.stringify(report, null, 2),
     "utf-8",
   );
+
+  // Update meta status after fix
+  const s = report.summary;
+  await updateRunMeta(config.projectRoot, runId, {
+    status: s.status === "all-passed" ? "completed" : "failed",
+  });
 
   return report;
 }
@@ -782,21 +825,21 @@ interface PlanExecutionContextV2 {
   onEvent?: CoveritEventHandler;
   aiProvider: AIProvider | null;
   generatedFiles: Set<string>;
+  runDir: string;
 }
 
 async function executePlanV2(
   triagePlan: TriagePlan,
   ctx: PlanExecutionContextV2,
 ): Promise<ExecutionResult> {
-  const { config, projectInfo, context, onEvent, aiProvider } = ctx;
-  const coveritDir = join(config.projectRoot, COVERIT_DIR);
+  const { config, projectInfo, context, onEvent, aiProvider, runDir } = ctx;
 
   // Bridge to TestPlan for events
   const testPlan = triagePlanToTestPlan(triagePlan);
 
   // ── Generate ───────────────────────────────────────────────
   emit(onEvent, { type: "generation:start", data: { plan: testPlan } });
-  await updateProgress(coveritDir, triagePlan.id, {
+  await updateProgress(runDir, triagePlan.id, {
     planId: triagePlan.id,
     status: "generating",
     description: triagePlan.description,
@@ -839,10 +882,14 @@ async function executePlanV2(
 
   // If no tests were generated, skip execution
   if (genResult.tests.length === 0) {
-    await updateProgress(coveritDir, triagePlan.id, {
+    const reason = genResult.warnings.length > 0
+      ? genResult.warnings.join("; ")
+      : "No tests generated (no testable surface)";
+    await updateProgress(runDir, triagePlan.id, {
       planId: triagePlan.id,
       status: "skipped",
       description: triagePlan.description,
+      reason,
     });
     return {
       planId: triagePlan.id,
@@ -854,12 +901,12 @@ async function executePlanV2(
       duration: 0,
       coverage: null,
       failures: [],
-      output: "No tests generated (no testable surface)",
+      output: reason,
     };
   }
 
   if (config.generateOnly || config.skipExecution) {
-    await updateProgress(coveritDir, triagePlan.id, {
+    await updateProgress(runDir, triagePlan.id, {
       planId: triagePlan.id,
       status: "skipped",
       description: triagePlan.description,
@@ -895,7 +942,7 @@ async function executePlanV2(
       type: "execution:start",
       data: { plan: testPlan, environment: triagePlan.environment },
     });
-    await updateProgress(coveritDir, triagePlan.id, {
+    await updateProgress(runDir, triagePlan.id, {
       planId: triagePlan.id,
       status: "running",
       description: attempt > 0
@@ -943,7 +990,7 @@ async function executePlanV2(
     // If all tests passed or no retries left, return
     const isRetryable = mergedResult.status !== "error" && (mergedResult.failures.length > 0 || mergedResult.status === "timeout");
     if (!isRetryable || attempt >= maxRetries) {
-      await updateProgress(coveritDir, triagePlan.id, {
+      await updateProgress(runDir, triagePlan.id, {
         planId: triagePlan.id,
         status: mergedResult.status === "passed" ? "passed" : mergedResult.status === "failed" ? "failed" : "error",
         description: triagePlan.description,
@@ -958,7 +1005,7 @@ async function executePlanV2(
     // ── Retry: refine failing tests with AI ───────────────────
     if (!aiProvider) {
       logger.warn(`Plan ${triagePlan.id}: ${mergedResult.failures.length} failure(s) but no AI provider for refinement`);
-      await updateProgress(coveritDir, triagePlan.id, {
+      await updateProgress(runDir, triagePlan.id, {
         planId: triagePlan.id,
         status: "failed",
         description: triagePlan.description,

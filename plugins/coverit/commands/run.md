@@ -36,33 +36,32 @@ Call the `mcp__plugin_coverit_coverit__coverit_analyze` MCP tool with:
   <...only include diff params the user specified...>
 }
 
-Return ONLY a JSON array of plan IDs, like: ["plan_001", "plan_002", ...]. Nothing else.
+Return a JSON object with "runId" and "planIds" keys, like:
+{"runId": "run-20260213-143022-a7f3", "planIds": ["plan_001", "plan_002", ...]}
+Nothing else.
 ```
 
-Tell the user: "Scanning... found N plans."
+Tell the user: "Scanning... found N plans. Run: {runId}"
 
-### Phase 2: Batch & Track
+### Phase 2: Plan Tracking
 
-From the scan result, group plan IDs into batches of **10 plans** each.
+Create a **task for each plan** using TaskCreate so progress is visible:
+- Subject: `Coverit plan_XXX: <description>`
+- activeForm: `Running plan_XXX`
 
-Create a **task for each batch** using TaskCreate so progress is visible:
-- Subject: `Coverit Batch K/N: plans XXX–YYY`
-- activeForm: `Running Coverit batch K (plans XXX–YYY)`
-
-Tell the user the batch breakdown, e.g.:
+Tell the user:
 ```
-Executing 96 plans in 10 batches of 10:
-  Coverit Batch 1: plans 001–010
-  Coverit Batch 2: plans 011–020
+Executing N plans (1 sub-agent per plan):
+  plan_001: <description>
+  plan_002: <description>
   ...
-  Coverit Batch 10: plans 091–096
 ```
 
-### Phase 3: Execute Batches via Sub-Agents
+### Phase 3: Execute Plans via Sub-Agents
 
-For each batch, spawn a sub-agent using the Task tool with `subagent_type: "general-purpose"` and `run_in_background: true`.
+Spawn **one sub-agent per plan** using the Task tool with `subagent_type: "general-purpose"` and `run_in_background: true`.
 
-**Spawn all batch sub-agents in a single message** so they run in parallel.
+**Spawn all sub-agents in a single message** so they run in parallel. Each plan gets its own isolated sub-agent with full context and token budget.
 
 Each sub-agent prompt:
 
@@ -70,29 +69,29 @@ Each sub-agent prompt:
 Call the `mcp__plugin_coverit_coverit__coverit_execute_batch` MCP tool with:
 {
   "projectRoot": "<absolute path>",
-  "planIds": ["<id1>", "<id2>", ...],
+  "planIds": ["<planId>"],
+  "runId": "<runId from scan>",
   <...same diff params from the original command...>
   <...environment and coverage if specified...>
 }
 
 Return a concise summary (NOT the full JSON):
-- For each plan: planId, status (passed/failed/error), tests passed/failed, duration
-- Total: tests passed, failed, skipped, duration
+- planId, status (passed/failed/error), tests passed/failed, duration
 ```
 
 **CRITICAL**: Each sub-agent MUST use the `mcp__plugin_coverit_coverit__coverit_execute_batch` MCP tool. It must NOT use the CLI, shell commands, or `gh` to fetch diffs manually.
 
 ### Phase 4: Monitor Progress & Aggregate
 
-After launching all batch agents, **actively monitor progress** by polling the per-plan progress files that the orchestrator writes in real-time.
+After launching all sub-agents, **actively monitor progress** by polling the per-plan progress files that the orchestrator writes in real-time.
 
 **Important**: Do NOT fall back to `coverit_full` or re-run the pipeline. Results are always available on disk in the progress files.
 
 #### Poll Loop
 
-While batches are still running, repeat every 15–20 seconds:
+While sub-agents are still running, repeat every 15–20 seconds:
 
-1. **Read progress files**: Use Glob to list `<projectRoot>/.coverit/progress/*.json`, then Read each file. Each contains:
+1. **Read progress files**: Use Glob to list `<projectRoot>/.coverit/runs/<runId>/progress/*.json`, then Read each file. Each contains:
 
 ```json
 {
@@ -107,22 +106,22 @@ While batches are still running, repeat every 15–20 seconds:
 }
 ```
 
-2. **Check batch completion**: Call `TaskOutput` with `block: false` and `timeout: 5000` for each batch task ID. When a batch returns output, mark its task completed via TaskUpdate. Don't worry about parsing the sub-agent's text output — the progress files are the source of truth.
+2. **Check completion**: Call `TaskOutput` with `block: false` and `timeout: 5000` for each sub-agent task ID. When a sub-agent returns output, mark its task completed via TaskUpdate. Don't worry about parsing the sub-agent's text output — the progress files are the source of truth.
 
 3. **Print a progress update** each poll cycle:
 
 ```
-Progress: 42/96 plans complete (8 generating, 12 running, 34 remaining)
+Progress: 8/14 plans complete (2 generating, 4 running)
   Recently completed:
-    plan_021: passed (5/5 tests, 1.2s) — unit tests for auth/service.ts
-    plan_022: failed (3/5 tests, 0.8s) — api tests for booking/controller.ts
+    plan_003: passed (5/5 tests, 1.2s) — unit tests for auth/service.ts
+    plan_004: failed (3/5 tests, 0.8s) — api tests for booking/controller.ts
 ```
 
-4. **Determine completion**: All batches are done when every progress file has a terminal status (`passed`, `failed`, `error`, or `skipped`). Stop polling when this is true OR when all TaskOutput calls return completed.
+4. **Determine completion**: All plans are done when every progress file has a terminal status (`passed`, `failed`, `error`, or `skipped`). Stop polling when this is true OR when all TaskOutput calls return completed.
 
 #### Aggregate from Disk
 
-After all batches complete, read ALL `<projectRoot>/.coverit/progress/*.json` files and aggregate:
+After all sub-agents complete, read ALL `<projectRoot>/.coverit/runs/<runId>/progress/*.json` files and aggregate:
 
 - Count plans by status (passed / failed / error / skipped)
 - Sum `passed` and `failed` test counts across all plans
@@ -131,11 +130,11 @@ After all batches complete, read ALL `<projectRoot>/.coverit/progress/*.json` fi
 Then show the final summary:
 
 ```
-All batches complete.
+All plans complete.
 
 Results Summary
   Status: PASSED / FAILED
-  Total Plans: N (in K batches)
+  Total Plans: N
   Total Tests: N
   Passed: N | Failed: N | Skipped: N | Errors: N
   Duration: Xs
@@ -143,7 +142,3 @@ Results Summary
 Failures (if any, list first 10):
   1. [planId] description — N/M tests passed (Xs)
 ```
-
-#### Small PR Shortcut
-
-If only a small number of plans (≤10), skip batching and run all plans in a single `coverit_execute_batch` call via one sub-agent (without `run_in_background`). Then read progress files to aggregate results the same way.

@@ -39,6 +39,14 @@ export class AIGenerator {
       return { tests, warnings, skipped };
     }
 
+    // Warn if all source files have empty content
+    const nonEmpty = input.sourceFiles.filter((f) => f.content.trim().length > 0);
+    if (nonEmpty.length === 0 && input.sourceFiles.length > 0) {
+      warnings.push(
+        `All ${input.sourceFiles.length} source file(s) have empty content: ${input.sourceFiles.map((f) => f.path).join(", ")}`,
+      );
+    }
+
     try {
       const messages = buildTestGenerationPrompt({
         plan: input.plan,
@@ -60,6 +68,12 @@ export class AIGenerator {
       }
 
       let code = extractCodeFromResponse(content);
+
+      // Guard: if extraction produced non-code (e.g. error message), skip
+      if (!looksLikeTestCode(code)) {
+        warnings.push(`AI returned non-code response: ${content.slice(0, 120)}`);
+        return { tests, warnings, skipped };
+      }
 
       // Detect truncation and retry with higher limit
       if (response.truncated || isTruncated(code)) {
@@ -199,6 +213,14 @@ function isTruncated(code: string): boolean {
     if (ch === "}") braces--;
   }
   return braces > 0 || backticks % 2 !== 0;
+}
+
+function looksLikeTestCode(code: string): boolean {
+  // Must contain at least one of: import/require, describe/it/test, or expect
+  return (
+    /\b(import|require)\s*[({]/.test(code) ||
+    /\b(describe|it|test|expect)\s*\(/.test(code)
+  );
 }
 
 function countTestCases(code: string): number {
