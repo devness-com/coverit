@@ -802,8 +802,16 @@ export async function fixFailingTests(
       });
 
       if (refined) {
-        currentTestCode = refined;
-        await writeFile(testAbsPath, refined, "utf-8");
+        // Reject refined code that's dramatically shorter than the original —
+        // likely a snippet/summary rather than a complete rewrite
+        if (refined.length < currentTestCode.length * 0.3) {
+          logger.warn(
+            `[fix] Plan ${plan.id}: refined code is ${refined.length} chars vs original ${currentTestCode.length} chars — likely a snippet, skipping write`,
+          );
+        } else {
+          currentTestCode = refined;
+          await writeFile(testAbsPath, refined, "utf-8");
+        }
       }
 
       await updateProgress(runDir, plan.id, {
@@ -1489,11 +1497,17 @@ async function executePlanV2(
       });
 
       if (refined) {
-        const updatedTest = { ...test, content: refined };
-        refinedTests.push(updatedTest);
-        const outPath = join(config.projectRoot, test.filePath);
-        await writeFile(outPath, refined, "utf-8");
-        ctx.generatedFiles.add(outPath);
+        // Reject snippets that are dramatically shorter than the original
+        if (refined.length < test.content.length * 0.3) {
+          logger.warn(`Plan ${triagePlan.id}: refined code is ${refined.length} chars vs original ${test.content.length} chars — skipping`);
+          refinedTests.push(test);
+        } else {
+          const updatedTest = { ...test, content: refined };
+          refinedTests.push(updatedTest);
+          const outPath = join(config.projectRoot, test.filePath);
+          await writeFile(outPath, refined, "utf-8");
+          ctx.generatedFiles.add(outPath);
+        }
       } else {
         refinedTests.push(test);
       }

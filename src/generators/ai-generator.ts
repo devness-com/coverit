@@ -389,11 +389,11 @@ function isTruncated(code: string): boolean {
 }
 
 function looksLikeTestCode(code: string): boolean {
-  // Must contain at least one of: import/require, describe/it/test, or expect
-  return (
-    /\b(import|require)\s*[({]/.test(code) ||
-    /\b(describe|it|test|expect)\s*\(/.test(code)
-  );
+  // Must contain BOTH: import/require AND describe/it/test/expect
+  // Requiring both prevents AI prose that mentions code patterns from passing
+  const hasImports = /\b(import|require)\s*[({]/.test(code);
+  const hasTests = /\b(describe|it|test|expect)\s*\(/.test(code);
+  return hasImports && hasTests;
 }
 
 function countTestCases(code: string): number {
