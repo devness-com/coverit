@@ -349,6 +349,133 @@ export interface TestRefinementParams {
   sourceCode: string;
 }
 
+type FailurePattern =
+  | "di_resolution"
+  | "timeout"
+  | "real_connection"
+  | "query_chain"
+  | "mock_hoisting"
+  | "module_not_found"
+  | "path_alias"
+  | "parse_error"
+  | "oom";
+
+function classifyFailures(failures: TestFailure[]): Set<FailurePattern> {
+  const patterns = new Set<FailurePattern>();
+
+  for (const f of failures) {
+    const text = `${f.message}\n${f.stack ?? ""}`;
+
+    // DI resolution failures — NestJS, Angular, InversifyJS, tsyringe, awilix, etc.
+    if (
+      /Nest\s*(can.t|could\s*not)\s*resolve/i.test(text) ||
+      /please\s*make\s*sure.*available.*context/i.test(text) ||
+      /No\s+provider\s+for/i.test(text) ||
+      /Error:\s+inject\b/i.test(text) ||
+      /ServiceIdentifier.*not\s+found/i.test(text) ||
+      /cannot\s+resolve.*dependency/i.test(text)
+    ) {
+      patterns.add("di_resolution");
+    }
+    if (/timed?\s*out/i.test(text) || /exceeded\s*timeout/i.test(text)) {
+      patterns.add("timeout");
+    }
+    // Real connection attempts — database, cache, message queue, HTTP
+    if (
+      /ECONNREFUSED|ENOTFOUND|ETIMEDOUT|connect\s+ECONNRESET/i.test(text) ||
+      /MongoServerSelectionError|Redis|AMQP|SequelizeConnectionError|PrismaClientInitializationError/i.test(text) ||
+      /getaddrinfo|Connection\s+refused/i.test(text)
+    ) {
+      patterns.add("real_connection");
+    }
+    // Chainable query/builder errors — Mongoose, Knex, Sequelize, Prisma, TypeORM, Drizzle
+    if (
+      /\.(exec|lean|populate|sort|limit|skip|select|where|orderBy|groupBy|toPromise|getMany|getOne)\(\)/i.test(text) &&
+      /not\s+a\s+function|undefined|is\s+not/i.test(text)
+    ) {
+      patterns.add("query_chain");
+    }
+    if (/vi\.mock|jest\.mock/i.test(text) && /hoist|before.*import|ReferenceError/i.test(text)) {
+      patterns.add("mock_hoisting");
+    }
+    if (/Cannot\s+find\s+module|Module\s+not\s+found/i.test(text)) {
+      patterns.add("module_not_found");
+    }
+    if (/@app\/|@src\/|@lib\/|@shared\/|@\w+\//i.test(text) && /Cannot\s+find|not\s+found/i.test(text)) {
+      patterns.add("path_alias");
+    }
+    if (/SyntaxError|Unexpected\s+token|Parse\s+error/i.test(text)) {
+      patterns.add("parse_error");
+    }
+    if (/heap|out\s+of\s+memory|allocation\s+failed|OOM/i.test(text)) {
+      patterns.add("oom");
+    }
+  }
+
+  return patterns;
+}
+
+function buildPatternSpecificGuidance(patterns: Set<FailurePattern>): string {
+  if (patterns.size === 0) return "";
+
+  const sections: string[] = ["\nPATTERN-SPECIFIC FIX GUIDANCE (based on detected failure patterns):"];
+
+  if (patterns.has("di_resolution") || patterns.has("timeout") || patterns.has("real_connection")) {
+    sections.push(`
+**Dependency Injection / Timeout / Connection Errors:**
+The tests are trying to bootstrap real services or connect to external resources. Fix by isolating the unit under test:
+- Mock ALL injected dependencies (services, repositories, clients, config, models)
+- NEVER import a root/app module that bootstraps the full application
+- For DI frameworks (NestJS, Angular, InversifyJS, tsyringe): create a minimal test module with only the class under test and mock providers for each dependency
+- For non-DI code: mock external modules (database clients, HTTP clients, queues) at the module level using jest.mock()/vi.mock()
+- Ensure no test triggers real network calls, database connections, or message queue subscriptions`);
+  }
+
+  if (patterns.has("query_chain")) {
+    sections.push(`
+**Query Builder / Chainable API Errors:**
+The code uses a chainable query API (e.g. ORM or query builder) and the mock is incomplete. Fix by mocking the FULL method chain:
+- Create a mock object where each chainable method returns \`this\` (mockReturnThis) and the terminal method (exec, getMany, toPromise, etc.) returns the expected data
+- Example: \`const mockQuery = { where: jest.fn().mockReturnThis(), select: jest.fn().mockReturnThis(), orderBy: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), exec: jest.fn().mockResolvedValue(data) };\`
+- The entry method (find, findOne, createQueryBuilder, etc.) should return this mockQuery object`);
+  }
+
+  if (patterns.has("mock_hoisting")) {
+    sections.push(`
+**Mock Hoisting Errors:**
+- \`jest.mock()\` / \`vi.mock()\` calls MUST be at the TOP LEVEL of the file, before any imports that use the mocked modules
+- Do NOT put jest.mock() inside describe/beforeEach blocks
+- For variables used in mock factories, use \`jest.fn()\` directly in the factory, not external variables`);
+  }
+
+  if (patterns.has("module_not_found") || patterns.has("path_alias")) {
+    sections.push(`
+**Module / Path Resolution Errors:**
+- Replace ALL path aliases (\`@app/\`, \`@src/\`, \`@lib/\`, \`@shared/\`, or any custom \`@prefix/\`) with relative paths from the test file
+- Use \`../\` notation to navigate from the test file to the source file
+- Check that file extensions match (.js vs .ts) based on the project's module system
+- Verify the module name is spelled correctly and the package is installed`);
+  }
+
+  if (patterns.has("parse_error")) {
+    sections.push(`
+**Parse / Syntax Errors:**
+- Check for mismatched braces, brackets, or parentheses
+- Ensure ESM syntax (import/export) vs CJS (require/module.exports) matches the project config
+- Verify TypeScript-specific syntax is supported by the test runner's transform config`);
+  }
+
+  if (patterns.has("oom")) {
+    sections.push(`
+**Out-of-Memory Errors:**
+- Mock large dependency trees at the MODULE level using jest.mock()/vi.mock() to prevent loading heavy modules
+- Avoid importing large source files directly — mock the module and only test the interface
+- Reduce test data size if creating large arrays/objects`);
+  }
+
+  return sections.join("\n");
+}
+
 /**
  * Build the message array for refining tests that failed.
  * This is used in the feedback loop: generate -> run -> failures -> refine -> run again.
@@ -357,6 +484,8 @@ export function buildTestRefinementPrompt(
   params: TestRefinementParams,
 ): AIMessage[] {
   const { testCode, failures, sourceCode } = params;
+
+  const patternGuidance = buildPatternSpecificGuidance(classifyFailures(failures));
 
   const systemPrompt = `You are an expert test engineer fixing failing tests.
 
@@ -370,9 +499,9 @@ HARD RULES:
 7. Do NOT add new tests — only fix the failing ones.
 
 COMMON FIXES:
-- If a test TIMED OUT, it likely tried to connect to a real database/service. Rewrite it to mock ALL injected dependencies (e.g. for NestJS use Test.createTestingModule with mock providers, never import the full AppModule).
+- If a test TIMED OUT, it likely tried to connect to a real database/service. Rewrite it to mock ALL external dependencies (database clients, HTTP services, queues, config). Never bootstrap the full application module.
 - If a test had a PARSE ERROR, check imports and TypeScript syntax match the project's tsconfig/jest config.
-- If a test had a MODULE NOT FOUND error, fix the import paths to be relative from the test file location.`;
+- If a test had a MODULE NOT FOUND error, fix the import paths to be relative from the test file location.${patternGuidance}`;
 
   const failureDetails = failures
     .map((f, i) => {
@@ -395,5 +524,68 @@ Fix the failing tests so they pass against the source code above. Output the com
   return [
     { role: "system", content: systemPrompt },
     { role: "user", content: userPrompt },
+  ];
+}
+
+// ─── Simplified Generation (for retry after initial failure) ─
+
+export type SimplifiedGenerationParams = GenerationInput;
+
+/**
+ * Build a compact prompt for retrying generation after initial failure.
+ * Uses only diff hunks (not full source) and a minimal system prompt
+ * to stay within token limits that caused the first attempt to fail.
+ */
+export function buildSimplifiedGenerationPrompt(
+  params: SimplifiedGenerationParams,
+): AIMessage[] {
+  const { plan, project, sourceFiles, existingTestContent, testTypes } = params;
+  const framework = project.testFramework;
+
+  const systemPrompt = `You are a test engineer. Write a complete, runnable test file.
+Output ONLY code — no fences, no commentary. Mock all external dependencies.
+Framework: ${framework}`;
+
+  const sections: string[] = [];
+
+  sections.push(`## Task\n${plan.description}`);
+
+  const EXCERPT_LIMIT = 3000;
+  const MAX_HUNK_SIZE = 5000;
+  for (const file of sourceFiles) {
+    if (file.hunks.length > 0) {
+      let hunkText = file.hunks.map((h) => h.content).join("\n...\n");
+      if (hunkText.length > MAX_HUNK_SIZE) {
+        hunkText = hunkText.slice(0, MAX_HUNK_SIZE) + "\n// ... (remaining hunks omitted for brevity)";
+      }
+      sections.push(`## Changes (${file.path})\n\`\`\`diff\n${hunkText}\n\`\`\``);
+    } else {
+      const excerpt = file.content.slice(0, EXCERPT_LIMIT);
+      const suffix = file.content.length > EXCERPT_LIMIT ? "\n// ... (truncated)" : "";
+      sections.push(`## Source excerpt (${file.path})\n\`\`\`${project.language}\n${excerpt}${suffix}\n\`\`\``);
+    }
+  }
+
+  if (existingTestContent) {
+    // Cap existing test content to avoid bloating the simplified prompt
+    const maxTestContent = existingTestContent.length > MAX_HUNK_SIZE
+      ? existingTestContent.slice(0, MAX_HUNK_SIZE) + "\n// ... (truncated)"
+      : existingTestContent;
+    sections.push(`## Existing Tests — extend this file\n\`\`\`${project.language}\n${maxTestContent}\n\`\`\``);
+  }
+
+  for (const testType of testTypes) {
+    sections.push(`## Test Type: ${testType}\n${getTestTypeInstructions(testType, framework)}`);
+  }
+
+  if (sourceFiles.length > 0) {
+    sections.push(
+      `## Import Instructions\nTest file: ${plan.outputTestFile}\n${getImportInstructionsFromPaths(framework, sourceFiles.map((f) => f.path), plan.outputTestFile)}`,
+    );
+  }
+
+  return [
+    { role: "system", content: systemPrompt },
+    { role: "user", content: sections.join("\n\n") },
   ];
 }

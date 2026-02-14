@@ -1,8 +1,12 @@
 /**
  * Coverit — Triage Prompt Construction & Response Parsing
  *
- * Builds the lightweight AI prompt for deciding what tests to write,
+ * Builds the AI prompt for deciding what tests to write,
  * and parses the structured JSON response into a TriageResult.
+ *
+ * The AI receives file references (paths + stats) and uses the
+ * Read tool to incrementally examine files it needs to analyze.
+ * All filtering decisions are left entirely to the AI.
  */
 
 import type { AIMessage } from "./types.js";
@@ -14,14 +18,9 @@ import type {
   TriageSkipped,
 } from "../types/index.js";
 
-const FIRST_N_LINES = 30;
-
 /**
- * Build the triage prompt messages. Lightweight (~3-5K tokens):
- * - Project metadata
- * - File list with status, additions/deletions, first ~30 lines
- * - Existing test file names + which source files they import
- * - Test type filters (if any)
+ * Build the triage prompt messages.
+ * Sends file references (not content) — the AI uses Read tool to examine files.
  */
 export function buildTriagePrompt(
   context: ContextBundle,
@@ -29,30 +28,35 @@ export function buildTriagePrompt(
 ): AIMessage[] {
   const system = `You are an expert test engineer deciding what tests to write for a code change.
 
-Analyze the changed files and decide:
-1. Which files need tests (skip type-only files, configs, styles, generated files)
-2. What kind of tests (unit, api, e2e-browser, etc.)
-3. Whether to extend existing test files or create new ones
-4. What output file path each test should have
+You have access to the Read tool. Use it to examine any source files or test files you need to analyze. Do NOT try to decide based on file names alone — read the actual code.
 
-RULES:
-- Group related files into a single plan when they form a cohesive unit (e.g. a service + its types)
-- When an existing test file already covers a changed source file, set existingTestFile to extend it
-- Skip files that have no testable runtime behavior (pure types, interfaces, enums, configs, styles)
-- For API routes/controllers, include "api" test type
-- For React components, include "unit" (and optionally "e2e-browser" for pages)
-- For services/utilities, include "unit"
-- Set priority: "critical" for directly changed files, "high" for files depended on by changes
-- CRITICAL: Every plan MUST have a unique outputTestFile. Never assign the same outputTestFile to multiple plans. If multiple changed files would share the same test file, merge them into a single plan with multiple targetFiles.
+## Your workflow:
+1. Review the file list below (paths, status, line changes)
+2. Use the Read tool to examine source files that look like they have significant changes
+3. Use the Read tool to check existing test files to understand current coverage
+4. Decide which files need new or additional tests
+5. Output your triage plan as JSON
 
-OUTPUT FORMAT — respond with ONLY valid JSON, no markdown fences, no commentary:
+## Rules:
+- Skip files with no testable runtime behavior (pure types, interfaces, enums, configs, styles, DTOs with only decorators, module files that just wire DI, schema definitions, constant files). You can Read them to verify before skipping.
+- When an existing test file covers a source file AND was modified in this PR (marked **[IN THIS PR: +N lines]**), Read both files to check if the tests already cover the changes. SKIP if adequately covered.
+- If an existing test file was NOT modified in this PR, create a plan only if the source has significant new behavior.
+- Group related files into a single plan when they form a cohesive unit.
+- For API routes/controllers, use "api" test type. For services/utilities, use "unit".
+- Set priority: "critical" for major new logic, "high" for moderate, "medium" for minor, "low" for trivial.
+- CRITICAL: Every plan MUST have a unique outputTestFile. If multiple files share a test file, merge into one plan with multiple targetFiles.
+- Be selective — focus on files with significant new testable logic.
+- Write specific descriptions mentioning the actual methods/features to test.
+- IMPORTANT — Split large methods: If a single method or function is longer than ~150 lines, split it into multiple plans by logical concern (e.g., validation, business logic, error handling, side effects). Each sub-plan should have a unique outputTestFile (e.g., service.validation.spec.ts, service.payment.spec.ts). This ensures each generation call stays focused and completes within time limits.
+
+## Output format — after reading files and analyzing, respond with ONLY valid JSON:
 {
   "plans": [{
     "targetFiles": ["src/services/user.service.ts"],
     "testTypes": ["unit"],
     "existingTestFile": "src/services/user.service.test.ts",
     "outputTestFile": "src/services/user.service.test.ts",
-    "description": "Add tests for new createUser and deleteUser methods",
+    "description": "Add tests for new createUser validation and deleteUser cascade logic",
     "priority": "critical",
     "environment": "local"
   }],
@@ -72,33 +76,42 @@ OUTPUT FORMAT — respond with ONLY valid JSON, no markdown fences, no commentar
   userParts.push(`- Language: ${context.project.language}`);
   userParts.push("");
 
-  // Diff summary
-  userParts.push(`## Diff Summary`);
-  userParts.push(context.diffSummary);
-  userParts.push("");
-
-  // Changed files with first N lines
-  userParts.push(`## Changed Files`);
+  // Build a set of test file paths that are part of the diff
+  const testFilesInDiff = new Map<string, { additions: number; deletions: number }>();
   for (const file of context.changedFiles) {
-    const firstLines = file.sourceCode
-      .split("\n")
-      .slice(0, FIRST_N_LINES)
-      .join("\n");
-    userParts.push(`### ${file.path} (${file.status}, +${file.additions}/-${file.deletions})`);
-    userParts.push("```");
-    userParts.push(firstLines);
-    userParts.push("```");
-    userParts.push("");
+    if (/\.(test|spec)\.[jt]sx?$/.test(file.path)) {
+      testFilesInDiff.set(file.path, { additions: file.additions, deletions: file.deletions });
+    }
   }
 
-  // Existing test files
+  // Changed source files — paths and stats only (no content)
+  userParts.push(`## Changed Source Files`);
+  userParts.push(`Use the Read tool to examine files you need to analyze.`);
+  userParts.push("");
+  for (const file of context.changedFiles) {
+    // Skip test files from the source list
+    if (/\.(test|spec)\.[jt]sx?$/.test(file.path)) continue;
+    userParts.push(`- ${file.path} (${file.status}, +${file.additions}/-${file.deletions})`);
+  }
+  userParts.push("");
+
+  // Existing test files — paths, stats, and coverage info
   if (context.existingTests.length > 0) {
     userParts.push(`## Existing Test Files`);
+    userParts.push(`These test files already exist and cover the source files above.`);
+    userParts.push(`Files marked [IN THIS PR] were already written/updated by the developer in this PR.`);
+    userParts.push(`Use the Read tool to examine test files when you need to check coverage.`);
+    userParts.push("");
     for (const test of context.existingTests) {
       const imports = test.importsFrom.length > 0
         ? ` (imports: ${test.importsFrom.join(", ")})`
         : "";
-      userParts.push(`- ${test.path}${imports}`);
+      const diffInfo = testFilesInDiff.get(test.path);
+      const diffTag = diffInfo
+        ? ` **[IN THIS PR: +${diffInfo.additions}/-${diffInfo.deletions} lines]**`
+        : "";
+      const lineCount = test.content.split("\n").length;
+      userParts.push(`- ${test.path} (${lineCount} lines)${imports}${diffTag}`);
     }
     userParts.push("");
   }
@@ -139,7 +152,6 @@ function deduplicatePlans(plans: TriagePlan[]): TriagePlan[] {
     if (group.length === 1) {
       merged.push({ ...group[0]!, id: `plan_${String(idx).padStart(3, "0")}` });
     } else {
-      // Merge: combine targetFiles, testTypes, descriptions; keep highest priority
       const targetFiles = [...new Set(group.flatMap((p) => p.targetFiles))];
       const testTypes = [...new Set(group.flatMap((p) => p.testTypes))] as TriagePlan["testTypes"];
       const descriptions = group.map((p) => p.description).join("; ");
@@ -163,19 +175,60 @@ function deduplicatePlans(plans: TriagePlan[]): TriagePlan[] {
 }
 
 /**
+ * Try to extract a JSON object from text that may contain preamble
+ * (e.g. from multi-turn tool use where the AI outputs intermediate text).
+ * Walks backwards from the last } to find matching { pairs.
+ */
+function extractJSONFromText(text: string): unknown | null {
+  const lastBrace = text.lastIndexOf("}");
+  if (lastBrace < 0) return null;
+
+  let depth = 0;
+  for (let i = lastBrace; i >= 0; i--) {
+    if (text[i] === "}") depth++;
+    if (text[i] === "{") {
+      depth--;
+      if (depth === 0) {
+        try {
+          return JSON.parse(text.slice(i, lastBrace + 1));
+        } catch {
+          // Not valid JSON at this position, keep searching
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
  * Parse the AI triage response JSON into a TriageResult.
- * Handles malformed responses gracefully.
+ * Handles multi-turn responses where the AI may include preamble text
+ * from tool use before the final JSON output.
  */
 export function parseTriageResponse(response: string): TriageResult {
-  // Strip markdown fences if present
   let cleaned = response.trim();
+
+  // Strip markdown fences if present
   const fenceMatch = cleaned.match(/```(?:json)?\s*\n([\s\S]*?)\n```/);
   if (fenceMatch?.[1]) {
     cleaned = fenceMatch[1].trim();
   }
 
+  // Try direct JSON parse first
+  let parsed = tryParseJSON(cleaned);
+
+  // If that fails, extract JSON from text with preamble
+  if (!parsed) {
+    parsed = extractJSONFromText(cleaned) as Record<string, unknown> | null;
+  }
+
+  if (!parsed) {
+    return { plans: [], skipped: [] };
+  }
+
   try {
-    const parsed = JSON.parse(cleaned) as {
+    const data = parsed as {
       plans?: Array<{
         targetFiles?: string[];
         testTypes?: string[];
@@ -191,7 +244,7 @@ export function parseTriageResponse(response: string): TriageResult {
       }>;
     };
 
-    const rawPlans: TriagePlan[] = (parsed.plans ?? []).map((p, i) => ({
+    const rawPlans: TriagePlan[] = (data.plans ?? []).map((p, i) => ({
       id: `plan_${String(i + 1).padStart(3, "0")}`,
       targetFiles: p.targetFiles ?? [],
       testTypes: (p.testTypes ?? ["unit"]) as TestType[],
@@ -202,17 +255,23 @@ export function parseTriageResponse(response: string): TriageResult {
       environment: (p.environment as TriagePlan["environment"]) ?? "local",
     }));
 
-    // Deduplicate: merge plans that share the same outputTestFile
     const plans = deduplicatePlans(rawPlans);
 
-    const skipped: TriageSkipped[] = (parsed.skipped ?? []).map((s) => ({
+    const skipped: TriageSkipped[] = (data.skipped ?? []).map((s) => ({
       path: s.path ?? "unknown",
       reason: s.reason ?? "Skipped by AI triage",
     }));
 
     return { plans, skipped };
   } catch {
-    // If JSON parsing fails, return an empty result
     return { plans: [], skipped: [] };
+  }
+}
+
+function tryParseJSON(text: string): Record<string, unknown> | null {
+  try {
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    return null;
   }
 }

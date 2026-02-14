@@ -19,6 +19,7 @@ Parse from user input:
 - `--pr [number]` - Diff for a pull request by number (auto-detects base branch)
 - `--files <glob>` - Target specific files by glob pattern
 - `--staged` - Only analyze staged changes
+- `--type <types>` - Comma-separated test types (unit, api, e2e-browser, etc.)
 
 ## Execution
 
@@ -31,20 +32,32 @@ Call the `mcp__plugin_coverit_coverit__coverit_analyze` MCP tool with:
   <...only include diff params the user specified...>
 }
 
-The response JSON includes a "runId" field. Extract it.
+The response JSON includes:
+- "runId": the run identifier
+- "strategy": { plans, executionOrder, estimatedDuration }
+- "skipped": array of { path, reason } for files the AI decided not to test
 
-Then format the JSON response as a concise readable summary:
+Format the response as a concise readable summary:
 
 Run: <runId> (scope: <derived from diff params>)
 
 Project Info
   Name / Framework / Test Framework / Language
 
-Test Plans (group by priority, show type, description, estimated tests)
+If there are test plans (strategy.plans.length > 0):
+  Test Plans (group by priority, show type, description, estimated tests)
+  Summary: total plans, total estimated tests, execution phases
+  Note: "Use this runId with /coverit:run to execute plans."
 
-Summary: total plans, total estimated tests, execution phases
-
-Note: "Use this runId with `coverit_execute_batch` or `/coverit:run` to execute plans."
+If there are NO test plans (strategy.plans.length === 0):
+  Show "All changes are already covered by existing tests." if skipped entries mention coverage.
+  Then list a summary of coverage:
+    - Count how many skipped entries mention "Covered by" or "already covered"
+    - Show: "N/M changed files already have test coverage"
+    - Show 3-5 key examples like: "booking.service.ts — covered by booking.service.admin.spec.ts (+1984 lines)"
+    - End with: "Run /coverit:verify to execute the existing test suites and confirm they pass."
+  If skipped entries do NOT mention coverage (only configs/DTOs/etc.), show:
+    "No testable changes found — all changes are configs, DTOs, schemas, or module wiring."
 ```
 
 **CRITICAL**: The sub-agent MUST use the `mcp__plugin_coverit_coverit__coverit_analyze` MCP tool. It must NOT use the `coverit` CLI binary, shell commands, or `gh` to fetch diffs manually.

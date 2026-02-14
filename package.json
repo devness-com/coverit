@@ -1,6 +1,6 @@
 {
   "name": "@devness/coverit",
-  "version": "0.3.11",
+  "version": "0.3.25",
   "description": "AI-powered test generation and execution platform. Analyze features, generate tests, run them — one command.",
   "type": "module",
   "main": "dist/index.js",
@@ -56,11 +56,11 @@
   "license": "MIT",
   "homepage": "https://coverit.dev",
   "bugs": {
-    "url": "https://github.com/devness-community/coverit/issues"
+    "url": "https://github.com/devness-com/coverit/issues"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/devness-community/coverit.git"
+    "url": "https://github.com/devness-com/coverit.git"
   },
   "engines": {
     "node": ">=18.0.0"

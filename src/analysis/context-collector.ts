@@ -6,7 +6,7 @@
  * a ContextBundle for the AI triage phase.
  */
 
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { join, dirname, basename, extname } from "node:path";
 import { existsSync } from "node:fs";
 import type {
@@ -79,6 +79,7 @@ export async function collectContext(
 
 /**
  * Find test files near a source file using common conventions.
+ * Matches both exact patterns (foo.test.ts) and suffixed patterns (foo.admin.spec.ts).
  */
 async function findNearbyTestFiles(
   projectRoot: string,
@@ -88,37 +89,55 @@ async function findNearbyTestFiles(
   const ext = extname(sourcePath);
   const name = basename(sourcePath, ext);
   const found: ExistingTestFile[] = [];
+  const seen = new Set<string>();
 
-  // Candidate test file patterns
-  const candidates = [
-    // Colocated: foo.test.ts, foo.spec.ts
-    join(dir, `${name}.test${ext}`),
-    join(dir, `${name}.spec${ext}`),
-    // __tests__ directory
-    join(dir, "__tests__", `${name}.test${ext}`),
-    join(dir, "__tests__", `${name}.spec${ext}`),
-    // Parent __tests__ directory
-    join(dirname(dir), "__tests__", `${name}.test${ext}`),
-    join(dirname(dir), "__tests__", `${name}.spec${ext}`),
+  // Directories to scan for matching test files
+  const dirsToScan = [
+    dir,                                    // Colocated
+    join(dir, "__tests__"),                  // __tests__ in same dir
+    join(dirname(dir), "__tests__"),         // Parent __tests__
   ];
 
-  for (const candidate of candidates) {
-    const fullPath = join(projectRoot, candidate);
-    if (!existsSync(fullPath)) continue;
+  // Match: name.test.ext, name.spec.ext, name.*.test.ext, name.*.spec.ext
+  const testPattern = new RegExp(
+    `^${escapeRegExp(name)}(?:\\.[\\w-]+)?\\.(test|spec)${escapeRegExp(ext)}$`,
+  );
 
+  for (const scanDir of dirsToScan) {
+    const fullScanDir = join(projectRoot, scanDir);
+    if (!existsSync(fullScanDir)) continue;
+
+    let entries: string[];
     try {
-      const content = await readFile(fullPath, "utf-8");
-      found.push({
-        path: candidate,
-        content,
-        importsFrom: extractImports(content),
-      });
+      entries = await readdir(fullScanDir);
     } catch {
-      // Unreadable — skip
+      continue;
+    }
+
+    for (const entry of entries) {
+      if (!testPattern.test(entry)) continue;
+      const relPath = join(scanDir, entry);
+      if (seen.has(relPath)) continue;
+      seen.add(relPath);
+
+      try {
+        const content = await readFile(join(projectRoot, relPath), "utf-8");
+        found.push({
+          path: relPath,
+          content,
+          importsFrom: extractImports(content),
+        });
+      } catch {
+        // Unreadable — skip
+      }
     }
   }
 
   return found;
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /**

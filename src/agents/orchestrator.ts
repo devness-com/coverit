@@ -20,6 +20,8 @@ import { existsSync } from "node:fs";
 import type {
   CoveritConfig,
   CoveritFixConfig,
+  CoveritRecheckConfig,
+  CoveritVerifyConfig,
   CoveritEvent,
   CoveritEventHandler,
   CoveritReport,
@@ -44,7 +46,7 @@ import {
 } from "../analysis/diff-analyzer.js";
 import { detectPRBaseBranch } from "../utils/git.js";
 import { collectContext } from "../analysis/context-collector.js";
-import { triageWithAI, triageFallback } from "../analysis/ai-triage.js";
+import { triageWithAI } from "../analysis/ai-triage.js";
 import { AIGenerator } from "../generators/ai-generator.js";
 import { createExecutor } from "../executors/index.js";
 import { generateReport } from "../agents/reporter.js";
@@ -362,6 +364,7 @@ export async function orchestrate(
   if (config.analyzeOnly) {
     const report = generateReport(projectInfo, strategy, []);
     report.runId = runId;
+    report.triageSkipped = triage.skipped;
     emit(onEvent, { type: "report:complete", data: { report } });
     // Don't call completeRun here — it would overwrite meta with 0/0 summary.
     // The meta stays as "running" with correct planCount until batches finalize it.
@@ -574,11 +577,17 @@ export async function fixFailingTests(
       await readFile(join(progressDir, file), "utf-8"),
     ) as PlanProgress;
 
-    if (progress.status !== "failed" && progress.status !== "error") continue;
+    // Pick up failed, error, AND skipped plans
+    if (progress.status !== "failed" && progress.status !== "error" && progress.status !== "skipped") continue;
     if (config.planIds && !config.planIds.includes(progress.planId)) continue;
 
     const plan = triagePlans.find((p) => p.id === progress.planId);
     if (!plan) continue;
+
+    // For skipped plans, resolve test file from triage plan if not in progress
+    if (!progress.testFile && plan.outputTestFile) {
+      progress.testFile = plan.outputTestFile;
+    }
 
     failedPlans.push({ progress, plan });
   }
@@ -678,14 +687,7 @@ export async function fixFailingTests(
       // No report — failures will be empty
     }
 
-    if (lastFailures.length === 0) {
-      lastFailures = [{
-        testName: testFilePath,
-        message: `${progress.failed ?? 0} test(s) failed in previous run`,
-      }];
-    }
-
-    // ── Retry loop: refine → execute ────────────────────────
+    // ── Set up executor ────────────────────────────────────────
     const generator = new AIGenerator(aiProvider, projectInfo);
     const executor = createExecutor("local");
     if ("setPackageManager" in executor && typeof (executor as any).setPackageManager === "function") {
@@ -697,6 +699,64 @@ export async function fixFailingTests(
 
     let currentTestCode = testCode;
     let finalResult: ExecutionResult | null = null;
+
+    // For skipped plans with test files on disk, run the test first before trying to fix
+    if (progress.status === "skipped") {
+      logger.info(`[fix] Plan ${plan.id}: was skipped — executing existing test file first`);
+      await updateProgress(runDir, plan.id, {
+        planId: plan.id,
+        status: "running",
+        description: `${plan.description} (executing skipped plan)`,
+        testFile: testFilePath,
+      });
+
+      const initialExec = await executor.execute(
+        {
+          planId: plan.id,
+          filePath: testFilePath,
+          content: currentTestCode,
+          testType: plan.testTypes[0] ?? "unit",
+          testCount: 0,
+          framework: projectInfo.testFramework,
+        },
+        {
+          environment: "local",
+          timeout: 120_000,
+          retries: 0,
+          parallel: false,
+          collectCoverage: false,
+        },
+      );
+
+      emit(onEvent, { type: "execution:complete", data: { result: initialExec } });
+
+      if (initialExec.status === "passed" || initialExec.failures.length === 0) {
+        // Tests pass as-is — no fix needed
+        finalResult = initialExec;
+        const status = initialExec.status === "passed" ? "passed" : "error";
+        await updateProgress(runDir, plan.id, {
+          planId: plan.id,
+          status,
+          description: plan.description,
+          testFile: testFilePath,
+          passed: initialExec.passed,
+          failed: initialExec.failed,
+          duration: initialExec.duration,
+        });
+        allResults.push(initialExec);
+        continue;
+      }
+
+      // Tests failed — proceed to fix loop with actual failures
+      lastFailures = initialExec.failures;
+    }
+
+    if (lastFailures.length === 0) {
+      lastFailures = [{
+        testName: testFilePath,
+        message: `${progress.failed ?? 0} test(s) failed in previous run`,
+      }];
+    }
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       await updateProgress(runDir, plan.id, {
@@ -794,6 +854,317 @@ export async function fixFailingTests(
   return report;
 }
 
+// ─── Recheck: re-run existing test files and update status ───
+
+/**
+ * Re-runs existing test files from a prior run without AI refinement.
+ * Useful after tests have been manually fixed outside the pipeline.
+ * Updates progress files and meta status based on actual results.
+ */
+export async function recheckTests(
+  config: CoveritRecheckConfig,
+  onEvent?: CoveritEventHandler,
+): Promise<CoveritReport> {
+  const runId = await resolveRunId(config.projectRoot, {
+    runId: config.runId,
+  });
+  const runDir = getRunDir(config.projectRoot, runId);
+  const progressDir = join(runDir, "progress");
+  const strategyPath = join(runDir, "strategy.json");
+
+  if (!existsSync(strategyPath)) {
+    throw new Error(`No strategy found for run ${runId} — run /coverit:run first`);
+  }
+  const cachedData = JSON.parse(await readFile(strategyPath, "utf-8")) as {
+    version?: number;
+    triage?: TriageResult;
+    strategy?: TestStrategy;
+  };
+
+  let triagePlans: TriagePlan[];
+  if (cachedData.triage) {
+    triagePlans = cachedData.triage.plans;
+  } else if (cachedData.strategy) {
+    triagePlans = cachedData.strategy.plans.map((p) => ({
+      id: p.id,
+      targetFiles: p.target.files,
+      testTypes: [p.type],
+      existingTestFile: null,
+      outputTestFile: "",
+      description: p.description,
+      priority: p.priority,
+      environment: "local" as const,
+    }));
+  } else {
+    throw new Error("Invalid cache format — re-run /coverit:run");
+  }
+
+  if (!existsSync(progressDir)) {
+    throw new Error(`No progress files found for run ${runId}`);
+  }
+
+  const progressFiles = await readdir(progressDir);
+  const plansToRecheck: Array<{ progress: PlanProgress; plan: TriagePlan }> = [];
+
+  for (const file of progressFiles) {
+    if (!file.endsWith(".json")) continue;
+    const progress = JSON.parse(
+      await readFile(join(progressDir, file), "utf-8"),
+    ) as PlanProgress;
+
+    if (config.planIds && !config.planIds.includes(progress.planId)) continue;
+
+    const plan = triagePlans.find((p) => p.id === progress.planId);
+    if (!plan) continue;
+
+    // Resolve test file path
+    const testFile = progress.testFile || plan.outputTestFile;
+    if (!testFile) continue;
+
+    // Only recheck plans that have a test file on disk
+    const testAbsPath = join(config.projectRoot, testFile);
+    if (!existsSync(testAbsPath)) continue;
+
+    progress.testFile = testFile;
+    plansToRecheck.push({ progress, plan });
+  }
+
+  if (plansToRecheck.length === 0) {
+    const projectInfo = await detectProjectInfo(config.projectRoot);
+    const strategy = triageToStrategy({ plans: [], skipped: [] }, projectInfo);
+    return generateReport(projectInfo, strategy, []);
+  }
+
+  const projectInfo = await detectProjectInfo(config.projectRoot);
+  const allResults: ExecutionResult[] = [];
+
+  for (const { progress, plan } of plansToRecheck) {
+    const testFilePath = progress.testFile!;
+    const testAbsPath = join(config.projectRoot, testFilePath);
+    const testCode = await readFile(testAbsPath, "utf-8");
+
+    const testPlan = triagePlanToTestPlan(plan);
+    emit(onEvent, { type: "execution:start", data: { plan: testPlan, environment: plan.environment } });
+
+    await updateProgress(runDir, plan.id, {
+      planId: plan.id,
+      status: "running",
+      description: `${plan.description} (recheck)`,
+      testFile: testFilePath,
+    });
+
+    const executor = createExecutor("local");
+    if ("setPackageManager" in executor && typeof (executor as any).setPackageManager === "function") {
+      (executor as any).setPackageManager(projectInfo.packageManager);
+    }
+    if ("setProjectRoot" in executor && typeof (executor as any).setProjectRoot === "function") {
+      (executor as any).setProjectRoot(config.projectRoot);
+    }
+
+    const execResult = await executor.execute(
+      {
+        planId: plan.id,
+        filePath: testFilePath,
+        content: testCode,
+        testType: plan.testTypes[0] ?? "unit",
+        testCount: 0,
+        framework: projectInfo.testFramework,
+      },
+      {
+        environment: "local",
+        timeout: 120_000,
+        retries: 0,
+        parallel: false,
+        collectCoverage: false,
+      },
+    );
+
+    emit(onEvent, { type: "execution:complete", data: { result: execResult } });
+
+    const status = execResult.status === "passed" ? "passed" : execResult.status === "failed" ? "failed" : "error";
+    await updateProgress(runDir, plan.id, {
+      planId: plan.id,
+      status,
+      description: plan.description,
+      testFile: testFilePath,
+      passed: execResult.passed,
+      failed: execResult.failed,
+      duration: execResult.duration,
+    });
+
+    allResults.push(execResult);
+  }
+
+  // Update meta status based on all progress files (not just rechecked ones)
+  const allProgress = await readAllProgress(progressDir);
+  const hasFailures = allProgress.some((p) => p.status === "failed" || p.status === "error");
+  await updateRunMeta(config.projectRoot, runId, {
+    status: hasFailures ? "failed" : "completed",
+  });
+
+  const recheckTriage: TriageResult = {
+    plans: plansToRecheck.map((fp) => fp.plan),
+    skipped: [],
+  };
+  const recheckStrategy = triageToStrategy(recheckTriage, projectInfo);
+  const report = generateReport(projectInfo, recheckStrategy, allResults);
+  report.runId = runId;
+
+  emit(onEvent, { type: "report:complete", data: { report } });
+
+  return report;
+}
+
+async function readAllProgress(progressDir: string): Promise<PlanProgress[]> {
+  const plans: PlanProgress[] = [];
+  if (!existsSync(progressDir)) return plans;
+  const files = await readdir(progressDir);
+  for (const file of files) {
+    if (!file.endsWith(".json")) continue;
+    try {
+      const progress = JSON.parse(
+        await readFile(join(progressDir, file), "utf-8"),
+      ) as PlanProgress;
+      plans.push(progress);
+    } catch {
+      // Skip corrupt files
+    }
+  }
+  return plans;
+}
+
+// ─── Verify: run existing test files from a scan ─────────────
+
+/**
+ * Runs existing test files that were identified by triage as covering
+ * the changed code. Used after /coverit:scan to verify coverage actually passes.
+ *
+ * Extracts test file paths from triage skipped entries and strategy context,
+ * runs them, and reports results.
+ */
+export async function verifyExistingTests(
+  config: CoveritVerifyConfig,
+  onEvent?: CoveritEventHandler,
+): Promise<CoveritReport> {
+  const runId = await resolveRunId(config.projectRoot, {
+    runId: config.runId,
+  });
+  const runDir = getRunDir(config.projectRoot, runId);
+  const strategyPath = join(runDir, "strategy.json");
+
+  if (!existsSync(strategyPath)) {
+    throw new Error(`No strategy found for run ${runId} — run /coverit:scan first`);
+  }
+
+  const cachedData = JSON.parse(await readFile(strategyPath, "utf-8")) as {
+    version?: number;
+    triage?: TriageResult;
+    context?: ContextBundle;
+  };
+
+  if (!cachedData.context) {
+    throw new Error("No context data in strategy — re-run /coverit:scan");
+  }
+
+  // Collect test file paths from existing tests in the context
+  const testFilePaths = cachedData.context.existingTests
+    .map((t) => t.path)
+    .filter((p) => existsSync(join(config.projectRoot, p)));
+
+  if (testFilePaths.length === 0) {
+    throw new Error("No existing test files found to verify");
+  }
+
+  const projectInfo = await detectProjectInfo(config.projectRoot);
+  const allResults: ExecutionResult[] = [];
+
+  // Set up executor
+  const executor = createExecutor("local");
+  if ("setPackageManager" in executor && typeof (executor as any).setPackageManager === "function") {
+    (executor as any).setPackageManager(projectInfo.packageManager);
+  }
+  if ("setProjectRoot" in executor && typeof (executor as any).setProjectRoot === "function") {
+    (executor as any).setProjectRoot(config.projectRoot);
+  }
+
+  // Run tests in batches
+  const batches = chunkArray(testFilePaths, MAX_CONCURRENCY);
+
+  for (const batch of batches) {
+    const batchResults = await Promise.all(
+      batch.map(async (testFilePath, idx) => {
+        const planId = `verify_${String(allResults.length + idx + 1).padStart(3, "0")}`;
+
+        const testCode = await readFile(join(config.projectRoot, testFilePath), "utf-8");
+
+        const testPlan: TestPlan = {
+          id: planId,
+          type: "unit",
+          target: { files: [testFilePath], functions: [], endpoints: [], components: [] },
+          priority: "medium",
+          description: `Verify ${testFilePath}`,
+          estimatedTests: 1,
+          dependencies: [],
+        };
+
+        emit(onEvent, { type: "execution:start", data: { plan: testPlan, environment: "local" } });
+
+        const execResult = await executor.execute(
+          {
+            planId,
+            filePath: testFilePath,
+            content: testCode,
+            testType: "unit",
+            testCount: 0,
+            framework: projectInfo.testFramework,
+          },
+          {
+            environment: "local",
+            timeout: 120_000,
+            retries: 0,
+            parallel: false,
+            collectCoverage: false,
+          },
+        );
+
+        emit(onEvent, { type: "execution:complete", data: { result: execResult } });
+        return execResult;
+      }),
+    );
+
+    allResults.push(...batchResults);
+  }
+
+  // Build report
+  const verifyStrategy: TestStrategy = {
+    project: projectInfo,
+    plans: testFilePaths.map((p, i) => ({
+      id: `verify_${String(i + 1).padStart(3, "0")}`,
+      type: "unit" as const,
+      target: { files: [p], functions: [], endpoints: [], components: [] },
+      priority: "medium" as const,
+      description: `Verify ${p}`,
+      estimatedTests: 1,
+      dependencies: [],
+    })),
+    executionOrder: [{ phase: 0, plans: testFilePaths.map((_, i) => `verify_${String(i + 1).padStart(3, "0")}`), environment: "local" }],
+    estimatedDuration: testFilePaths.length * 10,
+  };
+
+  const report = generateReport(projectInfo, verifyStrategy, allResults);
+  report.runId = runId;
+
+  emit(onEvent, { type: "report:complete", data: { report } });
+
+  // Update meta based on verify results
+  const hasFailures = allResults.some((r) => r.status !== "passed");
+  await updateRunMeta(config.projectRoot, runId, {
+    status: hasFailures ? "failed" : "completed",
+  });
+
+  return report;
+}
+
 // ─── Internal: V2 analysis pipeline ──────────────────────────
 
 async function runAnalysisV2(
@@ -808,9 +1179,11 @@ async function runAnalysisV2(
   if (aiProvider) {
     triage = await triageWithAI(context, aiProvider, {
       testTypes: config.testTypes,
+      projectRoot: config.projectRoot,
     });
   } else {
-    triage = triageFallback(context, { testTypes: config.testTypes });
+    logger.error("No AI provider available — cannot triage without AI");
+    triage = { plans: [], skipped: [] };
   }
 
   return { triage, context };
@@ -880,29 +1253,48 @@ async function executePlanV2(
     ctx.generatedFiles.add(outPath);
   }
 
-  // If no tests were generated, skip execution
+  // If no tests were generated, retry with simplified prompt before skipping
   if (genResult.tests.length === 0) {
-    const reason = genResult.warnings.length > 0
-      ? genResult.warnings.join("; ")
-      : "No tests generated (no testable surface)";
-    await updateProgress(runDir, triagePlan.id, {
-      planId: triagePlan.id,
-      status: "skipped",
-      description: triagePlan.description,
-      reason,
-    });
-    return {
-      planId: triagePlan.id,
-      status: "skipped",
-      totalTests: 0,
-      passed: 0,
-      failed: 0,
-      skipped: 0,
-      duration: 0,
-      coverage: null,
-      failures: [],
-      output: reason,
-    };
+    if (aiProvider) {
+      logger.info(`Plan ${triagePlan.id}: initial generation failed, retrying with simplified prompt...`);
+      const simplifiedResult = await generator.generateSimplified(genInput);
+
+      if (simplifiedResult.tests.length > 0) {
+        // Write the simplified tests and continue to execution
+        for (const test of simplifiedResult.tests) {
+          const outPath = join(config.projectRoot, test.filePath);
+          await ensureDir(join(outPath, ".."));
+          await writeFile(outPath, test.content, "utf-8");
+          ctx.generatedFiles.add(outPath);
+        }
+        genResult.tests.push(...simplifiedResult.tests);
+        genResult.warnings.push("Used simplified prompt after initial generation failure");
+      }
+    }
+
+    if (genResult.tests.length === 0) {
+      const reason = genResult.warnings.length > 0
+        ? genResult.warnings.join("; ")
+        : "No tests generated (no testable surface)";
+      await updateProgress(runDir, triagePlan.id, {
+        planId: triagePlan.id,
+        status: "skipped",
+        description: triagePlan.description,
+        reason,
+      });
+      return {
+        planId: triagePlan.id,
+        status: "skipped",
+        totalTests: 0,
+        passed: 0,
+        failed: 0,
+        skipped: 0,
+        duration: 0,
+        coverage: null,
+        failures: [],
+        output: reason,
+      };
+    }
   }
 
   if (config.generateOnly || config.skipExecution) {

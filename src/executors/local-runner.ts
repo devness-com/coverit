@@ -219,7 +219,7 @@ export class LocalRunner extends BaseExecutor {
             // Force CI-friendly output in common frameworks
             CI: "true",
             FORCE_COLOR: "0",
-            NODE_OPTIONS: "--experimental-vm-modules",
+            NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --experimental-vm-modules --max-old-space-size=2048`.trim(),
           } as Record<string, string>,
         });
       } catch (err) {
@@ -477,6 +477,13 @@ export class LocalRunner extends BaseExecutor {
 
     if (spawn.exitCode === 0) {
       result.status = "passed";
+    } else if (isOOMError(spawn, combined)) {
+      result.status = "error";
+      result.failures.push({
+        testName: "(runner)",
+        message: `Out of memory: the test process ran out of heap space (exit code ${spawn.exitCode}). The source file may be too large — consider mocking heavy dependency trees at the module level.`,
+      });
+      return;
     } else if (this.isInfrastructureError(combined)) {
       result.status = "error";
     } else {
@@ -587,4 +594,10 @@ export class LocalRunner extends BaseExecutor {
     if (failedCount > 0) return "failed";
     return "error";
   }
+}
+
+function isOOMError(spawn: SpawnResult, combined: string): boolean {
+  // Exit codes 137 (SIGKILL) and 134 (SIGABRT) are common OOM signals
+  if (spawn.exitCode === 137 || spawn.exitCode === 134) return true;
+  return /heap\s*(out\s*of\s*memory|allocation\s*failed)|JavaScript\s*heap|FATAL\s*ERROR.*MarkCompact|allocation\s*failed.*growing/i.test(combined);
 }

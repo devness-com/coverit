@@ -8,8 +8,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { orchestrate, fixFailingTests } from "../agents/orchestrator.js";
-import { listRuns, resolveRunId, getRunStatus } from "../utils/run-manager.js";
+import { orchestrate, fixFailingTests, recheckTests, verifyExistingTests } from "../agents/orchestrator.js";
+import { listRuns, resolveRunId, getRunStatus, deleteRun, clearRuns } from "../utils/run-manager.js";
 import { logger } from "../utils/logger.js";
 import type { TestType, DiffSource, CoveritConfig } from "../types/index.js";
 
@@ -89,12 +89,19 @@ server.tool(
   "Analyze a codebase and return a test strategy including detected framework, changed files, and proposed test plans.",
   {
     projectRoot: z.string().describe("Absolute path to the project root"),
+    testTypes: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "Types of tests to include in the strategy (unit, api, e2e-browser, etc.). Omit for all.",
+      ),
     ...diffSourceSchema,
   },
-  async ({ projectRoot, baseBranch, commit, pr, files, staged }) => {
+  async ({ projectRoot, testTypes, baseBranch, commit, pr, files, staged }) => {
     try {
       const config: CoveritConfig = {
         projectRoot,
+        testTypes: parseTestTypes(testTypes),
         diffSource: parseDiffSource({ baseBranch, commit, pr, files, staged }),
         analyzeOnly: true,
       };
@@ -105,7 +112,11 @@ server.tool(
         content: [
           {
             type: "text" as const,
-            text: JSON.stringify({ runId: report.runId, strategy: report.strategy }, null, 2),
+            text: JSON.stringify({
+              runId: report.runId,
+              strategy: report.strategy,
+              skipped: report.triageSkipped,
+            }, null, 2),
           },
         ],
       };
@@ -359,6 +370,105 @@ server.tool(
   },
 );
 
+// ─── coverit_recheck ─────────────────────────────────────────
+// Re-run existing test files and update status without AI refinement.
+
+server.tool(
+  "coverit_recheck",
+  "Re-run existing test files from a prior coverit run and update status. Use after manually fixing tests outside the pipeline.",
+  {
+    projectRoot: z.string().describe("Absolute path to the project root"),
+    planIds: z
+      .array(z.string())
+      .optional()
+      .describe("Specific plan IDs to recheck. Omit to recheck all plans with test files."),
+    runId: z
+      .string()
+      .optional()
+      .describe("Target a specific run ID. Defaults to latest run."),
+  },
+  async ({ projectRoot, planIds, runId }) => {
+    try {
+      const report = await recheckTests({ projectRoot, planIds, runId });
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                runId: report.runId,
+                summary: report.summary,
+                results: report.results,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error("coverit_recheck failed:", message);
+      return {
+        content: [{ type: "text" as const, text: `Error: ${message}` }],
+        isError: true,
+      };
+    }
+  },
+);
+
+// ─── coverit_verify ──────────────────────────────────────────
+// Run existing test files from a prior scan to verify they pass.
+
+server.tool(
+  "coverit_verify",
+  "Run existing test files identified by a prior coverit scan to verify they pass. Use after /coverit:scan shows all changes are covered.",
+  {
+    projectRoot: z.string().describe("Absolute path to the project root"),
+    runId: z
+      .string()
+      .optional()
+      .describe("Target a specific run ID from a prior scan. Defaults to latest run."),
+  },
+  async ({ projectRoot, runId }) => {
+    try {
+      const report = await verifyExistingTests({ projectRoot, runId });
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                runId: report.runId,
+                summary: report.summary,
+                results: report.results.map((r) => ({
+                  planId: r.planId,
+                  status: r.status,
+                  passed: r.passed,
+                  failed: r.failed,
+                  duration: r.duration,
+                  failures: r.failures.length > 0 ? r.failures.slice(0, 3) : undefined,
+                })),
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error("coverit_verify failed:", message);
+      return {
+        content: [{ type: "text" as const, text: `Error: ${message}` }],
+        isError: true,
+      };
+    }
+  },
+);
+
 // ─── coverit_full ────────────────────────────────────────────
 // Full pipeline: analyze, generate, run, and report.
 
@@ -459,6 +569,80 @@ server.tool(
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       logger.error("coverit_status failed:", message);
+      return {
+        content: [{ type: "text" as const, text: `Error: ${message}` }],
+        isError: true,
+      };
+    }
+  },
+);
+
+// ─── coverit_clear ────────────────────────────────────────────
+// Delete runs and optionally their generated test files.
+
+server.tool(
+  "coverit_clear",
+  "Delete coverit runs and optionally clean up generated test files. Can target a specific run, a scope (e.g. 'pr-99'), or all runs.",
+  {
+    projectRoot: z.string().describe("Absolute path to the project root"),
+    runId: z.string().optional().describe("Delete a specific run by ID"),
+    scope: z.string().optional().describe("Delete all runs matching scope (e.g. 'pr-99', 'staged')"),
+    all: z.boolean().optional().describe("Delete all runs"),
+    cleanTestFiles: z.boolean().optional().describe("Also delete generated test files from the project"),
+  },
+  async ({ projectRoot, runId, scope, all, cleanTestFiles }) => {
+    try {
+      let deletedCount = 0;
+      let testFiles: string[] = [];
+
+      if (runId) {
+        const result = await deleteRun(projectRoot, runId);
+        deletedCount = 1;
+        testFiles = result.testFiles;
+      } else if (all) {
+        const result = await clearRuns(projectRoot);
+        deletedCount = result.deletedCount;
+        testFiles = result.testFiles;
+      } else if (scope) {
+        const result = await clearRuns(projectRoot, scope);
+        deletedCount = result.deletedCount;
+        testFiles = result.testFiles;
+      } else {
+        return {
+          content: [{ type: "text" as const, text: "Error: Specify --run <id>, --scope <scope>, or --all" }],
+          isError: true,
+        };
+      }
+
+      // Optionally delete generated test files from the project
+      let cleanedFiles = 0;
+      if (cleanTestFiles && testFiles.length > 0) {
+        const { existsSync } = await import("node:fs");
+        const { unlink } = await import("node:fs/promises");
+        for (const tf of testFiles) {
+          const absPath = tf.startsWith("/") ? tf : (await import("node:path")).join(projectRoot, tf);
+          if (existsSync(absPath)) {
+            try {
+              await unlink(absPath);
+              cleanedFiles++;
+            } catch {
+              // File may be locked or already deleted
+            }
+          }
+        }
+      }
+
+      const summary = {
+        deletedRuns: deletedCount,
+        testFilesFound: testFiles.length,
+        testFilesDeleted: cleanedFiles,
+      };
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(summary, null, 2) }],
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error("coverit_clear failed:", message);
       return {
         content: [{ type: "text" as const, text: `Error: ${message}` }],
         isError: true,

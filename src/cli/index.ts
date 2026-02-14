@@ -12,10 +12,10 @@ import chalk from "chalk";
 import ora from "ora";
 import { readFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
-import { orchestrate } from "../agents/orchestrator.js";
+import { orchestrate, fixFailingTests, recheckTests } from "../agents/orchestrator.js";
 import { detectProjectInfo } from "../utils/framework-detector.js";
 import { isGitRepo } from "../utils/git.js";
-import { resolveRunId, listRuns, getRunStatus, getRunDir } from "../utils/run-manager.js";
+import { resolveRunId, listRuns, getRunStatus, getRunDir, deleteRun, clearRuns } from "../utils/run-manager.js";
 import { logger } from "../utils/logger.js";
 import type { TestType, DiffSource, CoveritConfig, CoveritEvent } from "../types/index.js";
 
@@ -475,12 +475,25 @@ program
   .command("status")
   .argument("[path]", "Project root path", ".")
   .option("--run <runId>", "Run ID to inspect")
+  .option("--pr <number>", "Show latest run for a specific PR")
   .description("Show details for a specific coverit run")
-  .action(async (pathArg: string, cmdOpts: { run?: string }) => {
+  .action(async (pathArg: string, cmdOpts: { run?: string; pr?: string }) => {
     const projectRoot = resolveProjectRoot(pathArg);
 
     try {
-      const runId = cmdOpts.run ?? (await resolveRunId(projectRoot, {}));
+      let runId: string;
+      if (cmdOpts.run) {
+        runId = cmdOpts.run;
+      } else if (cmdOpts.pr) {
+        const runs = await listRuns(projectRoot, `pr-${cmdOpts.pr}`);
+        if (runs.length === 0) {
+          logger.warn(`No runs found for PR #${cmdOpts.pr}`);
+          return;
+        }
+        runId = runs[0]!.runId;
+      } else {
+        runId = await resolveRunId(projectRoot, {});
+      }
       const { meta, plans } = await getRunStatus(projectRoot, runId);
 
       console.log(chalk.bold("\n  Run Details\n"));
@@ -543,6 +556,217 @@ program
         console.log();
       }
     } catch (err) {
+      logger.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+  });
+
+// ─── fix ────────────────────────────────────────────────────
+
+program
+  .command("fix")
+  .argument("[path]", "Project root path", ".")
+  .option("--run <runId>", "Target a specific run ID (defaults to latest)")
+  .option("--pr <number>", "Target the latest run for a specific PR")
+  .option("--plan-ids <ids>", "Comma-separated plan IDs to fix (defaults to all failed)")
+  .option("--retries <n>", "Max fix attempts per plan (default: 2)")
+  .description("Fix failing tests from the last coverit run using AI refinement")
+  .action(async (pathArg: string, cmdOpts: { run?: string; pr?: string; planIds?: string; retries?: string }) => {
+    const projectRoot = resolveProjectRoot(pathArg);
+    const opts = program.opts();
+    const spinner = ora("Fixing failing tests...").start();
+
+    try {
+      // Resolve run ID: explicit --run, or --pr lookup, or latest
+      let resolvedRunId = cmdOpts.run;
+      if (!resolvedRunId && cmdOpts.pr) {
+        const runs = await listRuns(projectRoot, `pr-${cmdOpts.pr}`);
+        if (runs.length === 0) {
+          spinner.fail(`No runs found for PR #${cmdOpts.pr}`);
+          process.exit(1);
+        }
+        resolvedRunId = runs[0]!.runId;
+      }
+
+      const planIds = cmdOpts.planIds
+        ? cmdOpts.planIds.split(",").map((id) => id.trim())
+        : undefined;
+      const maxRetries = cmdOpts.retries ? Number(cmdOpts.retries) : undefined;
+
+      const report = await fixFailingTests(
+        {
+          projectRoot,
+          runId: resolvedRunId,
+          planIds,
+          maxRetries,
+        },
+        (event) => {
+          if (opts["verbose"]) {
+            createEventHandler(true)(event);
+          }
+        },
+      );
+
+      spinner.stop();
+
+      // Display summary
+      console.log(chalk.bold("\n  Fix Results"));
+      const s = report.summary;
+      const statusColor =
+        s.status === "all-passed"
+          ? chalk.green
+          : s.status === "has-failures"
+            ? chalk.red
+            : chalk.yellow;
+
+      logger.table({
+        "Run ID": report.runId ?? "-",
+        Status: statusColor(s.status),
+        "Total Tests": s.totalTests,
+        Passed: chalk.green(String(s.passed)),
+        Failed: s.failed > 0 ? chalk.red(String(s.failed)) : String(s.failed),
+        Errors: s.errorCount > 0 ? chalk.red(String(s.errorCount)) : String(s.errorCount),
+        Duration: `${report.duration}ms`,
+      });
+
+      if (s.status !== "all-passed") {
+        process.exit(1);
+      }
+    } catch (err) {
+      spinner.fail("Fix failed");
+      logger.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+  });
+
+// ─── clear ──────────────────────────────────────────────────
+
+program
+  .command("clear")
+  .argument("[path]", "Project root path", ".")
+  .option("--run <runId>", "Delete a specific run by ID")
+  .option("--scope <scope>", "Delete all runs matching scope (e.g. pr-99, staged)")
+  .option("--all", "Delete all runs")
+  .option("--clean", "Also delete generated test files from the project")
+  .description("Delete coverit runs and optionally clean up generated test files")
+  .action(async (pathArg: string, cmdOpts: { run?: string; scope?: string; all?: boolean; clean?: boolean }) => {
+    const projectRoot = resolveProjectRoot(pathArg);
+
+    try {
+      // Default to --all when no targeting flag is given (matches plugin behavior)
+      const useAll = cmdOpts.all || (!cmdOpts.run && !cmdOpts.scope);
+
+      let deletedCount = 0;
+      let testFiles: string[] = [];
+
+      if (cmdOpts.run) {
+        const result = await deleteRun(projectRoot, cmdOpts.run);
+        deletedCount = 1;
+        testFiles = result.testFiles;
+      } else if (cmdOpts.scope) {
+        const result = await clearRuns(projectRoot, cmdOpts.scope);
+        deletedCount = result.deletedCount;
+        testFiles = result.testFiles;
+      } else if (useAll) {
+        const result = await clearRuns(projectRoot);
+        deletedCount = result.deletedCount;
+        testFiles = result.testFiles;
+      }
+
+      // Optionally delete generated test files
+      let cleanedFiles = 0;
+      if (cmdOpts.clean && testFiles.length > 0) {
+        const { existsSync } = await import("node:fs");
+        const { unlink } = await import("node:fs/promises");
+        for (const tf of testFiles) {
+          const absPath = tf.startsWith("/") ? tf : join(projectRoot, tf);
+          if (existsSync(absPath)) {
+            try {
+              await unlink(absPath);
+              cleanedFiles++;
+            } catch {
+              // File may be locked or already deleted
+            }
+          }
+        }
+      }
+
+      console.log(chalk.bold("\n  Clear Results"));
+      logger.table({
+        "Runs Deleted": deletedCount,
+        "Test Files Found": testFiles.length,
+        "Test Files Deleted": cleanedFiles,
+      });
+
+      if (deletedCount === 0) {
+        logger.warn("No runs matched the specified criteria.");
+      } else {
+        logger.success(`Deleted ${deletedCount} run(s)`);
+      }
+    } catch (err) {
+      logger.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+  });
+
+// ─── recheck ────────────────────────────────────────────────
+
+program
+  .command("recheck")
+  .argument("[path]", "Project root path", ".")
+  .option("--run <runId>", "Target a specific run ID (defaults to latest)")
+  .option("--plan-ids <ids>", "Comma-separated plan IDs to recheck (defaults to all plans with test files)")
+  .description("Re-run existing test files and update status (no AI refinement)")
+  .action(async (pathArg: string, cmdOpts: { run?: string; planIds?: string }) => {
+    const projectRoot = resolveProjectRoot(pathArg);
+    const opts = program.opts();
+    const spinner = ora("Rechecking tests...").start();
+
+    try {
+      const planIds = cmdOpts.planIds
+        ? cmdOpts.planIds.split(",").map((id) => id.trim())
+        : undefined;
+
+      const report = await recheckTests(
+        {
+          projectRoot,
+          runId: cmdOpts.run,
+          planIds,
+        },
+        (event) => {
+          if (opts["verbose"]) {
+            createEventHandler(true)(event);
+          }
+        },
+      );
+
+      spinner.stop();
+
+      // Display summary
+      console.log(chalk.bold("\n  Recheck Results"));
+      const s = report.summary;
+      const statusColor =
+        s.status === "all-passed"
+          ? chalk.green
+          : s.status === "has-failures"
+            ? chalk.red
+            : chalk.yellow;
+
+      logger.table({
+        "Run ID": report.runId ?? "-",
+        Status: statusColor(s.status),
+        "Total Tests": s.totalTests,
+        Passed: chalk.green(String(s.passed)),
+        Failed: s.failed > 0 ? chalk.red(String(s.failed)) : String(s.failed),
+        Errors: s.errorCount > 0 ? chalk.red(String(s.errorCount)) : String(s.errorCount),
+        Duration: `${report.duration}ms`,
+      });
+
+      if (s.status !== "all-passed") {
+        process.exit(1);
+      }
+    } catch (err) {
+      spinner.fail("Recheck failed");
       logger.error(err instanceof Error ? err.message : String(err));
       process.exit(1);
     }

@@ -21,6 +21,7 @@ import type {
 import {
   buildTestGenerationPrompt,
   buildTestRefinementPrompt,
+  buildSimplifiedGenerationPrompt,
 } from "../ai/prompts.js";
 
 export class AIGenerator {
@@ -71,6 +72,11 @@ export class AIGenerator {
 
       // Guard: if extraction produced non-code (e.g. error message), skip
       if (!looksLikeTestCode(code)) {
+        // Detect "prompt too long" — try simplified prompt inline
+        if (isPromptTooLongError(content)) {
+          console.warn(`[coverit] Prompt too long, retrying with simplified prompt...`);
+          return this.generateSimplified(input);
+        }
         warnings.push(`AI returned non-code response: ${content.slice(0, 120)}`);
         return { tests, warnings, skipped };
       }
@@ -89,10 +95,23 @@ export class AIGenerator {
         }
         const retryCode = extractCodeFromResponse(retryContent);
         if (retryResponse.truncated || isTruncated(retryCode)) {
-          warnings.push("AI generation still truncated after retry");
-          return { tests, warnings, skipped };
+          // Attempt to auto-close braces if the code looks salvageable
+          if (looksLikeTestCode(retryCode)) {
+            const repaired = autoCloseBraces(retryCode);
+            if (repaired && !isTruncated(repaired)) {
+              warnings.push("AI generation was truncated — auto-closed braces to salvage output");
+              code = repaired;
+            } else {
+              warnings.push("AI generation still truncated after retry (unfixable imbalance)");
+              return { tests, warnings, skipped };
+            }
+          } else {
+            warnings.push("AI generation still truncated after retry");
+            return { tests, warnings, skipped };
+          }
+        } else {
+          code = retryCode;
         }
-        code = retryCode;
       }
 
       const testCount = countTestCases(code);
@@ -108,6 +127,11 @@ export class AIGenerator {
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      // If the error itself indicates prompt too long, try simplified
+      if (isPromptTooLongError(msg)) {
+        console.warn(`[coverit] Prompt too long (error), retrying with simplified prompt...`);
+        return this.generateSimplified(input);
+      }
       warnings.push(`AI generation failed: ${msg}`);
     }
 
@@ -138,6 +162,12 @@ export class AIGenerator {
 
       let code = extractCodeFromResponse(content);
 
+      // Detect prompt-too-long errors in refinement
+      if (!looksLikeTestCode(code) && isPromptTooLongError(content)) {
+        console.warn(`[coverit] Refinement prompt too long — cannot refine`);
+        return null;
+      }
+
       if (response.truncated || isTruncated(code)) {
         console.warn(`[coverit] AI refinement truncated, retrying with higher limit...`);
         const retryResponse = await this.aiProvider.generate(messages, {
@@ -148,10 +178,22 @@ export class AIGenerator {
         if (!retryContent) return null;
         const retryCode = extractCodeFromResponse(retryContent);
         if (retryResponse.truncated || isTruncated(retryCode)) {
-          console.error(`[coverit] AI refinement still truncated after retry`);
-          return null;
+          if (looksLikeTestCode(retryCode)) {
+            const repaired = autoCloseBraces(retryCode);
+            if (repaired && !isTruncated(repaired)) {
+              console.warn(`[coverit] AI refinement was truncated — auto-closed braces to salvage output`);
+              code = repaired;
+            } else {
+              console.error(`[coverit] AI refinement still truncated after retry (unfixable imbalance)`);
+              return null;
+            }
+          } else {
+            console.error(`[coverit] AI refinement still truncated after retry`);
+            return null;
+          }
+        } else {
+          code = retryCode;
         }
-        code = retryCode;
       }
 
       return code;
@@ -160,6 +202,74 @@ export class AIGenerator {
       console.error(`[coverit] AI refinement failed: ${msg}`);
       return null;
     }
+  }
+
+  async generateSimplified(input: GenerationInput): Promise<GeneratorResult> {
+    const tests: GeneratedTest[] = [];
+    const warnings: string[] = [];
+    const skipped: SkippedItem[] = [];
+
+    if (!this.aiProvider) {
+      warnings.push("No AI provider available — cannot generate tests");
+      return { tests, warnings, skipped };
+    }
+
+    try {
+      const messages = buildSimplifiedGenerationPrompt({
+        plan: input.plan,
+        project: input.project,
+        sourceFiles: input.sourceFiles,
+        existingTestContent: input.existingTestContent,
+        testTypes: input.testTypes,
+      });
+
+      const response = await this.aiProvider.generate(messages, {
+        temperature: 0.2,
+        maxTokens: 16384,
+      });
+
+      const content = response.content.trim();
+      if (!content) {
+        warnings.push("AI simplified generation returned empty response");
+        return { tests, warnings, skipped };
+      }
+
+      let code = extractCodeFromResponse(content);
+
+      if (!looksLikeTestCode(code)) {
+        warnings.push(`AI simplified generation returned non-code: ${content.slice(0, 120)}`);
+        return { tests, warnings, skipped };
+      }
+
+      // No truncation retry — the simplified prompt is already compact
+      if (isTruncated(code)) {
+        const repaired = autoCloseBraces(code);
+        if (repaired && !isTruncated(repaired)) {
+          warnings.push("Simplified generation truncated — auto-closed braces");
+          code = repaired;
+        } else {
+          warnings.push("Simplified generation truncated beyond repair");
+          return { tests, warnings, skipped };
+        }
+      }
+
+      const testCount = countTestCases(code);
+      const framework = resolveTestFramework(this.project.testFramework);
+
+      tests.push({
+        planId: input.plan.id,
+        filePath: input.plan.outputTestFile,
+        content: code,
+        testType: input.plan.testTypes[0] ?? "unit",
+        testCount,
+        framework,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      warnings.push(`AI simplified generation failed: ${msg}`);
+    }
+
+    return { tests, warnings, skipped };
   }
 }
 
@@ -185,7 +295,66 @@ function extractCodeFromResponse(raw: string): string {
     if (longest[1]) return longest[1].trim();
   }
 
+  return stripPreamble(raw);
+}
+
+function stripPreamble(raw: string): string {
+  const lines = raw.split("\n");
+  const codePattern = /^\s*(import\s|export\s|const\s|let\s|var\s|function\s|class\s|\/\/|\/\*|describe\s*\(|it\s*\(|test\s*\(|['"]use\s)/;
+  for (let i = 0; i < lines.length; i++) {
+    if (codePattern.test(lines[i]!)) {
+      if (i === 0) return raw;
+      return lines.slice(i).join("\n");
+    }
+  }
   return raw;
+}
+
+function autoCloseBraces(code: string): string | null {
+  const openers: string[] = [];
+  let inStr = false;
+  let strCh = "";
+  let backticks = 0;
+
+  for (let i = 0; i < code.length; i++) {
+    const ch = code[i]!;
+    const prev = code[i - 1] ?? "";
+    if (inStr) {
+      if (ch === strCh && prev !== "\\") inStr = false;
+      continue;
+    }
+    if (ch === "`") {
+      backticks++;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      inStr = true;
+      strCh = ch;
+      continue;
+    }
+    if (ch === "{" || ch === "[" || ch === "(") {
+      openers.push(ch);
+    } else if (ch === "}" || ch === "]" || ch === ")") {
+      openers.pop();
+    }
+  }
+
+  // Handle unclosed template literals
+  if (backticks % 2 !== 0) {
+    code += "`";
+  }
+
+  const imbalance = openers.length;
+  if (imbalance === 0) return code;
+  if (imbalance > 5) return null; // too damaged
+
+  const closerMap: Record<string, string> = { "{": "}", "[": "]", "(": ")" };
+  const closers = openers.reverse().map((o) => closerMap[o] ?? "}");
+  return code + "\n" + closers.join("\n") + "\n";
+}
+
+function isPromptTooLongError(text: string): boolean {
+  return /prompt\s+(is\s+)?too\s+long|context\s+(length|window)\s+exceeded|maximum\s+context|token\s+limit/i.test(text);
 }
 
 function isTruncated(code: string): boolean {

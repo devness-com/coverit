@@ -382,6 +382,8 @@ export interface CoveritReport {
   strategy: TestStrategy;
   results: ExecutionResult[];
   summary: ReportSummary;
+  /** Files skipped by triage with reasons (e.g. "already covered by X.spec.ts") */
+  triageSkipped?: TriageSkipped[];
 }
 
 export interface ReportSummary {
@@ -465,6 +467,17 @@ export interface CoveritFixConfig {
   runId?: string;
   maxRetries?: number;
   ai?: CoveritConfig["ai"];
+}
+
+export interface CoveritRecheckConfig {
+  projectRoot: string;
+  planIds?: string[];
+  runId?: string;
+}
+
+export interface CoveritVerifyConfig {
+  projectRoot: string;
+  runId?: string;
 }
 
 // ─── Event Types (for progress reporting) ────────────────────

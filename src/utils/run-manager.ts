@@ -6,7 +6,7 @@
  * and report files.
  */
 
-import { mkdir, writeFile, readFile, readdir } from "node:fs/promises";
+import { mkdir, writeFile, readFile, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
 import { randomBytes } from "node:crypto";
@@ -299,6 +299,68 @@ export async function getRunStatus(
   }
 
   return { meta, plans };
+}
+
+// ─── Delete / Clear ─────────────────────────────────────────
+
+export async function deleteRun(
+  projectRoot: string,
+  runId: string,
+): Promise<{ deleted: boolean; testFiles: string[] }> {
+  const runDir = getRunDir(projectRoot, runId);
+  if (!existsSync(runDir)) {
+    throw new Error(`Run not found: ${runId}`);
+  }
+
+  // Collect generated test file paths from progress files before deleting
+  const testFiles: string[] = [];
+  const progressDir = join(runDir, "progress");
+  if (existsSync(progressDir)) {
+    const plans = await readProgressFiles(progressDir);
+    for (const p of plans) {
+      if (p.testFile) testFiles.push(p.testFile);
+    }
+  }
+
+  await rm(runDir, { recursive: true, force: true });
+
+  // Update latest.json if it pointed to this run
+  const latestPath = getLatestPath(projectRoot);
+  if (existsSync(latestPath)) {
+    try {
+      const data = JSON.parse(await readFile(latestPath, "utf-8")) as { runId: string };
+      if (data.runId === runId) {
+        // Point to the next most recent run, or remove latest.json
+        const remaining = await listRuns(projectRoot);
+        if (remaining.length > 0) {
+          await writeFile(latestPath, JSON.stringify({ runId: remaining[0]!.runId }, null, 2), "utf-8");
+        } else {
+          await rm(latestPath, { force: true });
+        }
+      }
+    } catch {
+      // Corrupt latest.json — ignore
+    }
+  }
+
+  return { deleted: true, testFiles };
+}
+
+export async function clearRuns(
+  projectRoot: string,
+  scope?: string,
+): Promise<{ deletedCount: number; testFiles: string[] }> {
+  const runs = await listRuns(projectRoot, scope);
+  const allTestFiles: string[] = [];
+  let deletedCount = 0;
+
+  for (const run of runs) {
+    const result = await deleteRun(projectRoot, run.runId);
+    deletedCount++;
+    allTestFiles.push(...result.testFiles);
+  }
+
+  return { deletedCount, testFiles: allTestFiles };
 }
 
 /**
