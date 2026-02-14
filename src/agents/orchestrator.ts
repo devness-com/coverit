@@ -542,6 +542,7 @@ export async function fixFailingTests(
     triage?: TriageResult;
     // Legacy V2 support
     strategy?: TestStrategy;
+    context?: ContextBundle;
   };
 
   // Support both V4/V3 (triage) and V2 (strategy) cache formats
@@ -581,7 +582,26 @@ export async function fixFailingTests(
     if (progress.status !== "failed" && progress.status !== "error" && progress.status !== "skipped") continue;
     if (config.planIds && !config.planIds.includes(progress.planId)) continue;
 
-    const plan = triagePlans.find((p) => p.id === progress.planId);
+    let plan = triagePlans.find((p) => p.id === progress.planId);
+
+    // Construct synthetic plan for verify_* IDs (from /coverit:verify runs)
+    if (!plan && progress.planId.startsWith("verify_") && cachedData.context?.existingTests) {
+      const verifyIdx = parseInt(progress.planId.replace("verify_", ""), 10) - 1;
+      const existingTest = cachedData.context.existingTests[verifyIdx];
+      if (existingTest) {
+        plan = {
+          id: progress.planId,
+          targetFiles: existingTest.importsFrom ?? [],
+          testTypes: ["unit"],
+          existingTestFile: existingTest.path,
+          outputTestFile: existingTest.path,
+          description: `Fix ${existingTest.path}`,
+          priority: "medium" as const,
+          environment: "local" as const,
+        };
+      }
+    }
+
     if (!plan) continue;
 
     // For skipped plans, resolve test file from triage plan if not in progress
@@ -681,6 +701,15 @@ export async function fixFailingTests(
             lastFailures = planResult.failures;
             break;
           }
+        }
+      }
+      // Also check verify-report.json (from /coverit:verify runs)
+      if (lastFailures.length === 0) {
+        const verifyReportPath = join(runDir, "verify-report.json");
+        if (existsSync(verifyReportPath)) {
+          const vr = JSON.parse(await readFile(verifyReportPath, "utf-8"));
+          const planResult = (vr.results as ExecutionResult[])?.find((r) => r.planId === plan.id);
+          if (planResult) lastFailures = planResult.failures;
         }
       }
     } catch {
@@ -1128,12 +1157,32 @@ export async function verifyExistingTests(
         );
 
         emit(onEvent, { type: "execution:complete", data: { result: execResult } });
-        return execResult;
+        return { result: execResult, testFilePath };
       }),
     );
 
-    allResults.push(...batchResults);
+    for (const { result, testFilePath } of batchResults) {
+      allResults.push(result);
+
+      // Persist progress file so /coverit:fix can discover verify failures
+      await updateProgress(runDir, result.planId, {
+        planId: result.planId,
+        status: result.status === "passed" ? "passed" : result.status === "error" ? "error" : "failed",
+        description: `Verify ${testFilePath}`,
+        testFile: testFilePath,
+        passed: result.passed,
+        failed: result.failed,
+        duration: result.duration,
+      });
+    }
   }
+
+  // Persist verify report for fix pipeline to read failure details
+  await writeFile(
+    join(runDir, "verify-report.json"),
+    JSON.stringify({ results: allResults }, null, 2),
+    "utf-8",
+  );
 
   // Build report
   const verifyStrategy: TestStrategy = {

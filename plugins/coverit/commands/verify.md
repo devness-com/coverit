@@ -50,3 +50,9 @@ Results: N/M test files passing (X tests passed, Y failed)
 
 All existing tests pass. The PR's test coverage is verified.
 ```
+
+If any test files failed or errored, add at the end:
+
+```
+Run `/coverit:fix` to attempt AI-powered fixes on the failing tests.
+```

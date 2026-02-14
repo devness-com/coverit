@@ -51,6 +51,10 @@ jobs:
           cp README.md /tmp/plugin-repo/
           cp LICENSE /tmp/plugin-repo/
 
+      - name: Get source commit message
+        id: get-msg
+        run: echo "msg=$(git log -1 --pretty=format:'%s')" >> "$GITHUB_OUTPUT"
+
       - name: Commit and push
         run: |
           cd /tmp/plugin-repo
@@ -61,8 +65,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "No changes to sync"
           else
-            COMMIT_MSG=$(git -C $GITHUB_WORKSPACE log -1 --pretty=format:"%s")
-            git commit -m "Sync: $COMMIT_MSG"
+            git commit -m "Sync: ${{ steps.get-msg.outputs.msg }}"
             git push origin main
             echo "Plugin repo synced"
           fi

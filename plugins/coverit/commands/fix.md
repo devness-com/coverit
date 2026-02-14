@@ -4,7 +4,7 @@ description: "Fix failing tests from the last coverit run using AI refinement"
 
 # Coverit Fix
 
-Fix failing tests from a previous `/coverit:run`. Reads failure details from `.coverit/progress/` files, uses AI to refine test code, and re-executes only the failed plans.
+Fix failing tests from a previous `/coverit:run` or `/coverit:verify`. Reads failure details from `.coverit/progress/` files, uses AI to refine test code, and re-executes only the failed plans.
 
 ## Arguments
 

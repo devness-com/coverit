@@ -162,9 +162,13 @@ export class AIGenerator {
 
       let code = extractCodeFromResponse(content);
 
-      // Detect prompt-too-long errors in refinement
-      if (!looksLikeTestCode(code) && isPromptTooLongError(content)) {
-        console.warn(`[coverit] Refinement prompt too long — cannot refine`);
+      // Guard: if extraction produced non-code, reject it
+      if (!looksLikeTestCode(code)) {
+        if (isPromptTooLongError(content)) {
+          console.warn(`[coverit] Refinement prompt too long — cannot refine`);
+        } else {
+          console.warn(`[coverit] AI refinement returned non-code response: ${content.slice(0, 120)}`);
+        }
         return null;
       }
 
