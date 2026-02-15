@@ -1,10 +1,10 @@
 ---
-description: "Analyze a codebase and display the test strategy"
+description: "SGR Step 1: Analyze a codebase and display the test strategy"
 ---
 
 # Coverit Scan
 
-Analyze a codebase and display the test strategy without generating or running tests.
+**Step 1 of the SGR pipeline** (Scan → Generate → Run). Analyzes a codebase and displays the test strategy without generating or running tests.
 
 ## IMPORTANT: Run via sub-agent to protect context
 

@@ -102,14 +102,27 @@ server.tool(
         "Types of tests to include in the strategy (unit, api, e2e-browser, etc.). Omit for all.",
       ),
     ...diffSourceSchema,
+    priorFailures: z
+      .array(
+        z.object({
+          planId: z.string(),
+          description: z.string(),
+          testFile: z.string(),
+          failureMessages: z.array(z.string()),
+          priorTestCode: z.string().optional(),
+        }),
+      )
+      .optional()
+      .describe("Failure data from a prior SGR cycle for re-scanning with different approach"),
   },
-  async ({ projectRoot, testTypes, baseBranch, commit, pr, files, staged, all }) => {
+  async ({ projectRoot, testTypes, baseBranch, commit, pr, files, staged, all, priorFailures }) => {
     try {
       const config: CoveritConfig = {
         projectRoot,
         testTypes: parseTestTypes(testTypes),
         diffSource: parseDiffSource({ baseBranch, commit, pr, files, staged, all }),
         analyzeOnly: true,
+        priorFailures,
       };
 
       const report = await orchestrate(config);

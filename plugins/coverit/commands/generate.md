@@ -1,10 +1,10 @@
 ---
-description: "Generate test files from a prior scan without executing them"
+description: "SGR Step 2: Generate test files from a prior scan without executing them"
 ---
 
 # Coverit Generate
 
-Generate test files from plans produced by a prior `/coverit:scan`. This is the middle step in the SGR pipeline (Scan → Generate → Run).
+**Step 2 of the SGR pipeline** (Scan → Generate → Run). Generates test files from plans produced by a prior `/coverit:scan`.
 
 Does NOT execute tests — only writes test files to disk for review.
 

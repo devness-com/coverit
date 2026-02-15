@@ -24,7 +24,17 @@ import type {
  */
 export function buildTriagePrompt(
   context: ContextBundle,
-  options?: { testTypes?: TestType[]; scanMode?: "all" | "diff" },
+  options?: {
+    testTypes?: TestType[];
+    scanMode?: "all" | "diff";
+    priorFailures?: Array<{
+      planId: string;
+      description: string;
+      testFile: string;
+      failureMessages: string[];
+      priorTestCode?: string;
+    }>;
+  },
 ): AIMessage[] {
   const isFullScan = options?.scanMode === "all";
 
@@ -154,6 +164,38 @@ You have access to the Read tool. Use it to examine any source files or test fil
     userParts.push(`## Constraints`);
     userParts.push(`Only generate plans for these test types: ${options.testTypes.join(", ")}`);
     userParts.push("");
+  }
+
+  // Prior failures from SGR loop — inform re-scanning
+  if (options?.priorFailures && options.priorFailures.length > 0) {
+    userParts.push(`## Prior SGR Cycle Failures`);
+    userParts.push(`This is a RE-SCAN after a previous cycle where some tests failed.`);
+    userParts.push(`You MUST generate new plans for the failed items below using a DIFFERENT approach.`);
+    userParts.push(`Do NOT repeat the same test strategy that failed — try fundamentally different:`);
+    userParts.push(`- Different mocking strategies (mock more/less, use different mock patterns)`);
+    userParts.push(`- Different test granularity (split into smaller units, or test at a higher level)`);
+    userParts.push(`- Different assertions (focus on different behaviors, edge cases)`);
+    userParts.push(`- Skip functions that are genuinely untestable in isolation`);
+    userParts.push("");
+    for (const failure of options.priorFailures) {
+      userParts.push(`### ${failure.planId}: ${failure.description}`);
+      userParts.push(`Test file: ${failure.testFile}`);
+      userParts.push(`Failures:`);
+      for (const msg of failure.failureMessages.slice(0, 5)) {
+        userParts.push(`  - ${msg}`);
+      }
+      if (failure.priorTestCode) {
+        // Only show first 100 lines of prior test code to avoid token overload
+        const lines = failure.priorTestCode.split("\n");
+        const truncated = lines.slice(0, 100).join("\n");
+        userParts.push(`Prior test code (first 100 lines):`);
+        userParts.push("```");
+        userParts.push(truncated);
+        if (lines.length > 100) userParts.push(`... (${lines.length - 100} more lines)`);
+        userParts.push("```");
+      }
+      userParts.push("");
+    }
   }
 
   return [

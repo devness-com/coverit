@@ -4,7 +4,9 @@ description: "Fix failing tests from the last coverit run using AI refinement"
 
 # Coverit Fix
 
-Fix failing tests from a previous `/coverit:run`, `/coverit:full`, or `/coverit:check`. Reads failure details from `.coverit/progress/` files, uses AI to refine test code, and re-executes only the failed plans.
+Fix failing tests from a previous SGR run (`/coverit:run`, `/coverit:full`, or `/coverit:check`). Reads failure details from `.coverit/progress/` files, uses AI to refine test code, and re-executes only the failed plans.
+
+Unlike the SGR loop in `/coverit:full --cycles`, this command does lightweight per-file refinement without re-scanning or re-planning.
 
 ## Arguments
 

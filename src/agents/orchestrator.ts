@@ -1276,6 +1276,7 @@ async function runAnalysisV2(
       testTypes: config.testTypes,
       projectRoot: config.projectRoot,
       scanMode,
+      priorFailures: config.priorFailures,
     });
   } else {
     logger.error("No AI provider available — cannot triage without AI");

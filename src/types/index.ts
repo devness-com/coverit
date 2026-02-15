@@ -450,6 +450,14 @@ export interface CoveritConfig {
   analyzeOnly?: boolean;
   skipExecution?: boolean;
   generateOnly?: boolean;
+  /** Prior cycle failures for SGR loop re-scanning */
+  priorFailures?: Array<{
+    planId: string;
+    description: string;
+    testFile: string;
+    failureMessages: string[];
+    priorTestCode?: string;
+  }>;
   cleanupTestFiles?: boolean;
   coverageThreshold?: number;
   cloudConfig?: CloudConfig;
