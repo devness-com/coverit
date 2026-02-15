@@ -281,9 +281,13 @@ server.tool(
       .boolean()
       .optional()
       .describe("Collect coverage data (defaults to false)"),
+    generateOnly: z
+      .boolean()
+      .optional()
+      .describe("Generate test files without executing them (defaults to false)"),
     ...diffSourceSchema,
   },
-  async ({ projectRoot, planIds, runId, environment, coverage, baseBranch, commit, pr, files, staged, all }) => {
+  async ({ projectRoot, planIds, runId, environment, coverage, generateOnly, baseBranch, commit, pr, files, staged, all }) => {
     try {
       const config: CoveritConfig = {
         projectRoot,
@@ -293,6 +297,7 @@ server.tool(
         diffSource: parseDiffSource({ baseBranch, commit, pr, files, staged, all }),
         environment: environment ?? "local",
         coverageThreshold: coverage ? 0 : undefined,
+        generateOnly: generateOnly ?? false,
       };
 
       const report = await orchestrate(config);

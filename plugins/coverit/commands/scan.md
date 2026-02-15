@@ -49,7 +49,7 @@ Project Info
 If there are test plans (strategy.plans.length > 0):
   Test Plans (group by priority, show type, description, estimated tests)
   Summary: total plans, total estimated tests, execution phases
-  Note: "Use this runId with /coverit:run to execute plans."
+  Note: "Next: /coverit:generate <runId> to generate test files, or /coverit:full to do everything at once."
 
 If there are NO test plans (strategy.plans.length === 0):
   Show "All changes are already covered by existing tests." if skipped entries mention coverage.

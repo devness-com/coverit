@@ -1,87 +1,75 @@
 ---
-description: "Generate test files without running them"
+description: "Generate test files from a prior scan without executing them"
 ---
 
 # Coverit Generate
 
-Generate test files without executing them. Can reuse plans from a prior `/coverit:scan` or analyze from scratch.
+Generate test files from plans produced by a prior `/coverit:scan`. This is the middle step in the SGR pipeline (Scan → Generate → Run).
 
-## IMPORTANT: Run via sub-agent to protect context
-
-The MCP response can be very large. **You MUST delegate this to a sub-agent** using the Task tool to avoid filling up the main conversation context.
+Does NOT execute tests — only writes test files to disk for review.
 
 ## Arguments
 
 Parse from user input:
-- `[runId]` - Run ID from a prior scan (skips re-analysis). Anything starting with `run-` is a runId.
+- `[runId]` - Run ID from a prior scan (defaults to latest run). Anything starting with `run-` is a runId.
 - `[path]` - Project root path (defaults to current working directory)
-- `--base <branch>` - Diff against a specific base branch
-- `--commit <ref>` - Diff for a specific commit or range (e.g. HEAD~1, abc..def)
-- `--pr [number]` - Diff for a pull request by number (auto-detects base branch)
-- `--files <glob>` - Target specific files by glob pattern
-- `--staged` - Only analyze staged changes
-- `--all` - Scan all source files (full project coverage audit, ignores git diff)
-- `--type <types>` - Comma-separated test types (unit, api, e2e-browser, etc.)
+- `--plan <ids>` - Comma-separated plan IDs to generate (default: all plans)
 
 ## Execution
 
-### If a runId was provided
+### Phase 1: Load Plans from Prior Scan
 
-The user wants to generate tests for plans from a prior scan. Spawn **one sub-agent per plan** to generate in parallel.
+Determine the runId:
+- If user provided a runId argument, use it
+- Otherwise, read `<projectRoot>/.coverit/latest.json` to get the latest runId
 
-1. Read the strategy file at `<projectRoot>/.coverit/runs/<runId>/strategy.json`
-2. Extract plan IDs from `triage.plans[].id`
+Read the strategy file at `<projectRoot>/.coverit/runs/<runId>/strategy.json`. Parse it as JSON:
+- Extract plan IDs from `triage.plans[].id`
+- Extract plan descriptions from `triage.plans[].description`
+- If `--plan` was specified, filter to only those plan IDs
 
-Then spawn one sub-agent per plan using the Task tool with `subagent_type: "general-purpose"` and `run_in_background: true`:
+If the strategy file doesn't exist or has no plans, tell the user:
+"No plans found. Run `/coverit:scan` first to analyze the codebase, or use `/coverit:full` to do everything at once."
+
+### Phase 2: Generate via Sub-Agents
+
+Spawn **one sub-agent per plan** using the Task tool with `subagent_type: "general-purpose"` and `run_in_background: true`.
+
+**Spawn all sub-agents in a single message** so they run in parallel.
+
+Each sub-agent prompt:
 
 ```
 Call the `mcp__plugin_coverit_coverit__coverit_execute_batch` MCP tool with:
 {
   "projectRoot": "<absolute path>",
   "planIds": ["<planId>"],
-  "runId": "<runId>"
+  "runId": "<runId>",
+  "generateOnly": true
 }
 
-Note: This will generate AND execute. The generation output (test files) is what we care about.
-
-Return a concise summary:
-- planId, test file path, status
+Return a concise summary (NOT the full JSON):
+- planId, status, test file path (if generated)
 ```
 
-Wait for all sub-agents to complete, then show:
+**CRITICAL**: Each sub-agent MUST use the `mcp__plugin_coverit_coverit__coverit_execute_batch` MCP tool with `"generateOnly": true`. It must NOT use the CLI, shell commands, or `gh` to fetch diffs manually.
+
+### Phase 3: Aggregate & Report
+
+Wait for all sub-agents to complete. Read progress files from `<projectRoot>/.coverit/runs/<runId>/progress/*.json` to get the generated test file paths.
+
+Show the summary:
 
 ```
-Generated Tests
-  plan_001: src/services/user.service.test.ts — <description>
-  plan_002: src/utils/hash.test.ts — <description>
+Generated test files for run <runId>:
+
+  plan_001: src/utils/hash.test.ts — crypto utility functions
+  plan_002: src/services/auth.test.ts — session management
   ...
 
-Total: N test files written. Review them, then run /coverit:run <runId> to execute.
+Total: N test files written.
+
+Review the generated files, then run /coverit:run <runId> to execute them.
 ```
 
-### If no runId was provided (fresh analysis)
-
-Use the Task tool with `subagent_type: "general-purpose"` and a prompt like:
-
-```
-Call the `mcp__plugin_coverit_coverit__coverit_generate` MCP tool with:
-{
-  "projectRoot": "<absolute path>",
-  <...only include params the user specified...>
-  <if user specified --all, include "all": true>
-}
-
-Then format the response as a concise summary:
-
-Generated Tests
-  Plan <id>: N test(s) — <description>
-  ...
-
-Total: N test files written colocated next to source files
-```
-
-**CRITICAL**: The sub-agent MUST use the MCP tools. It must NOT use the `coverit` CLI binary, shell commands, or `gh` to fetch diffs manually.
-
-## Display
-
-Show the sub-agent's formatted summary to the user. Do NOT expand or re-process the raw JSON.
+If no test files were generated: "No test files were generated. Check the scan plans for details."

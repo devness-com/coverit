@@ -4,7 +4,7 @@ description: "Full pipeline: scan, generate, execute tests, and report — all i
 
 # Coverit Full
 
-Run the full coverit pipeline: analyze, generate tests, execute them, and produce a report. All in one command.
+Run the complete SGR pipeline (Scan → Generate → Run) in one command. Analyzes the codebase, generates tests, executes them, and produces a report.
 
 Uses phased sub-agent execution to handle large PRs without timing out.
 
