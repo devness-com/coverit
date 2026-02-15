@@ -433,7 +433,8 @@ export type DiffSource =
   | { mode: "commit"; ref: string }
   | { mode: "pr"; number?: number }
   | { mode: "files"; patterns: string[] }
-  | { mode: "staged" };
+  | { mode: "staged" }
+  | { mode: "all" };
 
 export interface CoveritConfig {
   projectRoot: string;

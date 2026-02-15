@@ -1,47 +1,39 @@
 ---
-description: "Full pipeline: analyze, generate, execute tests, and report"
+description: "Execute test plans from a prior scan"
 ---
 
 # Coverit Run
 
-Run the full coverit pipeline: analyze, generate tests, execute them, and produce a report.
+Execute test plans from a prior `/coverit:scan`. Generates test files and runs them for each plan.
 
-Uses phased sub-agent execution to handle large PRs without timing out.
+This is the "next step" after scanning — it skips re-analysis and directly executes the plans that were already identified.
 
 ## Arguments
 
 Parse from user input:
+- `[runId]` - Run ID from a prior scan (defaults to latest run). Anything starting with `run-` is a runId.
 - `[path]` - Project root path (defaults to current working directory)
-- `--base <branch>` - Diff against a specific base branch
-- `--commit <ref>` - Diff for a specific commit or range (e.g. HEAD~1, abc..def)
-- `--pr [number]` - Diff for a pull request by number (auto-detects base branch)
-- `--files <glob>` - Target specific files by glob pattern
-- `--staged` - Only analyze staged changes
-- `--type <types>` - Comma-separated test types (unit, api, e2e-browser, etc.)
+- `--plan <ids>` - Comma-separated plan IDs to execute (default: all plans in the run)
 - `--coverage` - Collect coverage data
 - `--env <env>` - Execution environment (local, cloud-sandbox)
 
-## Execution — Phased Sub-Agent Pipeline
+## Execution
 
-### Phase 1: Scan
+### Phase 1: Load Plans from Prior Scan
 
-Spawn a sub-agent to analyze the codebase and get the test strategy with plan IDs.
+Determine the runId:
+- If user provided a runId argument, use it
+- Otherwise, read `<projectRoot>/.coverit/latest.json` to get the latest runId
 
-Use the Task tool with `subagent_type: "general-purpose"`:
+Read the strategy file at `<projectRoot>/.coverit/runs/<runId>/strategy.json`. Parse it as JSON:
+- Extract plan IDs from `triage.plans[].id`
+- Extract plan descriptions from `triage.plans[].description`
+- If `--plan` was specified, filter to only those plan IDs
 
-```
-Call the `mcp__plugin_coverit_coverit__coverit_analyze` MCP tool with:
-{
-  "projectRoot": "<absolute path>",
-  <...only include diff params the user specified...>
-}
+If the strategy file doesn't exist or has no plans, tell the user:
+"No plans found for run {runId}. Run `/coverit:scan` first to analyze the codebase."
 
-Return a JSON object with "runId" and "planIds" keys, like:
-{"runId": "run-20260213-143022-a7f3", "planIds": ["plan_001", "plan_002", ...]}
-Nothing else.
-```
-
-Tell the user: "Scanning... found N plans. Run: {runId}"
+Tell the user: "Loaded N plans from run {runId}."
 
 ### Phase 2: Plan Tracking
 
@@ -61,7 +53,7 @@ Executing N plans (1 sub-agent per plan):
 
 Spawn **one sub-agent per plan** using the Task tool with `subagent_type: "general-purpose"` and `run_in_background: true`.
 
-**Spawn all sub-agents in a single message** so they run in parallel. Each plan gets its own isolated sub-agent with full context and token budget.
+**Spawn all sub-agents in a single message** so they run in parallel.
 
 Each sub-agent prompt:
 
@@ -70,8 +62,7 @@ Call the `mcp__plugin_coverit_coverit__coverit_execute_batch` MCP tool with:
 {
   "projectRoot": "<absolute path>",
   "planIds": ["<planId>"],
-  "runId": "<runId from scan>",
-  <...same diff params from the original command...>
+  "runId": "<runId>",
   <...environment and coverage if specified...>
 }
 
@@ -83,9 +74,7 @@ Return a concise summary (NOT the full JSON):
 
 ### Phase 4: Monitor Progress & Aggregate
 
-After launching all sub-agents, **actively monitor progress** by polling the per-plan progress files that the orchestrator writes in real-time.
-
-**Important**: Do NOT fall back to `coverit_full` or re-run the pipeline. Results are always available on disk in the progress files.
+After launching all sub-agents, **actively monitor progress** by polling the per-plan progress files.
 
 #### Poll Loop
 
@@ -97,7 +86,7 @@ While sub-agents are still running, repeat every 15–20 seconds:
 {
   "planId": "plan_001",
   "status": "generating" | "running" | "passed" | "failed" | "error" | "skipped",
-  "description": "unit tests for src/auth/service.ts — 3 function(s)",
+  "description": "unit tests for src/auth/service.ts",
   "testFile": "src/auth/service.test.ts",
   "passed": 5,
   "failed": 0,
@@ -106,22 +95,22 @@ While sub-agents are still running, repeat every 15–20 seconds:
 }
 ```
 
-2. **Check completion**: Call `TaskOutput` with `block: false` and `timeout: 5000` for each sub-agent task ID. When a sub-agent returns output, mark its task completed via TaskUpdate. Don't worry about parsing the sub-agent's text output — the progress files are the source of truth.
+2. **Check completion**: Call `TaskOutput` with `block: false` and `timeout: 5000` for each sub-agent task ID. When a sub-agent returns output, mark its task completed via TaskUpdate.
 
 3. **Print a progress update** each poll cycle:
 
 ```
-Progress: 8/14 plans complete (2 generating, 4 running)
+Progress: 5/7 plans complete (1 generating, 1 running)
   Recently completed:
-    plan_003: passed (5/5 tests, 1.2s) — unit tests for auth/service.ts
-    plan_004: failed (3/5 tests, 0.8s) — api tests for booking/controller.ts
+    plan_003: passed (5/5 tests, 1.2s) — crypto utility functions
+    plan_004: failed (3/5 tests, 0.8s) — hash chain logic
 ```
 
-4. **Determine completion**: All plans are done when every progress file has a terminal status (`passed`, `failed`, `error`, or `skipped`). Stop polling when this is true OR when all TaskOutput calls return completed.
+4. **Determine completion**: All plans are done when every progress file has a terminal status (`passed`, `failed`, `error`, or `skipped`).
 
 #### Aggregate from Disk
 
-After all sub-agents complete, read ALL `<projectRoot>/.coverit/runs/<runId>/progress/*.json` files and aggregate:
+After all sub-agents complete, read ALL progress files and aggregate:
 
 - Count plans by status (passed / failed / error / skipped)
 - Sum `passed` and `failed` test counts across all plans
@@ -142,3 +131,5 @@ Results Summary
 Failures (if any, list first 10):
   1. [planId] description — N/M tests passed (Xs)
 ```
+
+If there are failures, add: "Run `/coverit:fix` to attempt AI-powered fixes on the failing tests."

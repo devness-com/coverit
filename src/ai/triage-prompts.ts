@@ -24,9 +24,11 @@ import type {
  */
 export function buildTriagePrompt(
   context: ContextBundle,
-  options?: { testTypes?: TestType[] },
+  options?: { testTypes?: TestType[]; scanMode?: "all" | "diff" },
 ): AIMessage[] {
-  const system = `You are an expert test engineer deciding what tests to write for a code change.
+  const isFullScan = options?.scanMode === "all";
+
+  const systemDiff = `You are an expert test engineer deciding what tests to write for a code change.
 
 You have access to the Read tool. Use it to examine any source files or test files you need to analyze. Do NOT try to decide based on file names alone — read the actual code.
 
@@ -47,7 +49,32 @@ You have access to the Read tool. Use it to examine any source files or test fil
 - CRITICAL: Every plan MUST have a unique outputTestFile. If multiple files share a test file, merge into one plan with multiple targetFiles.
 - Be selective — focus on files with significant new testable logic.
 - Write specific descriptions mentioning the actual methods/features to test.
-- IMPORTANT — Split large methods: If a single method or function is longer than ~150 lines, split it into multiple plans by logical concern (e.g., validation, business logic, error handling, side effects). Each sub-plan should have a unique outputTestFile (e.g., service.validation.spec.ts, service.payment.spec.ts). This ensures each generation call stays focused and completes within time limits.
+- IMPORTANT — Split large methods: If a single method or function is longer than ~150 lines, split it into multiple plans by logical concern (e.g., validation, business logic, error handling, side effects). Each sub-plan should have a unique outputTestFile (e.g., service.validation.spec.ts, service.payment.spec.ts). This ensures each generation call stays focused and completes within time limits.`;
+
+  const systemAll = `You are an expert test engineer performing a full project coverage audit.
+
+You have access to the Read tool. Use it to examine any source files or test files you need to analyze. Do NOT try to decide based on file names alone — read the actual code.
+
+## Your workflow:
+1. Review the file list below (all source files in the project)
+2. Use the Read tool to examine source files that look like they have significant testable logic
+3. Use the Read tool to check existing test files to understand current coverage
+4. Identify files that are UNTESTED or have insufficient test coverage
+5. Output your triage plan as JSON
+
+## Rules:
+- Focus on finding **untested** files — files with runtime behavior that have no corresponding test file.
+- Skip files with no testable runtime behavior (pure types, interfaces, enums, configs, styles, DTOs with only decorators, module files that just wire DI, schema definitions, constant files). You can Read them to verify before skipping.
+- If an existing test file already provides good coverage for a source file, skip it.
+- Group related files into a single plan when they form a cohesive unit.
+- For API routes/controllers, use "api" test type. For services/utilities, use "unit".
+- Set priority: "critical" for core logic with no tests, "high" for important modules, "medium" for utilities, "low" for trivial.
+- CRITICAL: Every plan MUST have a unique outputTestFile. If multiple files share a test file, merge into one plan with multiple targetFiles.
+- Cap at 20 plans maximum — focus on the highest-value targets first.
+- Write specific descriptions mentioning the actual methods/features to test.
+- IMPORTANT — Split large files: If a source file is longer than ~300 lines, split it into multiple plans by logical concern. Each sub-plan should have a unique outputTestFile.`;
+
+  const outputFormat = `
 
 ## Output format — after reading files and analyzing, respond with ONLY valid JSON:
 {
@@ -64,6 +91,8 @@ You have access to the Read tool. Use it to examine any source files or test fil
     { "path": "src/types/index.ts", "reason": "Type-only file, no runtime behavior" }
   ]
 }`;
+
+  const system = (isFullScan ? systemAll : systemDiff) + outputFormat;
 
   const userParts: string[] = [];
 
@@ -84,14 +113,18 @@ You have access to the Read tool. Use it to examine any source files or test fil
     }
   }
 
-  // Changed source files — paths and stats only (no content)
-  userParts.push(`## Changed Source Files`);
+  // Source files — paths and stats only (no content)
+  userParts.push(isFullScan ? `## Source Files` : `## Changed Source Files`);
   userParts.push(`Use the Read tool to examine files you need to analyze.`);
   userParts.push("");
   for (const file of context.changedFiles) {
     // Skip test files from the source list
     if (/\.(test|spec)\.[jt]sx?$/.test(file.path)) continue;
-    userParts.push(`- ${file.path} (${file.status}, +${file.additions}/-${file.deletions})`);
+    if (isFullScan) {
+      userParts.push(`- ${file.path} (${file.additions} lines)`);
+    } else {
+      userParts.push(`- ${file.path} (${file.status}, +${file.additions}/-${file.deletions})`);
+    }
   }
   userParts.push("");
 

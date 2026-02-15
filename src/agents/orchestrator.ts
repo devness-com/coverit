@@ -40,11 +40,12 @@ import type { AIProvider, AIProviderConfig } from "../ai/types.js";
 import { createAIProvider, detectBestProvider } from "../ai/provider-factory.js";
 import {
   analyzeDiff,
+  analyzeDiffAll,
   analyzeDiffForCommit,
   analyzeDiffStaged,
   analyzeDiffForFiles,
 } from "../analysis/diff-analyzer.js";
-import { detectPRBaseBranch } from "../utils/git.js";
+import { detectPRBaseBranch, getCurrentBranch, getBaseBranch } from "../utils/git.js";
 import { collectContext } from "../analysis/context-collector.js";
 import { triageWithAI } from "../analysis/ai-triage.js";
 import { AIGenerator } from "../generators/ai-generator.js";
@@ -237,9 +238,25 @@ async function runDiff(config: CoveritConfig, projectRoot: string) {
       return analyzeDiffForFiles(projectRoot, diffSource.patterns);
     case "staged":
       return analyzeDiffStaged(projectRoot);
+    case "all":
+      return analyzeDiffAll(projectRoot);
     case "auto":
-    default:
-      return analyzeDiff(projectRoot);
+    default: {
+      // Try staged + unstaged changes first
+      const result = await analyzeDiff(projectRoot);
+      if (result.files.length > 0) return result;
+
+      // No local changes — check if we're on a feature branch
+      const currentBranch = await getCurrentBranch(projectRoot);
+      const baseBranch = await getBaseBranch(projectRoot);
+      if (currentBranch !== baseBranch) {
+        logger.info(`No local changes, auto-detecting feature branch: ${currentBranch} vs ${baseBranch}`);
+        return analyzeDiff(projectRoot, baseBranch);
+      }
+
+      // On base branch with no changes — return empty result
+      return result;
+    }
   }
 }
 
@@ -1232,11 +1249,14 @@ async function runAnalysisV2(
   const diffResult = await runDiff(config, config.projectRoot);
   const context = await collectContext(diffResult, config.projectRoot, projectInfo);
 
+  const scanMode = config.diffSource?.mode === "all" ? "all" as const : "diff" as const;
+
   let triage: TriageResult;
   if (aiProvider) {
     triage = await triageWithAI(context, aiProvider, {
       testTypes: config.testTypes,
       projectRoot: config.projectRoot,
+      scanMode,
     });
   } else {
     logger.error("No AI provider available — cannot triage without AI");

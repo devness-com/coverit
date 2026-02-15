@@ -23,14 +23,14 @@ import { logger } from "../utils/logger.js";
 export async function triageWithAI(
   context: ContextBundle,
   aiProvider: AIProvider,
-  options?: { testTypes?: TestType[]; projectRoot?: string },
+  options?: { testTypes?: TestType[]; projectRoot?: string; scanMode?: "all" | "diff" },
 ): Promise<TriageResult> {
   const MAX_ATTEMPTS = 2;
   let lastError: string | undefined;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      const messages = buildTriagePrompt(context, options);
+      const messages = buildTriagePrompt(context, { testTypes: options?.testTypes, scanMode: options?.scanMode });
       const response = await aiProvider.generate(messages, {
         temperature: attempt === 1 ? 0.1 : 0.2, // slightly higher temp on retry
         maxTokens: 16384,

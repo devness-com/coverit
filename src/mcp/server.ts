@@ -55,6 +55,10 @@ const diffSourceSchema = {
     .boolean()
     .optional()
     .describe("Only analyze staged (git index) changes"),
+  all: z
+    .boolean()
+    .optional()
+    .describe("Scan all source files in the project (full coverage audit, ignores git diff)"),
 };
 
 /**
@@ -67,11 +71,13 @@ function parseDiffSource(params: {
   pr?: number;
   files?: string[];
   staged?: boolean;
+  all?: boolean;
 }): DiffSource | undefined {
   if (params.staged) return { mode: "staged" };
   if (params.commit) return { mode: "commit", ref: params.commit };
   if (params.pr !== undefined) return { mode: "pr", number: params.pr };
   if (params.files && params.files.length > 0) return { mode: "files", patterns: params.files };
+  if (params.all) return { mode: "all" };
   if (params.baseBranch) return { mode: "base", branch: params.baseBranch };
   return undefined;
 }
@@ -97,12 +103,12 @@ server.tool(
       ),
     ...diffSourceSchema,
   },
-  async ({ projectRoot, testTypes, baseBranch, commit, pr, files, staged }) => {
+  async ({ projectRoot, testTypes, baseBranch, commit, pr, files, staged, all }) => {
     try {
       const config: CoveritConfig = {
         projectRoot,
         testTypes: parseTestTypes(testTypes),
-        diffSource: parseDiffSource({ baseBranch, commit, pr, files, staged }),
+        diffSource: parseDiffSource({ baseBranch, commit, pr, files, staged, all }),
         analyzeOnly: true,
       };
 
@@ -147,12 +153,12 @@ server.tool(
       ),
     ...diffSourceSchema,
   },
-  async ({ projectRoot, testTypes, baseBranch, commit, pr, files, staged }) => {
+  async ({ projectRoot, testTypes, baseBranch, commit, pr, files, staged, all }) => {
     try {
       const config: CoveritConfig = {
         projectRoot,
         testTypes: parseTestTypes(testTypes),
-        diffSource: parseDiffSource({ baseBranch, commit, pr, files, staged }),
+        diffSource: parseDiffSource({ baseBranch, commit, pr, files, staged, all }),
         generateOnly: true,
       };
 
@@ -213,12 +219,12 @@ server.tool(
       .describe("Collect coverage data (defaults to false)"),
     ...diffSourceSchema,
   },
-  async ({ projectRoot, testTypes, environment, coverage, baseBranch, commit, pr, files, staged }) => {
+  async ({ projectRoot, testTypes, environment, coverage, baseBranch, commit, pr, files, staged, all }) => {
     try {
       const config: CoveritConfig = {
         projectRoot,
         testTypes: parseTestTypes(testTypes),
-        diffSource: parseDiffSource({ baseBranch, commit, pr, files, staged }),
+        diffSource: parseDiffSource({ baseBranch, commit, pr, files, staged, all }),
         environment: environment ?? "local",
         coverageThreshold: coverage ? 0 : undefined,
       };
@@ -277,14 +283,14 @@ server.tool(
       .describe("Collect coverage data (defaults to false)"),
     ...diffSourceSchema,
   },
-  async ({ projectRoot, planIds, runId, environment, coverage, baseBranch, commit, pr, files, staged }) => {
+  async ({ projectRoot, planIds, runId, environment, coverage, baseBranch, commit, pr, files, staged, all }) => {
     try {
       const config: CoveritConfig = {
         projectRoot,
         planIds,
         runId,
         useCache: true,
-        diffSource: parseDiffSource({ baseBranch, commit, pr, files, staged }),
+        diffSource: parseDiffSource({ baseBranch, commit, pr, files, staged, all }),
         environment: environment ?? "local",
         coverageThreshold: coverage ? 0 : undefined,
       };
@@ -491,12 +497,12 @@ server.tool(
       .describe("Collect coverage data (defaults to false)"),
     ...diffSourceSchema,
   },
-  async ({ projectRoot, testTypes, environment, coverage, baseBranch, commit, pr, files, staged }) => {
+  async ({ projectRoot, testTypes, environment, coverage, baseBranch, commit, pr, files, staged, all }) => {
     try {
       const config: CoveritConfig = {
         projectRoot,
         testTypes: parseTestTypes(testTypes),
-        diffSource: parseDiffSource({ baseBranch, commit, pr, files, staged }),
+        diffSource: parseDiffSource({ baseBranch, commit, pr, files, staged, all }),
         environment: environment ?? "local",
         coverageThreshold: coverage ? 0 : undefined,
       };

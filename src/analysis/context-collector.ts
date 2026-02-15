@@ -200,10 +200,10 @@ function truncateToHunks(
  * Build a lightweight diff summary string for the triage prompt.
  */
 function buildDiffSummary(diffResult: DiffResult): string {
-  const lines: string[] = [
-    `${diffResult.files.length} file(s) changed (${diffResult.baseBranch} → ${diffResult.headBranch})`,
-    "",
-  ];
+  const header = diffResult.baseBranch === "all"
+    ? `${diffResult.files.length} source file(s) (full project scan)`
+    : `${diffResult.files.length} file(s) changed (${diffResult.baseBranch} → ${diffResult.headBranch})`;
+  const lines: string[] = [header, ""];
 
   for (const file of diffResult.files) {
     const stats = file.status === "deleted"

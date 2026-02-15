@@ -19,6 +19,7 @@ Parse from user input:
 - `--pr [number]` - Diff for a pull request by number (auto-detects base branch)
 - `--files <glob>` - Target specific files by glob pattern
 - `--staged` - Only analyze staged changes
+- `--all` - Scan all source files (full project coverage audit, ignores git diff)
 - `--type <types>` - Comma-separated test types (unit, api, e2e-browser, etc.)
 
 ## Execution
@@ -30,6 +31,7 @@ Call the `mcp__plugin_coverit_coverit__coverit_analyze` MCP tool with:
 {
   "projectRoot": "<absolute path>",
   <...only include diff params the user specified...>
+  <if user specified --all, include "all": true>
 }
 
 The response JSON includes:
@@ -58,6 +60,7 @@ If there are NO test plans (strategy.plans.length === 0):
     - End with: "Run /coverit:verify to execute the existing test suites and confirm they pass."
   If skipped entries do NOT mention coverage (only configs/DTOs/etc.), show:
     "No testable changes found — all changes are configs, DTOs, schemas, or module wiring."
+    Then add: "Tip: Use /coverit:scan --all for a full project coverage audit."
 ```
 
 **CRITICAL**: The sub-agent MUST use the `mcp__plugin_coverit_coverit__coverit_analyze` MCP tool. It must NOT use the `coverit` CLI binary, shell commands, or `gh` to fetch diffs manually.

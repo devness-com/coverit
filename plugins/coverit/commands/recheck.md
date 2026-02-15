@@ -4,7 +4,7 @@ description: "Re-run existing test files and update status (no AI refinement)"
 
 # Coverit Recheck
 
-Re-run existing test files from a prior `/coverit:run` and update progress status. Use this after manually fixing tests outside the coverit pipeline — it executes the test files as-is (no AI refinement) and updates the run's progress files and meta status.
+Re-run existing test files from a prior `/coverit:run` or `/coverit:full` and update progress status. Use this after manually fixing tests outside the coverit pipeline — it executes the test files as-is (no AI refinement) and updates the run's progress files and meta status.
 
 ## Arguments
 

@@ -389,6 +389,71 @@ export async function analyzeDiffStaged(
 }
 
 /**
+ * Analyze ALL source files in a project for a full coverage audit.
+ * Ignores test files, config files, style files, and common non-source directories.
+ *
+ * @param projectRoot - Absolute path to the git repository root
+ */
+export async function analyzeDiffAll(
+  projectRoot: string,
+): Promise<DiffResult> {
+  const root = resolve(projectRoot);
+
+  // Build glob patterns from supported extensions
+  const extensions = Object.keys(EXTENSION_TO_LANGUAGE).map((ext) => `**/*${ext}`);
+  const ignorePatterns = [
+    "node_modules/**", "dist/**", "build/**", ".coverit/**", ".next/**",
+    "coverage/**", "**/*.d.ts", ".git/**", "vendor/**", "__pycache__/**",
+  ];
+
+  const matchedFiles: string[] = [];
+  for (const pattern of extensions) {
+    const matches = await glob(pattern, { cwd: root, nodir: true, ignore: ignorePatterns });
+    matchedFiles.push(...matches);
+  }
+
+  // Deduplicate and filter out test files, config files, and style files
+  const uniqueFiles = [...new Set(matchedFiles)].filter((filePath) => {
+    const fileType = detectFileType(filePath);
+    return fileType !== "test" && fileType !== "config" && fileType !== "style";
+  });
+
+  if (uniqueFiles.length === 0) {
+    return {
+      files: [],
+      summary: "0 source file(s) in project (full scan)",
+      baseBranch: "all",
+      headBranch: "HEAD",
+    };
+  }
+
+  // Build ChangedFile entries by reading file line counts
+  const files: ChangedFile[] = [];
+  for (const filePath of uniqueFiles) {
+    try {
+      const fullPath = resolve(root, filePath);
+      const content = await readFile(fullPath, "utf-8");
+      const lines = content.split("\n").length;
+
+      files.push({
+        path: filePath,
+        status: "modified",
+        additions: lines,
+        deletions: 0,
+        hunks: [],
+        language: detectLanguage(filePath),
+        fileType: detectFileType(filePath),
+      });
+    } catch {
+      // File doesn't exist or can't be read — skip
+    }
+  }
+
+  const summary = `${files.length} source file(s) in project (full scan)`;
+  return { files, summary, baseBranch: "all", headBranch: "HEAD" };
+}
+
+/**
  * Analyze specific files by glob patterns, treating them as fully "modified".
  * The diff is computed against HEAD so hunks reflect working-tree state.
  *

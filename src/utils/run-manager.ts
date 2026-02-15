@@ -54,6 +54,8 @@ export function deriveScope(ds?: DiffSource): string {
       return `commit-${ds.ref}`;
     case "files":
       return "files";
+    case "all":
+      return "all";
     case "auto":
     default:
       return "auto";
