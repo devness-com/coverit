@@ -1,6 +1,6 @@
 {
   "name": "@devness/coverit",
-  "version": "0.3.36",
+  "version": "0.3.37",
   "description": "AI-powered test generation and execution platform. Analyze features, generate tests, run them — one command.",
   "type": "module",
   "main": "dist/index.js",

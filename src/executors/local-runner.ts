@@ -9,7 +9,7 @@
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { join, dirname, resolve } from "node:path";
 import { BaseExecutor } from "./base-executor.js";
@@ -220,6 +220,13 @@ export class LocalRunner extends BaseExecutor {
     const jestConfig = this.findJestConfig(packageRoot);
     if (jestConfig) {
       args.push("--config", jestConfig);
+    } else {
+      // No config file or package.json "jest" field — auto-generate inline config
+      // if ts-jest is available (prevents "unexpected token" on .ts files)
+      const autoConfig = this.buildAutoJestConfig(packageRoot);
+      if (autoConfig) {
+        args.push("--config", autoConfig);
+      }
     }
     // Accept both .test.ts and .spec.ts files
     args.push("--testRegex", ".*\\.(test|spec)\\.[jt]sx?$");
@@ -606,6 +613,8 @@ export class LocalRunner extends BaseExecutor {
         const candidate = join(packageRoot, name);
         if (existsSync(candidate)) return candidate;
       }
+      // Check package.json "jest" field in sub-package
+      if (this.packageJsonHasJestConfig(packageRoot)) return packageRoot;
     }
     // Then project root if different
     if (this.projectRoot && this.projectRoot !== packageRoot) {
@@ -613,8 +622,68 @@ export class LocalRunner extends BaseExecutor {
         const candidate = join(this.projectRoot, name);
         if (existsSync(candidate)) return candidate;
       }
+      // Check package.json "jest" field at project root
+      if (this.packageJsonHasJestConfig(this.projectRoot)) return this.projectRoot;
     }
     return null;
+  }
+
+  /** Check if package.json at the given directory has a "jest" configuration field. */
+  private packageJsonHasJestConfig(dir: string): boolean {
+    try {
+      const pkgPath = join(dir, "package.json");
+      if (!existsSync(pkgPath)) return false;
+      const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
+      return pkg.jest != null;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Build an inline Jest config JSON string for projects that have ts-jest
+   * installed but no config file. Returns null if ts-jest is not available.
+   */
+  private buildAutoJestConfig(packageRoot?: string): string | null {
+    const root = packageRoot || this.projectRoot;
+    if (!root) return null;
+
+    // Check if ts-jest is available (binary or listed in deps)
+    const hasTsJestBin = existsSync(join(root, "node_modules", "ts-jest"));
+    if (!hasTsJestBin && this.projectRoot && this.projectRoot !== root) {
+      // Also check project root in monorepos
+      if (!existsSync(join(this.projectRoot, "node_modules", "ts-jest"))) {
+        return null;
+      }
+    } else if (!hasTsJestBin) {
+      return null;
+    }
+
+    // Find tsconfig — prefer sub-package, then project root
+    let tsconfig: string | undefined;
+    for (const dir of [root, this.projectRoot].filter(Boolean) as string[]) {
+      for (const name of ["tsconfig.json", "tsconfig.spec.json"]) {
+        if (existsSync(join(dir, name))) {
+          tsconfig = join(dir, name);
+          break;
+        }
+      }
+      if (tsconfig) break;
+    }
+
+    const config: Record<string, unknown> = {
+      preset: "ts-jest",
+      testEnvironment: "node",
+      moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json"],
+    };
+
+    if (tsconfig) {
+      config.transform = {
+        "^.+\\.tsx?$": ["ts-jest", { tsconfig }],
+      };
+    }
+
+    return JSON.stringify(config);
   }
 
   private isInfrastructureError(output: string): boolean {
