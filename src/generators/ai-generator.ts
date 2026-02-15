@@ -391,7 +391,7 @@ function isTruncated(code: string): boolean {
 function looksLikeTestCode(code: string): boolean {
   // Must contain BOTH: import/require AND describe/it/test/expect
   // Requiring both prevents AI prose that mentions code patterns from passing
-  const hasImports = /\b(import|require)\s*[({]/.test(code);
+  const hasImports = /\b(import\s+[{*\w]|require\s*\()/.test(code);
   const hasTests = /\b(describe|it|test|expect)\s*\(/.test(code);
   return hasImports && hasTests;
 }

@@ -807,13 +807,12 @@ export async function fixFailingTests(
 
       emit(onEvent, { type: "execution:complete", data: { result: initialExec } });
 
-      if (initialExec.status === "passed" || initialExec.failures.length === 0) {
+      if (initialExec.status === "passed") {
         // Tests pass as-is — no fix needed
         finalResult = initialExec;
-        const status = initialExec.status === "passed" ? "passed" : "error";
         await updateProgress(runDir, plan.id, {
           planId: plan.id,
-          status,
+          status: "passed",
           description: plan.description,
           testFile: testFilePath,
           passed: initialExec.passed,
@@ -824,14 +823,31 @@ export async function fixFailingTests(
         continue;
       }
 
-      // Tests failed — proceed to fix loop with actual failures
+      // Tests failed or errored — proceed to fix loop
       lastFailures = initialExec.failures;
+      // For compile/runtime errors, failures array may be empty but error info is in output
+      if (lastFailures.length === 0 && initialExec.output) {
+        lastFailures = [{
+          testName: testFilePath,
+          message: initialExec.output.slice(0, 4000),
+        }];
+      }
     }
 
     if (lastFailures.length === 0) {
+      // Try to extract error context from the prior run's output
+      let priorOutput = "";
+      try {
+        const reportPath = join(runDir, "report.json");
+        if (existsSync(reportPath)) {
+          const report = JSON.parse(await readFile(reportPath, "utf-8")) as CoveritReport;
+          const planResult = report.results.find((r) => r.planId === plan.id);
+          if (planResult?.output) priorOutput = planResult.output.slice(0, 4000);
+        }
+      } catch { /* ignore */ }
       lastFailures = [{
         testName: testFilePath,
-        message: `${progress.failed ?? 0} test(s) failed in previous run`,
+        message: priorOutput || `${progress.failed ?? 0} test(s) failed in previous run`,
       }];
     }
 
@@ -860,6 +876,10 @@ export async function fixFailingTests(
           currentTestCode = refined;
           await writeFile(testAbsPath, refined, "utf-8");
         }
+      } else {
+        logger.warn(
+          `[fix] Plan ${plan.id}: AI refinement returned null (attempt ${attempt + 1}/${maxRetries}) — test file unchanged`,
+        );
       }
 
       await updateProgress(runDir, plan.id, {
