@@ -57,7 +57,7 @@ If there are NO test plans (strategy.plans.length === 0):
     - Count how many skipped entries mention "Covered by" or "already covered"
     - Show: "N/M changed files already have test coverage"
     - Show 3-5 key examples like: "booking.service.ts — covered by booking.service.admin.spec.ts (+1984 lines)"
-    - End with: "Run /coverit:verify to execute the existing test suites and confirm they pass."
+    - End with: "Run /coverit:check to execute the existing test suites and confirm they pass."
   If skipped entries do NOT mention coverage (only configs/DTOs/etc.), show:
     "No testable changes found — all changes are configs, DTOs, schemas, or module wiring."
     Then add: "Tip: Use /coverit:scan --all for a full project coverage audit."

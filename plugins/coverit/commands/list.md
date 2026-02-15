@@ -2,7 +2,7 @@
 description: "List all coverit test runs with metadata"
 ---
 
-# Coverit Runs
+# Coverit List
 
 List all coverit test runs with their metadata (scope, status, plan count, test results).
 
@@ -10,7 +10,7 @@ List all coverit test runs with their metadata (scope, status, plan count, test 
 
 Parse from user input:
 - `[path]` - Project root path (defaults to current working directory)
-- `--scope <scope>` - Filter by scope (e.g. 'pr-99', 'staged', 'auto')
+- `--scope <scope>` - Filter by scope (e.g. 'pr-99', 'staged', 'all', 'auto')
 
 ## Execution
 
@@ -35,4 +35,4 @@ run-20260213-120015-c4d8    staged   completed  8        42/42      5h ago
 For the "Tests" column, use "passed/total" from the summary. If no summary, show "-".
 For the "Created" column, show relative time (e.g. "2h ago", "1d ago").
 
-If no runs found, say: "No coverit runs found. Run /coverit:run to create one."
+If no runs found, say: "No coverit runs found. Run `/coverit:full` or `/coverit:scan` to create one."
