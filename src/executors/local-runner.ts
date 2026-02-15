@@ -50,6 +50,10 @@ export class LocalRunner extends BaseExecutor {
     projectRoot: string,
     framework: string
   ): Promise<{ ok: boolean; error?: string }> {
+    // "unknown" is common in monorepos where detection at root finds nothing;
+    // per-plan detection will handle it, so pass preflight.
+    if (framework === "unknown") return { ok: true };
+
     const binMap: Record<string, string> = {
       jest: "node_modules/.bin/jest",
       vitest: "node_modules/.bin/vitest",
@@ -81,8 +85,12 @@ export class LocalRunner extends BaseExecutor {
       // Write the test file to disk so the runner can find it
       const absTestFile = await this.ensureTestFile(test);
 
-      const cmd = this.buildCommand(test, config, absTestFile);
-      const cwd = this.resolveWorkingDir(absTestFile);
+      // In monorepos, find the sub-package that owns the test binary
+      const tool = this.frameworkTool(test.framework);
+      const packageRoot = this.findPackageRootForTest(absTestFile, tool);
+
+      const cmd = this.buildCommand(test, config, absTestFile, packageRoot);
+      const cwd = packageRoot;
 
       const spawnResult = await this.withTimeout(
         this.withRetry(() => this.runProcess(cmd, cwd), config.retries),
@@ -127,52 +135,89 @@ export class LocalRunner extends BaseExecutor {
   private buildCommand(
     test: GeneratedTest,
     config: ExecutionConfig,
-    absTestFile: string
+    absTestFile: string,
+    packageRoot: string
   ): string[] {
     const file = absTestFile;
     const coverageFlag = config.collectCoverage;
 
     switch (test.framework) {
       case "vitest":
-        return this.vitestCommand(file, coverageFlag);
+        return this.vitestCommand(file, coverageFlag, packageRoot);
       case "jest":
-        return this.jestCommand(file, coverageFlag);
+        return this.jestCommand(file, coverageFlag, packageRoot);
       case "playwright":
-        return this.playwrightCommand(file);
+        return this.playwrightCommand(file, packageRoot);
       case "pytest":
         return this.pytestCommand(file);
       case "go-test":
         return this.goTestCommand(file);
       default:
         // Best-effort: try vitest for unknown TS/JS frameworks
-        return this.vitestCommand(file, coverageFlag);
+        return this.vitestCommand(file, coverageFlag, packageRoot);
     }
+  }
+
+  /** Map TestFramework to CLI binary name */
+  private frameworkTool(framework: TestFramework): string {
+    const map: Record<string, string> = {
+      jest: "jest",
+      vitest: "vitest",
+      playwright: "playwright",
+      mocha: "mocha",
+      cypress: "cypress",
+    };
+    return map[framework] ?? framework;
   }
 
   /**
-   * Resolve the runner prefix. For pnpm workspaces, use the direct binary
-   * from the project root's node_modules so sub-package cwd doesn't break.
+   * Walk up from the test file's directory to projectRoot, checking each level
+   * for node_modules/.bin/<tool>. Returns the nearest directory that has the
+   * binary, or projectRoot as fallback. This handles pnpm monorepos where
+   * binaries live in sub-package node_modules, not at the root.
    */
-  private resolveBin(tool: string): string[] {
-    if (this.projectRoot && this.packageManager === "pnpm exec") {
-      const directBin = join(this.projectRoot, "node_modules", ".bin", tool);
-      if (existsSync(directBin)) {
-        return [directBin];
-      }
+  private findPackageRootForTest(absTestFile: string, tool: string): string {
+    if (!this.projectRoot) return dirname(absTestFile);
+    const root = resolve(this.projectRoot);
+    let dir = dirname(absTestFile);
+    while (dir.length >= root.length) {
+      if (existsSync(join(dir, "node_modules", ".bin", tool))) return dir;
+      const parent = dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
     }
+    return this.projectRoot;
+  }
+
+  /**
+   * Resolve the runner binary. Checks sub-package first (monorepo),
+   * then project root, then falls back to package manager exec.
+   */
+  private resolveBin(tool: string, packageRoot?: string): string[] {
+    // 1. Sub-package binary (monorepo — e.g. pnpm with per-package deps)
+    if (packageRoot && packageRoot !== this.projectRoot) {
+      const subBin = join(packageRoot, "node_modules", ".bin", tool);
+      if (existsSync(subBin)) return [subBin];
+    }
+    // 2. Project root binary
+    if (this.projectRoot) {
+      const rootBin = join(this.projectRoot, "node_modules", ".bin", tool);
+      if (existsSync(rootBin)) return [rootBin];
+    }
+    // 3. Package manager exec fallback
     return [...this.packageManager.split(" "), tool];
   }
 
-  private vitestCommand(file: string, coverage: boolean): string[] {
-    const args = [...this.resolveBin("vitest"), "run", file, "--reporter=json"];
+  private vitestCommand(file: string, coverage: boolean, packageRoot?: string): string[] {
+    const args = [...this.resolveBin("vitest", packageRoot), "run", file, "--reporter=json"];
     if (coverage) args.push("--coverage", "--coverage.reporter=json");
     return args;
   }
 
-  private jestCommand(file: string, coverage: boolean): string[] {
-    const args = [...this.resolveBin("jest"), file, "--json", "--no-cache"];
+  private jestCommand(file: string, coverage: boolean, packageRoot?: string): string[] {
+    const args = [...this.resolveBin("jest", packageRoot), file, "--json", "--no-cache"];
     // Pass project jest config so ts-jest and moduleNameMapper are applied
-    const jestConfig = this.findJestConfig();
+    const jestConfig = this.findJestConfig(packageRoot);
     if (jestConfig) {
       args.push("--config", jestConfig);
     }
@@ -182,8 +227,8 @@ export class LocalRunner extends BaseExecutor {
     return args;
   }
 
-  private playwrightCommand(file: string): string[] {
-    return [...this.resolveBin("playwright"), "test", file, "--reporter=json"];
+  private playwrightCommand(file: string, packageRoot?: string): string[] {
+    return [...this.resolveBin("playwright", packageRoot), "test", file, "--reporter=json"];
   }
 
   private pytestCommand(file: string): string[] {
@@ -546,9 +591,8 @@ export class LocalRunner extends BaseExecutor {
     return null;
   }
 
-  /** Walk up from projectRoot to find the nearest jest config file. */
-  private findJestConfig(): string | null {
-    if (!this.projectRoot) return null;
+  /** Find the nearest jest config file, checking sub-package first then project root. */
+  private findJestConfig(packageRoot?: string): string | null {
     const configNames = [
       "jest.config.ts",
       "jest.config.js",
@@ -556,9 +600,19 @@ export class LocalRunner extends BaseExecutor {
       "jest.config.mjs",
       "jest.config.json",
     ];
-    for (const name of configNames) {
-      const candidate = join(this.projectRoot, name);
-      if (existsSync(candidate)) return candidate;
+    // Check sub-package first (monorepo)
+    if (packageRoot) {
+      for (const name of configNames) {
+        const candidate = join(packageRoot, name);
+        if (existsSync(candidate)) return candidate;
+      }
+    }
+    // Then project root if different
+    if (this.projectRoot && this.projectRoot !== packageRoot) {
+      for (const name of configNames) {
+        const candidate = join(this.projectRoot, name);
+        if (existsSync(candidate)) return candidate;
+      }
     }
     return null;
   }
@@ -597,20 +651,6 @@ export class LocalRunner extends BaseExecutor {
   }
 
   // ── Helpers ───────────────────────────────────────────────────
-
-  private resolveWorkingDir(absTestFile: string): string {
-    // When projectRoot is set, always use it — avoids sub-package cwd issues
-    // in monorepos where jest config and node_modules live at the root.
-    if (this.projectRoot) return this.projectRoot;
-
-    // Fallback: walk up from the test file to find the nearest package.json
-    let dir = dirname(absTestFile);
-    while (dir !== "/" && dir !== ".") {
-      if (existsSync(join(dir, "package.json"))) return dir;
-      dir = dirname(dir);
-    }
-    return dirname(absTestFile);
-  }
 
   private async ensureTestFile(test: GeneratedTest): Promise<string> {
     // Use projectRoot to resolve relative file paths, not process.cwd()
