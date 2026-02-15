@@ -51,7 +51,7 @@ import { triageWithAI } from "../analysis/ai-triage.js";
 import { AIGenerator } from "../generators/ai-generator.js";
 import { createExecutor } from "../executors/index.js";
 import { generateReport } from "../agents/reporter.js";
-import { detectProjectInfo } from "../utils/framework-detector.js";
+import { detectProjectInfo, detectTestFrameworkForFile } from "../utils/framework-detector.js";
 import { logger } from "../utils/logger.js";
 import {
   createRun,
@@ -733,8 +733,15 @@ export async function fixFailingTests(
       // No report — failures will be empty
     }
 
+    // ── Per-file framework detection ────────────────────────────
+    const fixFrameworkTarget = testFilePath ?? plan.targetFiles[0];
+    const fixFramework = fixFrameworkTarget
+      ? await detectTestFrameworkForFile(config.projectRoot, fixFrameworkTarget)
+      : projectInfo.testFramework;
+    const fixProjectInfo = { ...projectInfo, testFramework: fixFramework };
+
     // ── Set up executor ────────────────────────────────────────
-    const generator = new AIGenerator(aiProvider, projectInfo);
+    const generator = new AIGenerator(aiProvider, fixProjectInfo);
     const executor = createExecutor("local");
     if ("setPackageManager" in executor && typeof (executor as any).setPackageManager === "function") {
       (executor as any).setPackageManager(projectInfo.packageManager);
@@ -763,7 +770,7 @@ export async function fixFailingTests(
           content: currentTestCode,
           testType: plan.testTypes[0] ?? "unit",
           testCount: 0,
-          framework: projectInfo.testFramework,
+          framework: fixFramework,
         },
         {
           environment: "local",
@@ -845,7 +852,7 @@ export async function fixFailingTests(
           content: currentTestCode,
           testType: plan.testTypes[0] ?? "unit",
           testCount: 0,
-          framework: projectInfo.testFramework,
+          framework: fixFramework,
         },
         {
           environment: "local",
@@ -997,6 +1004,12 @@ export async function recheckTests(
     const testAbsPath = join(config.projectRoot, testFilePath);
     const testCode = await readFile(testAbsPath, "utf-8");
 
+    // Per-file framework detection for monorepo support
+    const recheckFrameworkTarget = testFilePath ?? plan.targetFiles[0];
+    const recheckFramework = recheckFrameworkTarget
+      ? await detectTestFrameworkForFile(config.projectRoot, recheckFrameworkTarget)
+      : projectInfo.testFramework;
+
     const testPlan = triagePlanToTestPlan(plan);
     emit(onEvent, { type: "execution:start", data: { plan: testPlan, environment: plan.environment } });
 
@@ -1022,7 +1035,7 @@ export async function recheckTests(
         content: testCode,
         testType: plan.testTypes[0] ?? "unit",
         testCount: 0,
-        framework: projectInfo.testFramework,
+        framework: recheckFramework,
       },
       {
         environment: "local",
@@ -1151,6 +1164,12 @@ export async function verifyExistingTests(
 
         const testCode = await readFile(join(config.projectRoot, testFilePath), "utf-8");
 
+        // Per-file framework detection for monorepo support
+        const verifyFramework = await detectTestFrameworkForFile(
+          config.projectRoot,
+          testFilePath,
+        );
+
         const testPlan: TestPlan = {
           id: planId,
           type: "unit",
@@ -1170,7 +1189,7 @@ export async function verifyExistingTests(
             content: testCode,
             testType: "unit",
             testCount: 0,
-            framework: projectInfo.testFramework,
+            framework: verifyFramework,
           },
           {
             environment: "local",
@@ -1309,15 +1328,22 @@ async function executePlanV2(
     ? context.existingTests.find((t) => t.path === triagePlan.existingTestFile)
     : null;
 
+  // Detect framework per-file (monorepo: sub-packages may use different runners)
+  const frameworkTargetFile = triagePlan.outputTestFile ?? triagePlan.targetFiles[0];
+  const planFramework = frameworkTargetFile
+    ? await detectTestFrameworkForFile(config.projectRoot, frameworkTargetFile)
+    : projectInfo.testFramework;
+  const planProjectInfo = { ...projectInfo, testFramework: planFramework };
+
   const genInput: GenerationInput = {
     plan: triagePlan,
-    project: projectInfo,
+    project: planProjectInfo,
     sourceFiles,
     existingTestContent: existingTest?.content ?? null,
     testTypes: triagePlan.testTypes,
   };
 
-  const generator = new AIGenerator(aiProvider, projectInfo);
+  const generator = new AIGenerator(aiProvider, planProjectInfo);
   const genResult: GeneratorResult = await generator.generate(genInput);
 
   emit(onEvent, { type: "generation:complete", data: { result: genResult } });

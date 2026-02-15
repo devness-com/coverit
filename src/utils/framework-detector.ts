@@ -7,7 +7,7 @@
  */
 
 import { readFile, access } from "node:fs/promises";
-import { join } from "node:path";
+import { join, dirname, resolve } from "node:path";
 import fg from "fast-glob";
 import type {
   Framework,
@@ -111,6 +111,58 @@ export async function detectTestFramework(
   if ("mocha" in allDeps) return "mocha";
 
   return "unknown";
+}
+
+/**
+ * Detects the test framework for a specific file by walking up from its
+ * directory to the project root, checking each ancestor for config files
+ * and package.json dependencies. Falls back to root-level detection.
+ */
+export async function detectTestFrameworkForFile(
+  projectRoot: string,
+  filePath: string,
+): Promise<TestFramework> {
+  const absRoot = resolve(projectRoot);
+  let dir = dirname(resolve(projectRoot, filePath));
+
+  // Walk up from the file's directory to the project root (inclusive)
+  while (dir.length >= absRoot.length) {
+    // Check config files (exact file checks, no glob)
+    const configChecks: [string, TestFramework][] = [
+      ["vitest.config.ts", "vitest"],
+      ["vitest.config.js", "vitest"],
+      ["vitest.config.mjs", "vitest"],
+      ["vitest.config.mts", "vitest"],
+      ["jest.config.ts", "jest"],
+      ["jest.config.js", "jest"],
+      ["jest.config.cjs", "jest"],
+      ["jest.config.mjs", "jest"],
+      ["jest.config.json", "jest"],
+    ];
+
+    for (const [filename, framework] of configChecks) {
+      if (await fileExists(join(dir, filename))) return framework;
+    }
+
+    // Check package.json dependencies at this level
+    const pkg = await readJson<PackageJson>(join(dir, "package.json"));
+    if (pkg) {
+      const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
+      if ("vitest" in allDeps) return "vitest";
+      if ("jest" in allDeps) return "jest";
+      if ("@playwright/test" in allDeps) return "playwright";
+      if ("cypress" in allDeps) return "cypress";
+      if ("mocha" in allDeps) return "mocha";
+    }
+
+    // Move up one level
+    const parent = dirname(dir);
+    if (parent === dir) break; // filesystem root
+    dir = parent;
+  }
+
+  // Nothing found in any ancestor — fall back to root-level glob detection
+  return detectTestFramework(projectRoot);
 }
 
 /**

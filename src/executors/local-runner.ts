@@ -281,7 +281,8 @@ export class LocalRunner extends BaseExecutor {
   }
 
   private parseVitestResult(spawn: SpawnResult, result: ExecutionResult): void {
-    const json = this.parseJsonOutput(spawn.stdout);
+    let json = this.parseJsonOutput(spawn.stdout);
+    if (!json) json = this.parseJsonOutput(spawn.stderr);
 
     if (!json) {
       this.parseFallbackResult(spawn, result);
@@ -322,7 +323,8 @@ export class LocalRunner extends BaseExecutor {
   }
 
   private parseJestResult(spawn: SpawnResult, result: ExecutionResult): void {
-    const json = this.parseJsonOutput(spawn.stdout);
+    let json = this.parseJsonOutput(spawn.stdout);
+    if (!json) json = this.parseJsonOutput(spawn.stderr);
 
     if (!json) {
       this.parseFallbackResult(spawn, result);
@@ -466,7 +468,8 @@ export class LocalRunner extends BaseExecutor {
 
   /**
    * Fallback when we cannot parse structured output.
-   * Derive pass/fail from the exit code alone.
+   * Derive pass/fail from the exit code, and try to extract test counts
+   * from human-readable summary lines.
    */
   private parseFallbackResult(
     spawn: SpawnResult,
@@ -490,6 +493,14 @@ export class LocalRunner extends BaseExecutor {
       result.status = "failed";
     }
 
+    // Try to extract test counts from text output (vitest/jest summary lines)
+    const counts = this.extractTestCountsFromText(combined);
+    if (counts) {
+      result.totalTests = counts.total;
+      result.passed = counts.passed;
+      result.failed = counts.failed;
+    }
+
     if (spawn.exitCode !== 0) {
       const errorOutput = spawn.stderr || spawn.stdout;
       if (errorOutput) {
@@ -499,6 +510,40 @@ export class LocalRunner extends BaseExecutor {
         });
       }
     }
+  }
+
+  /**
+   * Extract test counts from human-readable summary lines in test runner output.
+   * Handles vitest and jest summary formats.
+   */
+  private extractTestCountsFromText(
+    output: string
+  ): { total: number; passed: number; failed: number } | null {
+    // Vitest: "Tests  42 passed (42)" or "Tests  3 failed | 39 passed (42)"
+    let match = output.match(
+      /Tests\s+(?:(\d+)\s+failed\s*\|\s*)?(\d+)\s+passed\s*\((\d+)\)/
+    );
+    if (match) {
+      return {
+        failed: parseInt(match[1] ?? "0", 10),
+        passed: parseInt(match[2]!, 10),
+        total: parseInt(match[3]!, 10),
+      };
+    }
+
+    // Jest: "Tests:       3 failed, 39 passed, 42 total" or "Tests:       42 passed, 42 total"
+    match = output.match(
+      /Tests:\s+(?:(\d+)\s+failed,\s*)?(\d+)\s+passed,\s*(\d+)\s+total/
+    );
+    if (match) {
+      return {
+        failed: parseInt(match[1] ?? "0", 10),
+        passed: parseInt(match[2]!, 10),
+        total: parseInt(match[3]!, 10),
+      };
+    }
+
+    return null;
   }
 
   /** Walk up from projectRoot to find the nearest jest config file. */
