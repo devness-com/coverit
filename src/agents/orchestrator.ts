@@ -105,7 +105,23 @@ async function ensureDir(dirPath: string): Promise<void> {
 }
 
 /**
- * Ensures `.coverit` is listed in the project's `.gitignore`.
+ * Artifacts that test execution may produce. Each entry is a gitignore pattern
+ * paired with a regex that detects whether the pattern is already covered.
+ */
+const COVERIT_ARTIFACTS: Array<{ pattern: string; detect: RegExp }> = [
+  { pattern: ".coverit/",          detect: /^\.coverit\b/m },
+  // TypeScript incremental build
+  { pattern: "*.tsbuildinfo",      detect: /^\*?\.tsbuildinfo\b/m },
+  // Playwright
+  { pattern: "test-results/",      detect: /^test-results\b/m },
+  { pattern: "playwright-report/", detect: /^playwright-report\b/m },
+  // Python
+  { pattern: ".pytest_cache/",     detect: /^\.pytest_cache\b/m },
+];
+
+/**
+ * Ensures coverit-generated artifacts are listed in the project's `.gitignore`.
+ * Covers build artifacts from all frameworks coverit may trigger.
  */
 async function ensureGitignore(projectRoot: string): Promise<void> {
   if (!existsSync(join(projectRoot, ".git"))) return;
@@ -118,10 +134,18 @@ async function ensureGitignore(projectRoot: string): Promise<void> {
     // .gitignore doesn't exist yet — we'll create it
   }
 
-  if (/^\.coverit\b/m.test(content)) return;
+  const missing = COVERIT_ARTIFACTS
+    .filter(({ detect }) => !detect.test(content))
+    .map(({ pattern }) => pattern);
+
+  if (missing.length === 0) return;
 
   const suffix = content.length > 0 && !content.endsWith("\n") ? "\n" : "";
-  await writeFile(gitignorePath, `${content}${suffix}\n# coverit\n.coverit/\n`, "utf-8");
+  await writeFile(
+    gitignorePath,
+    `${content}${suffix}\n# coverit\n${missing.join("\n")}\n`,
+    "utf-8"
+  );
 }
 
 // ─── Bridge: TriageResult → TestStrategy (for reporter, events, MCP) ────
