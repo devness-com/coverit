@@ -772,14 +772,4 @@ program
     }
   });
 
-// ─── mcp ────────────────────────────────────────────────────
-
-program
-  .command("mcp")
-  .description("Start coverit as an MCP server (stdio transport)")
-  .action(async () => {
-    // Dynamically import the MCP server — it self-starts on import
-    await import("../mcp/server.js");
-  });
-
 program.parse();
