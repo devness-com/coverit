@@ -733,7 +733,7 @@ server.tool(
 
 server.tool(
   "coverit_scale",
-  "Analyze the full codebase and generate coverit.json quality manifest. Detects modules, maps existing tests, classifies complexity, and computes baseline scores. No AI — pure filesystem analysis.",
+  "Analyze the full codebase using AI and generate coverit.json quality manifest. AI explores the project with tool access to detect modules, map existing tests, classify complexity, identify journeys and contracts, and compute baseline scores.",
   {
     projectRoot: z.string().describe("Absolute path to the project root"),
   },
@@ -749,6 +749,8 @@ server.tool(
             text: JSON.stringify({
               project: manifest.project,
               moduleCount: manifest.modules.length,
+              journeyCount: manifest.journeys.length,
+              contractCount: manifest.contracts.length,
               score: manifest.score,
               modules: manifest.modules.map((m) => ({
                 path: m.path,
@@ -757,6 +759,8 @@ server.tool(
                 lines: m.lines,
                 tests: m.functionality.tests,
               })),
+              journeys: manifest.journeys,
+              contracts: manifest.contracts,
             }, null, 2),
           },
         ],
@@ -839,6 +843,172 @@ server.tool(
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       logger.error("coverit_measure failed:", message);
+      return {
+        content: [{ type: "text" as const, text: `Error: ${message}` }],
+        isError: true,
+      };
+    }
+  },
+);
+
+// ─── coverit_backup ──────────────────────────────────────────
+// Export all .coverit/ run data as a single JSON blob for portability.
+
+server.tool(
+  "coverit_backup",
+  "Export all Coverit test run data (strategies, reports, progress) as a JSON backup.",
+  {
+    projectRoot: z.string().describe("Absolute path to project root containing .coverit/ directory"),
+  },
+  async ({ projectRoot }) => {
+    try {
+      const fs = await import("node:fs");
+      const path = await import("node:path");
+
+      const coveritDir = path.join(projectRoot, ".coverit");
+      if (!fs.existsSync(coveritDir)) {
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify({ error: "No .coverit directory found" }) }],
+          isError: true,
+        };
+      }
+
+      const runsDir = path.join(coveritDir, "runs");
+      const backup: Record<string, unknown> = {
+        version: 1,
+        exported_at: new Date().toISOString(),
+        runs: {} as Record<string, unknown>,
+      };
+
+      // Include latest.json pointer if present
+      const latestPath = path.join(coveritDir, "latest.json");
+      if (fs.existsSync(latestPath)) {
+        backup.latest = JSON.parse(fs.readFileSync(latestPath, "utf-8"));
+      }
+
+      // Walk each run directory and collect meta, report, and progress files
+      if (fs.existsSync(runsDir)) {
+        const runDirs = fs.readdirSync(runsDir).filter((d: string) =>
+          fs.statSync(path.join(runsDir, d)).isDirectory(),
+        );
+
+        const runs = backup.runs as Record<string, Record<string, unknown>>;
+
+        for (const runId of runDirs) {
+          const runDir = path.join(runsDir, runId);
+          const runData: Record<string, unknown> = {};
+
+          const metaPath = path.join(runDir, "meta.json");
+          if (fs.existsSync(metaPath)) {
+            runData.meta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+          }
+
+          const reportPath = path.join(runDir, "report.json");
+          if (fs.existsSync(reportPath)) {
+            runData.report = JSON.parse(fs.readFileSync(reportPath, "utf-8"));
+          }
+
+          const progressDir = path.join(runDir, "progress");
+          if (fs.existsSync(progressDir)) {
+            runData.progress = {} as Record<string, unknown>;
+            const progress = runData.progress as Record<string, unknown>;
+            for (const file of fs.readdirSync(progressDir).filter((f: string) => f.endsWith(".json"))) {
+              progress[file] = JSON.parse(fs.readFileSync(path.join(progressDir, file), "utf-8"));
+            }
+          }
+
+          runs[runId] = runData;
+        }
+      }
+
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(backup) }],
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error("coverit_backup failed:", message);
+      return {
+        content: [{ type: "text" as const, text: `Error: ${message}` }],
+        isError: true,
+      };
+    }
+  },
+);
+
+// ─── coverit_restore ─────────────────────────────────────────
+// Import .coverit/ run data from a previously exported backup.
+
+server.tool(
+  "coverit_restore",
+  "Import Coverit test run data from a JSON backup. Writes run directories and files, skipping runs that already exist.",
+  {
+    projectRoot: z.string().describe("Absolute path to project root"),
+    backup_json: z.string().describe("JSON string from a previous coverit_backup export"),
+  },
+  async ({ projectRoot, backup_json }) => {
+    try {
+      const fs = await import("node:fs");
+      const path = await import("node:path");
+
+      const backup = JSON.parse(backup_json) as {
+        runs?: Record<string, {
+          meta?: unknown;
+          report?: unknown;
+          progress?: Record<string, unknown>;
+        }>;
+        latest?: unknown;
+      };
+
+      const coveritDir = path.join(projectRoot, ".coverit");
+      const runsDir = path.join(coveritDir, "runs");
+      fs.mkdirSync(runsDir, { recursive: true });
+
+      let restored = 0;
+      let skipped = 0;
+
+      // Restore runs, skipping any that already exist on disk
+      if (backup.runs) {
+        for (const [runId, runData] of Object.entries(backup.runs)) {
+          const runDir = path.join(runsDir, runId);
+          if (fs.existsSync(runDir)) {
+            skipped++;
+            continue;
+          }
+
+          fs.mkdirSync(runDir, { recursive: true });
+
+          if (runData.meta) {
+            fs.writeFileSync(path.join(runDir, "meta.json"), JSON.stringify(runData.meta, null, 2));
+          }
+          if (runData.report) {
+            fs.writeFileSync(path.join(runDir, "report.json"), JSON.stringify(runData.report, null, 2));
+          }
+          if (runData.progress) {
+            const progressDir = path.join(runDir, "progress");
+            fs.mkdirSync(progressDir, { recursive: true });
+            for (const [file, content] of Object.entries(runData.progress)) {
+              fs.writeFileSync(path.join(progressDir, file), JSON.stringify(content, null, 2));
+            }
+          }
+
+          restored++;
+        }
+      }
+
+      // Restore latest.json only when absent
+      if (backup.latest) {
+        const latestPath = path.join(coveritDir, "latest.json");
+        if (!fs.existsSync(latestPath)) {
+          fs.writeFileSync(latestPath, JSON.stringify(backup.latest, null, 2));
+        }
+      }
+
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify({ success: true, runs_restored: restored, runs_skipped: skipped }) }],
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error("coverit_restore failed:", message);
       return {
         content: [{ type: "text" as const, text: `Error: ${message}` }],
         isError: true,

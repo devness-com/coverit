@@ -1,20 +1,22 @@
 /**
- * Coverit Scale — Codebase Analyzer
+ * Coverit Scale — AI-Driven Codebase Analyzer
  *
- * Main entry point for the Scale command. Orchestrates a full codebase
- * analysis and produces a CoveritManifest (coverit.json).
+ * Main entry point for the Scale command. Delegates the entire codebase
+ * analysis to an AI with tool access (Glob, Grep, Read, Bash) that
+ * explores the project and produces a complete quality manifest.
  *
  * Pipeline:
- *  1. Detect project info (framework, language, test runner)
- *  2. Discover module boundaries from directory structure
- *  3. Map existing test files to source modules
- *  4. Classify module complexity
- *  5. Calculate expected test counts (Diamond strategy)
- *  6. Assemble and return the manifest
+ *  1. Detect project metadata (framework, language, test runner) — fast, deterministic
+ *  2. Send AI prompt with tool access to explore the codebase
+ *  3. Parse AI's structured JSON response
+ *  4. Assemble the full manifest with scoring
  *
- * This entire pipeline is filesystem-only — no AI calls.
- * AI-powered enrichment (security scanning, stability analysis,
- * journey detection, contract discovery) happens in later stages.
+ * The AI performs what was previously done by heuristic code:
+ *  - Module detection (replacing module-detector.ts)
+ *  - Test mapping (replacing test-mapper.ts)
+ *  - Complexity classification (replacing complexity.ts)
+ *  - Expected test calculation (replacing expected-counts.ts)
+ *  - Plus: journey detection, contract discovery (new AI capabilities)
  */
 
 import type {
@@ -26,73 +28,90 @@ import type {
 import { DEFAULT_DIMENSIONS } from "../schema/defaults.js";
 import { calculateScore } from "../scoring/engine.js";
 import { detectProjectInfo } from "../utils/framework-detector.js";
-import { detectModules } from "./module-detector.js";
-import { mapExistingTests, type TestMapping } from "./test-mapper.js";
-import { classifyComplexity } from "./complexity.js";
-import { calculateExpectedTests } from "./expected-counts.js";
+import { createAIProvider } from "../ai/provider-factory.js";
+import {
+  buildScalePrompt,
+  parseScaleResponse,
+  type ScaleAIModule,
+} from "../ai/scale-prompts.js";
+import type { AIProvider } from "../ai/types.js";
 import { logger } from "../utils/logger.js";
+
+// ─── Constants ───────────────────────────────────────────────
+
+/** Tools the AI is allowed to use during codebase exploration */
+const ALLOWED_TOOLS = ["Read", "Glob", "Grep", "Bash"];
+
+/** 10 minutes — large codebases may take a while to explore */
+const ANALYSIS_TIMEOUT_MS = 600_000;
 
 // ─── Core Logic ──────────────────────────────────────────────
 
 /**
- * Analyzes an entire codebase and produces a quality manifest.
+ * Analyzes an entire codebase using AI and produces a quality manifest.
  *
- * The manifest captures:
- *  - What the codebase contains (modules, files, complexity)
- *  - What tests exist and what's missing
- *  - Baseline scores for each quality dimension
+ * The AI explores the project using Glob, Grep, Read, and Bash tools,
+ * then produces a structured analysis covering:
+ *  - Module boundaries and their source files
+ *  - Existing test coverage per module
+ *  - Complexity assessment per module
+ *  - Expected test counts (Diamond testing strategy)
+ *  - Critical user journeys and API contracts
  *
- * Security, stability, and conformance dimensions are initialized
- * with placeholder scores. They require AI analysis to populate
- * meaningful values, which happens in subsequent pipeline stages.
+ * @param projectRoot - Absolute path to the project root
+ * @param aiProvider - Optional AI provider (auto-detected if not provided)
  */
 export async function analyzeCodebase(
   projectRoot: string,
+  aiProvider?: AIProvider,
 ): Promise<CoveritManifest> {
-  logger.debug(`Analyzing codebase at ${projectRoot}`);
+  logger.debug(`Analyzing codebase at ${projectRoot} (AI-driven)`);
 
-  // Step 1: Detect project metadata
+  // Step 1: Detect project metadata (fast, deterministic)
   const projectInfo = await detectProjectInfo(projectRoot);
-  logger.debug(`Detected: ${projectInfo.framework} / ${projectInfo.testFramework}`);
+  logger.debug(
+    `Detected: ${projectInfo.framework} / ${projectInfo.testFramework}`,
+  );
 
-  // Step 2: Discover modules
-  const rawModules = await detectModules(projectRoot);
-  logger.debug(`Found ${rawModules.length} modules`);
+  // Step 2: Initialize AI provider
+  const provider = aiProvider ?? (await createAIProvider());
+  logger.debug(`Using AI provider: ${provider.name}`);
 
-  // Step 3: Map existing tests to modules
-  const testMappings = await mapExistingTests(projectRoot, rawModules);
-  logger.debug(`Mapped ${testMappings.length} test files`);
+  // Step 3: Build prompt and call AI with tool access
+  const messages = buildScalePrompt(projectInfo);
 
-  // Step 4-5: Build module entries with complexity and expected counts
-  const testsByModule = groupTestsByModule(testMappings);
-  const modules: ModuleEntry[] = rawModules.map((rawModule) => {
-    const complexity = classifyComplexity(rawModule);
-    const expectedTests = calculateExpectedTests(rawModule, complexity);
-    const moduleTests = testsByModule.get(rawModule.path) ?? [];
-
-    return buildModuleEntry(
-      rawModule.path,
-      rawModule.files.length,
-      rawModule.lines,
-      complexity,
-      expectedTests,
-      moduleTests,
-    );
+  logger.debug("Sending analysis prompt to AI with tool access...");
+  const response = await provider.generate(messages, {
+    allowedTools: ALLOWED_TOOLS,
+    cwd: projectRoot,
+    timeoutMs: ANALYSIS_TIMEOUT_MS,
   });
 
-  // Aggregate totals for project metadata
-  const totalSourceFiles = rawModules.reduce(
-    (sum, m) => sum + m.files.length,
-    0,
-  );
-  const totalSourceLines = rawModules.reduce(
-    (sum, m) => sum + m.lines,
-    0,
+  logger.debug(
+    `AI analysis complete (${response.content.length} chars, model: ${response.model})`,
   );
 
+  // Step 4: Parse AI response
+  const aiResult = parseScaleResponse(response.content);
+  logger.debug(
+    `Parsed: ${aiResult.modules.length} modules, ${aiResult.journeys.length} journeys, ${aiResult.contracts.length} contracts`,
+  );
+
+  // Step 5: Assemble full manifest
   const now = new Date().toISOString();
 
-  // Build a preliminary manifest so the scoring engine can compute scores
+  const modules: ModuleEntry[] = aiResult.modules.map(aiModuleToEntry);
+
+  // Use AI-reported totals, falling back to aggregation from modules
+  const totalSourceFiles =
+    aiResult.sourceFiles > 0
+      ? aiResult.sourceFiles
+      : modules.reduce((sum, m) => sum + m.files, 0);
+  const totalSourceLines =
+    aiResult.sourceLines > 0
+      ? aiResult.sourceLines
+      : modules.reduce((sum, m) => sum + m.lines, 0);
+
   const preliminary: CoveritManifest = {
     version: 1,
     createdAt: now,
@@ -109,12 +128,24 @@ export async function analyzeCodebase(
     },
 
     dimensions: DEFAULT_DIMENSIONS,
-
     modules,
 
-    // Journeys and contracts require AI analysis — initialized empty
-    journeys: [],
-    contracts: [],
+    journeys: aiResult.journeys.map((j) => ({
+      id: j.id,
+      name: j.name,
+      steps: j.steps,
+      covered: j.covered,
+      testFile: j.testFile,
+    })),
+
+    contracts: aiResult.contracts.map((c) => ({
+      endpoint: c.endpoint,
+      method: c.method,
+      requestSchema: c.requestSchema,
+      responseSchema: c.responseSchema,
+      covered: c.covered,
+      testFile: c.testFile,
+    })),
 
     score: {
       overall: 0,
@@ -125,19 +156,23 @@ export async function analyzeCodebase(
         conformance: 0,
         regression: 0,
       },
-      gaps: { total: 0, critical: 0, byDimension: {
-        functionality: { missing: 0, priority: "none" },
-        security: { issues: 0, priority: "pending-ai-scan" },
-        stability: { gaps: 0, priority: "pending-ai-scan" },
-        conformance: { violations: 0, priority: "pending-ai-scan" },
-      }},
+      gaps: {
+        total: 0,
+        critical: 0,
+        byDimension: {
+          functionality: { missing: 0, priority: "none" },
+          security: { issues: 0, priority: "pending-ai-scan" },
+          stability: { gaps: 0, priority: "pending-ai-scan" },
+          conformance: { violations: 0, priority: "pending-ai-scan" },
+        },
+      },
       history: [],
       // Only functionality has been scanned at this point
       scanned: { functionality: now },
     },
   };
 
-  // Use the scoring engine for consistent scoring across scale and measure
+  // Use the scoring engine for consistent scoring
   const scoreResult = calculateScore(preliminary);
 
   const manifest: CoveritManifest = {
@@ -160,80 +195,35 @@ export async function analyzeCodebase(
 // ─── Helpers ─────────────────────────────────────────────────
 
 /**
- * Groups test mappings by their module path for efficient lookup
- * during module entry construction.
+ * Convert an AI module response to a full ModuleEntry with
+ * placeholder values for AI-dependent dimensions (security, stability, conformance).
  */
-function groupTestsByModule(
-  mappings: TestMapping[],
-): Map<string, TestMapping[]> {
-  const grouped = new Map<string, TestMapping[]>();
-
-  for (const mapping of mappings) {
-    const existing = grouped.get(mapping.modulePath);
-    if (existing) {
-      existing.push(mapping);
-    } else {
-      grouped.set(mapping.modulePath, [mapping]);
-    }
-  }
-
-  return grouped;
-}
-
-/**
- * Constructs a ModuleEntry with functionality test coverage,
- * and placeholder values for AI-dependent dimensions.
- */
-function buildModuleEntry(
-  path: string,
-  fileCount: number,
-  lineCount: number,
-  complexity: ModuleEntry["complexity"],
-  expectedTests: Record<FunctionalTestType, number>,
-  testMappings: TestMapping[],
-): ModuleEntry {
-  // Build test coverage per type
-  const testsByType = new Map<FunctionalTestType, TestMapping[]>();
-  for (const mapping of testMappings) {
-    const existing = testsByType.get(mapping.testType);
-    if (existing) {
-      existing.push(mapping);
-    } else {
-      testsByType.set(mapping.testType, [mapping]);
-    }
-  }
-
+function aiModuleToEntry(aiModule: ScaleAIModule): ModuleEntry {
   const tests: Partial<Record<FunctionalTestType, TestCoverage>> = {};
-  const testTypes: FunctionalTestType[] = [
+  const validTypes = new Set<FunctionalTestType>([
     "unit",
     "integration",
     "api",
     "e2e",
     "contract",
-  ];
+  ]);
 
-  for (const testType of testTypes) {
-    const expected = expectedTests[testType];
-    // Only include test types where coverage is expected
-    if (expected > 0) {
-      const typeTests = testsByType.get(testType) ?? [];
-      const currentCount = typeTests.reduce(
-        (sum, t) => sum + t.testCount,
-        0,
-      );
-      tests[testType] = {
-        expected,
-        current: currentCount,
-        files: typeTests.map((t) => t.testFile),
-      };
-    }
+  for (const [testType, coverage] of Object.entries(
+    aiModule.functionality.tests,
+  )) {
+    if (!validTypes.has(testType as FunctionalTestType)) continue;
+    tests[testType as FunctionalTestType] = {
+      expected: coverage.expected,
+      current: coverage.current,
+      files: coverage.files,
+    };
   }
 
   return {
-    path,
-    files: fileCount,
-    lines: lineCount,
-    complexity,
+    path: aiModule.path,
+    files: aiModule.files,
+    lines: aiModule.lines,
+    complexity: aiModule.complexity,
     functionality: { tests },
     // AI-dependent dimensions — initialized with neutral placeholders
     security: { issues: 0, resolved: 0, findings: [] },
@@ -241,4 +231,3 @@ function buildModuleEntry(
     conformance: { score: 0, violations: [] },
   };
 }
-

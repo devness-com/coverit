@@ -4,9 +4,9 @@ description: "Generate or regenerate coverit.json from full codebase analysis"
 
 # Coverit Scale
 
-Generate or regenerate the `coverit.json` manifest from a full codebase analysis. This discovers all modules, maps existing tests, classifies complexity, calculates expected test counts, and produces a complete quality baseline.
+Generate or regenerate the `coverit.json` manifest using AI-driven codebase analysis. An AI agent explores the project with tool access (Glob, Grep, Read, Bash) to discover modules, map existing tests, classify complexity, identify user journeys and API contracts, and produce a complete quality baseline.
 
-This is a heavy operation that analyzes the entire codebase. It may take a few minutes for large projects.
+This is a heavy operation — the AI thoroughly explores the entire codebase. It may take several minutes for large projects.
 
 ## IMPORTANT: Run via sub-agent to protect context
 
@@ -36,6 +36,8 @@ Call the `mcp__plugin_coverit_coverit__coverit_scale` MCP tool with:
 The response JSON is a full CoveritManifest including:
 - "project": { name, framework, testFramework, language, sourceFiles, sourceLines }
 - "modules": array of { path, files, lines, complexity, functionality.tests }
+- "journeys": array of { id, name, steps, covered, testFile }
+- "contracts": array of { endpoint, method, requestSchema, responseSchema, covered, testFile }
 - "score": { overall, breakdown (5 dimensions), gaps, history }
 
 Format the response as a readable dashboard:
@@ -64,6 +66,14 @@ Modules (<count>)
   Table with columns: Module | Cmplx | Unit | Intg | API | E2E | Cntr | Score
   Show current/expected for each test type (e.g. 3/5).
   Show "-" for test types with no expected coverage.
+
+Journeys (<count>)
+  List discovered user journeys with covered/uncovered status.
+  If none found, note "No critical user journeys detected."
+
+Contracts (<count>)
+  List discovered API contracts with covered/uncovered status.
+  If none found, note "No API contracts detected."
 
 Summary
   Total modules analyzed: N
