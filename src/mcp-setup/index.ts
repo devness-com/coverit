@@ -4,9 +4,9 @@ const COVERIT_INSTRUCTIONS_TEXT = [
   '## Coverit — AI Test Generation',
   '',
   'Coverit generates and runs tests. Available via MCP tools or slash commands:',
-  '- `/coverit:scan` — Analyze changes and show test strategy',
-  '- `/coverit:full` — Complete pipeline: scan, generate, run, fix',
-  '- `/coverit:fix` — Fix failing tests from the last run',
+  '- `/coverit:analyze` — AI analyzes codebase and creates coverit.json',
+  '- `/coverit:cover` — AI generates tests from gaps and updates your score',
+  '- `/coverit:status` — Show quality dashboard from coverit.json',
 ].join('\n');
 
 const registry = createToolRegistry({

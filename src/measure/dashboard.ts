@@ -114,7 +114,7 @@ function renderDimensions(
     if (!isScanned) {
       // Unscanned dimension — show "pending" instead of a score
       lines.push(
-        `  ${chalk.gray(connector + "\u2500\u2500")} ${label} ${chalk.dim("pending".padStart(7))}  ${chalk.dim("run /coverit:full to scan")}`,
+        `  ${chalk.gray(connector + "\u2500\u2500")} ${label} ${chalk.dim("pending".padStart(7))}  ${chalk.dim("run /coverit:cover to scan")}`,
       );
     } else {
       const scoreStr = `${score}/100`.padStart(7);

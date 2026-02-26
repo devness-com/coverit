@@ -1,86 +1,41 @@
 /**
  * Coverit — Public API
  *
- * Re-exports the orchestrator, types, and utility modules
- * for programmatic usage as a library.
+ * Re-exports the core functions and types for programmatic usage.
  */
 
-// Core orchestrator
-export { orchestrate } from "./agents/orchestrator.js";
+// Core pipeline functions
+export { analyzeCodebase } from "./scale/analyzer.js";
+export { cover } from "./cover/pipeline.js";
+export type { CoverOptions, CoverResult } from "./cover/pipeline.js";
 
-// All types
+// Manifest I/O
+export { readManifest, writeManifest } from "./scale/writer.js";
+
+// Scoring
+export { rescoreManifest } from "./measure/scorer.js";
+export { scanTests } from "./measure/scanner.js";
+
+// Schema types
 export type {
-  // Analysis
-  DiffResult,
-  ChangedFile,
-  DiffHunk,
-  Language,
-  FileType,
-  CodeScanResult,
-  ExportedSymbol,
-  ImportedModule,
-  FunctionInfo,
-  ParamInfo,
-  ClassInfo,
-  PropertyInfo,
-  EndpointInfo,
-  ComponentInfo,
-  // Dependency graph
-  DependencyNode,
-  DependencyGraph,
-  // Strategy
-  TestStrategy,
-  ProjectInfo,
-  Framework,
-  TestFramework,
-  PackageManager,
-  TestPlan,
-  TestType,
-  TestTarget,
-  ExecutionPhase,
-  ExecutionEnvironment,
-  // AI Triage (V2)
-  ContextBundle,
-  FileContext,
-  ExistingTestFile,
-  TriagePlan,
-  TriageResult,
-  GenerationInput,
-  // Generator
-  GeneratedTest,
-  GeneratorContext,
-  GeneratorResult,
-  SkippedItem,
-  // Executor
-  ExecutionConfig,
-  CloudConfig,
-  ExecutionResult,
-  CoverageResult,
-  CoverageMetric,
-  TestFailure,
-  // Report
-  CoveritReport,
-  ReportSummary,
-  TypeSummary,
-  // Run isolation
-  RunMeta,
-  // Config & events
-  CoveritConfig,
-  CoveritFixConfig,
-  CoveritEvent,
-  CoveritEventHandler,
-} from "./types/index.js";
+  CoveritManifest,
+  ModuleEntry,
+  ManifestProject,
+  ScoreResult,
+  DimensionScores,
+  GapSummary,
+  FunctionalTestType,
+  Complexity,
+  TestCoverage,
+  JourneyEntry,
+  ContractEntry,
+} from "./schema/coverit-manifest.js";
 
-// Utilities for advanced usage
-export {
-  getChangedFiles,
-  getDiff,
-  getCurrentBranch,
-  getBaseBranch,
-  isGitRepo,
-  getStagedFiles,
-} from "./utils/git.js";
+// AI provider
+export { createAIProvider } from "./ai/provider-factory.js";
+export type { AIProvider, AIMessage, AIResponse } from "./ai/types.js";
 
+// Utilities
 export {
   detectFramework,
   detectTestFramework,
@@ -89,14 +44,3 @@ export {
 } from "./utils/framework-detector.js";
 
 export { logger } from "./utils/logger.js";
-
-export {
-  createRun,
-  resolveRunId,
-  getRunDir,
-  listRuns,
-  getRunStatus,
-  completeRun,
-  updateRunMeta,
-  deriveScope,
-} from "./utils/run-manager.js";

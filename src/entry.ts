@@ -3,9 +3,9 @@
 /**
  * Coverit — Unified Entry Point
  *
- * npx @devness/coverit            → MCP server (stdio, what AI tool configs invoke)
- * npx @devness/coverit mcp        → setup wizard (configure AI tools)
- * npx @devness/coverit scan/run/… → delegates to CLI (backward compatible)
+ * npx @devness/coverit                → MCP server (stdio, what AI tool configs invoke)
+ * npx @devness/coverit mcp            → setup wizard (configure AI tools)
+ * npx @devness/coverit analyze/cover/… → delegates to CLI
  */
 
 export {};
@@ -21,6 +21,6 @@ if (subcommand === 'mcp') {
   // Default: MCP server (this is what AI tool configs invoke)
   await import('./mcp/server.js');
 } else {
-  // Forward to CLI for all other commands (scan, run, fix, etc.)
+  // Forward to CLI for all other commands (analyze, cover, status, clear)
   await import('./cli/index.js');
 }
