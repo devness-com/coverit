@@ -6,21 +6,29 @@
   },
   "metadata": {
     "description": "AI-powered test generation and execution for Claude Code",
-    "version": "0.3.39"
+    "version": "0.4.0"
   },
   "plugins": [
     {
       "name": "coverit",
       "source": "./plugins/coverit",
       "description": "Analyze codebases, generate tests, execute them, and view reports — all from Claude Code.",
-      "version": "0.3.39",
+      "version": "0.4.0",
       "author": {
         "name": "Devness"
       },
       "homepage": "https://coverit.dev",
       "repository": "https://github.com/devness-com/coverit",
       "license": "MIT",
-      "keywords": ["testing", "test-generation", "coverage", "ai-testing", "vitest", "jest", "playwright"]
+      "keywords": [
+        "testing",
+        "test-generation",
+        "coverage",
+        "ai-testing",
+        "vitest",
+        "jest",
+        "playwright"
+      ]
     }
   ]
 }
