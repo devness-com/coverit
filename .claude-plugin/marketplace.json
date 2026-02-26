@@ -6,14 +6,14 @@
   },
   "metadata": {
     "description": "AI-powered test generation and execution for Claude Code",
-    "version": "0.4.0"
+    "version": "0.4.1"
   },
   "plugins": [
     {
       "name": "coverit",
       "source": "./plugins/coverit",
       "description": "Analyze codebases, generate tests, execute them, and view reports — all from Claude Code.",
-      "version": "0.4.0",
+      "version": "0.4.1",
       "author": {
         "name": "Devness"
       },
