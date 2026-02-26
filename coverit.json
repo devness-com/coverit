@@ -1,0 +1,953 @@
+{
+  "version": 1,
+  "createdAt": "2026-02-26T14:11:06.373Z",
+  "updatedAt": "2026-02-26T14:11:06.373Z",
+  "project": {
+    "name": "@devness/coverit",
+    "root": "/Users/apple/Code/devness/coverit",
+    "language": "typescript",
+    "framework": "none",
+    "testFramework": "vitest",
+    "sourceFiles": 70,
+    "sourceLines": 20334
+  },
+  "dimensions": {
+    "functionality": {
+      "enabled": true,
+      "weight": 0.35,
+      "targets": {
+        "unit": {
+          "coverage": "critical-paths"
+        },
+        "integration": {
+          "coverage": "all-boundaries"
+        },
+        "api": {
+          "coverage": "all-endpoints"
+        },
+        "e2e": {
+          "coverage": "critical-journeys"
+        },
+        "contract": {
+          "coverage": "all-public-apis"
+        }
+      }
+    },
+    "security": {
+      "enabled": true,
+      "weight": 0.25,
+      "checks": [
+        "injection",
+        "auth-bypass",
+        "secrets-exposure",
+        "xss",
+        "insecure-config",
+        "data-exposure"
+      ]
+    },
+    "stability": {
+      "enabled": true,
+      "weight": 0.15,
+      "checks": [
+        "error-handling",
+        "edge-cases",
+        "resource-cleanup",
+        "graceful-degradation"
+      ]
+    },
+    "conformance": {
+      "enabled": true,
+      "weight": 0.15,
+      "checks": [
+        "pattern-compliance",
+        "layer-violations",
+        "naming-conventions",
+        "dead-code"
+      ]
+    },
+    "regression": {
+      "enabled": true,
+      "weight": 0.1,
+      "strategy": "all-existing-tests-pass"
+    }
+  },
+  "modules": [
+    {
+      "path": "src",
+      "files": 2,
+      "lines": 128,
+      "complexity": "low",
+      "functionality": {
+        "tests": {
+          "unit": {
+            "expected": 2,
+            "current": 0,
+            "files": []
+          }
+        }
+      },
+      "security": {
+        "issues": 0,
+        "resolved": 0,
+        "findings": []
+      },
+      "stability": {
+        "score": 0,
+        "gaps": []
+      },
+      "conformance": {
+        "score": 0,
+        "violations": []
+      }
+    },
+    {
+      "path": "src/agents",
+      "files": 2,
+      "lines": 2580,
+      "complexity": "high",
+      "functionality": {
+        "tests": {
+          "unit": {
+            "expected": 12,
+            "current": 0,
+            "files": []
+          },
+          "integration": {
+            "expected": 20,
+            "current": 0,
+            "files": []
+          }
+        }
+      },
+      "security": {
+        "issues": 0,
+        "resolved": 0,
+        "findings": []
+      },
+      "stability": {
+        "score": 0,
+        "gaps": []
+      },
+      "conformance": {
+        "score": 0,
+        "violations": []
+      }
+    },
+    {
+      "path": "src/ai",
+      "files": 18,
+      "lines": 3936,
+      "complexity": "high",
+      "functionality": {
+        "tests": {
+          "unit": {
+            "expected": 12,
+            "current": 0,
+            "files": []
+          },
+          "integration": {
+            "expected": 20,
+            "current": 0,
+            "files": []
+          }
+        }
+      },
+      "security": {
+        "issues": 0,
+        "resolved": 0,
+        "findings": []
+      },
+      "stability": {
+        "score": 0,
+        "gaps": []
+      },
+      "conformance": {
+        "score": 0,
+        "violations": []
+      }
+    },
+    {
+      "path": "src/analysis",
+      "files": 4,
+      "lines": 834,
+      "complexity": "medium",
+      "functionality": {
+        "tests": {
+          "unit": {
+            "expected": 6,
+            "current": 0,
+            "files": []
+          },
+          "integration": {
+            "expected": 10,
+            "current": 0,
+            "files": []
+          }
+        }
+      },
+      "security": {
+        "issues": 0,
+        "resolved": 0,
+        "findings": []
+      },
+      "stability": {
+        "score": 0,
+        "gaps": []
+      },
+      "conformance": {
+        "score": 0,
+        "violations": []
+      }
+    },
+    {
+      "path": "src/ci",
+      "files": 2,
+      "lines": 416,
+      "complexity": "low",
+      "functionality": {
+        "tests": {
+          "unit": {
+            "expected": 5,
+            "current": 0,
+            "files": []
+          }
+        }
+      },
+      "security": {
+        "issues": 0,
+        "resolved": 0,
+        "findings": []
+      },
+      "stability": {
+        "score": 0,
+        "gaps": []
+      },
+      "conformance": {
+        "score": 0,
+        "violations": []
+      }
+    },
+    {
+      "path": "src/cli",
+      "files": 1,
+      "lines": 934,
+      "complexity": "medium",
+      "functionality": {
+        "tests": {
+          "unit": {
+            "expected": 4,
+            "current": 0,
+            "files": []
+          },
+          "integration": {
+            "expected": 8,
+            "current": 0,
+            "files": []
+          }
+        }
+      },
+      "security": {
+        "issues": 0,
+        "resolved": 0,
+        "findings": []
+      },
+      "stability": {
+        "score": 0,
+        "gaps": []
+      },
+      "conformance": {
+        "score": 0,
+        "violations": []
+      }
+    },
+    {
+      "path": "src/conformance",
+      "files": 2,
+      "lines": 782,
+      "complexity": "medium",
+      "functionality": {
+        "tests": {
+          "unit": {
+            "expected": 6,
+            "current": 0,
+            "files": []
+          },
+          "integration": {
+            "expected": 10,
+            "current": 0,
+            "files": []
+          }
+        }
+      },
+      "security": {
+        "issues": 0,
+        "resolved": 0,
+        "findings": []
+      },
+      "stability": {
+        "score": 0,
+        "gaps": []
+      },
+      "conformance": {
+        "score": 0,
+        "violations": []
+      }
+    },
+    {
+      "path": "src/executors",
+      "files": 7,
+      "lines": 1863,
+      "complexity": "high",
+      "functionality": {
+        "tests": {
+          "unit": {
+            "expected": 12,
+            "current": 0,
+            "files": []
+          },
+          "integration": {
+            "expected": 20,
+            "current": 0,
+            "files": []
+          }
+        }
+      },
+      "security": {
+        "issues": 0,
+        "resolved": 0,
+        "findings": []
+      },
+      "stability": {
+        "score": 0,
+        "gaps": []
+      },
+      "conformance": {
+        "score": 0,
+        "violations": []
+      }
+    },
+    {
+      "path": "src/generators",
+      "files": 4,
+      "lines": 1294,
+      "complexity": "high",
+      "functionality": {
+        "tests": {
+          "unit": {
+            "expected": 12,
+            "current": 0,
+            "files": []
+          },
+          "integration": {
+            "expected": 20,
+            "current": 0,
+            "files": []
+          }
+        }
+      },
+      "security": {
+        "issues": 0,
+        "resolved": 0,
+        "findings": []
+      },
+      "stability": {
+        "score": 0,
+        "gaps": []
+      },
+      "conformance": {
+        "score": 0,
+        "violations": []
+      }
+    },
+    {
+      "path": "src/mcp",
+      "files": 1,
+      "lines": 1031,
+      "complexity": "medium",
+      "functionality": {
+        "tests": {
+          "unit": {
+            "expected": 4,
+            "current": 0,
+            "files": []
+          },
+          "integration": {
+            "expected": 10,
+            "current": 0,
+            "files": []
+          },
+          "contract": {
+            "expected": 4,
+            "current": 0,
+            "files": []
+          }
+        }
+      },
+      "security": {
+        "issues": 0,
+        "resolved": 0,
+        "findings": []
+      },
+      "stability": {
+        "score": 0,
+        "gaps": []
+      },
+      "conformance": {
+        "score": 0,
+        "violations": []
+      }
+    },
+    {
+      "path": "src/mcp-setup",
+      "files": 1,
+      "lines": 30,
+      "complexity": "low",
+      "functionality": {
+        "tests": {
+          "unit": {
+            "expected": 2,
+            "current": 0,
+            "files": []
+          }
+        }
+      },
+      "security": {
+        "issues": 0,
+        "resolved": 0,
+        "findings": []
+      },
+      "stability": {
+        "score": 0,
+        "gaps": []
+      },
+      "conformance": {
+        "score": 0,
+        "violations": []
+      }
+    },
+    {
+      "path": "src/measure",
+      "files": 3,
+      "lines": 786,
+      "complexity": "medium",
+      "functionality": {
+        "tests": {
+          "unit": {
+            "expected": 6,
+            "current": 0,
+            "files": []
+          },
+          "integration": {
+            "expected": 10,
+            "current": 0,
+            "files": []
+          }
+        }
+      },
+      "security": {
+        "issues": 0,
+        "resolved": 0,
+        "findings": []
+      },
+      "stability": {
+        "score": 0,
+        "gaps": []
+      },
+      "conformance": {
+        "score": 0,
+        "violations": []
+      }
+    },
+    {
+      "path": "src/regression",
+      "files": 3,
+      "lines": 1004,
+      "complexity": "medium",
+      "functionality": {
+        "tests": {
+          "unit": {
+            "expected": 6,
+            "current": 0,
+            "files": []
+          },
+          "integration": {
+            "expected": 10,
+            "current": 0,
+            "files": []
+          }
+        }
+      },
+      "security": {
+        "issues": 0,
+        "resolved": 0,
+        "findings": []
+      },
+      "stability": {
+        "score": 0,
+        "gaps": []
+      },
+      "conformance": {
+        "score": 0,
+        "violations": []
+      }
+    },
+    {
+      "path": "src/scale",
+      "files": 2,
+      "lines": 297,
+      "complexity": "medium",
+      "functionality": {
+        "tests": {
+          "unit": {
+            "expected": 3,
+            "current": 0,
+            "files": []
+          },
+          "integration": {
+            "expected": 6,
+            "current": 0,
+            "files": []
+          }
+        }
+      },
+      "security": {
+        "issues": 0,
+        "resolved": 0,
+        "findings": []
+      },
+      "stability": {
+        "score": 0,
+        "gaps": []
+      },
+      "conformance": {
+        "score": 0,
+        "violations": []
+      }
+    },
+    {
+      "path": "src/schema",
+      "files": 3,
+      "lines": 842,
+      "complexity": "low",
+      "functionality": {
+        "tests": {
+          "unit": {
+            "expected": 5,
+            "current": 0,
+            "files": []
+          }
+        }
+      },
+      "security": {
+        "issues": 0,
+        "resolved": 0,
+        "findings": []
+      },
+      "stability": {
+        "score": 0,
+        "gaps": []
+      },
+      "conformance": {
+        "score": 0,
+        "violations": []
+      }
+    },
+    {
+      "path": "src/scoring",
+      "files": 3,
+      "lines": 689,
+      "complexity": "medium",
+      "functionality": {
+        "tests": {
+          "unit": {
+            "expected": 8,
+            "current": 0,
+            "files": []
+          },
+          "integration": {
+            "expected": 4,
+            "current": 0,
+            "files": []
+          }
+        }
+      },
+      "security": {
+        "issues": 0,
+        "resolved": 0,
+        "findings": []
+      },
+      "stability": {
+        "score": 0,
+        "gaps": []
+      },
+      "conformance": {
+        "score": 0,
+        "violations": []
+      }
+    },
+    {
+      "path": "src/security",
+      "files": 4,
+      "lines": 771,
+      "complexity": "medium",
+      "functionality": {
+        "tests": {
+          "unit": {
+            "expected": 6,
+            "current": 0,
+            "files": []
+          },
+          "integration": {
+            "expected": 10,
+            "current": 0,
+            "files": []
+          }
+        }
+      },
+      "security": {
+        "issues": 0,
+        "resolved": 0,
+        "findings": []
+      },
+      "stability": {
+        "score": 0,
+        "gaps": []
+      },
+      "conformance": {
+        "score": 0,
+        "violations": []
+      }
+    },
+    {
+      "path": "src/stability",
+      "files": 2,
+      "lines": 652,
+      "complexity": "medium",
+      "functionality": {
+        "tests": {
+          "unit": {
+            "expected": 6,
+            "current": 0,
+            "files": []
+          },
+          "integration": {
+            "expected": 10,
+            "current": 0,
+            "files": []
+          }
+        }
+      },
+      "security": {
+        "issues": 0,
+        "resolved": 0,
+        "findings": []
+      },
+      "stability": {
+        "score": 0,
+        "gaps": []
+      },
+      "conformance": {
+        "score": 0,
+        "violations": []
+      }
+    },
+    {
+      "path": "src/types",
+      "files": 1,
+      "lines": 504,
+      "complexity": "low",
+      "functionality": {
+        "tests": {}
+      },
+      "security": {
+        "issues": 0,
+        "resolved": 0,
+        "findings": []
+      },
+      "stability": {
+        "score": 0,
+        "gaps": []
+      },
+      "conformance": {
+        "score": 0,
+        "violations": []
+      }
+    },
+    {
+      "path": "src/utils",
+      "files": 5,
+      "lines": 961,
+      "complexity": "medium",
+      "functionality": {
+        "tests": {
+          "unit": {
+            "expected": 6,
+            "current": 0,
+            "files": []
+          },
+          "integration": {
+            "expected": 10,
+            "current": 0,
+            "files": []
+          }
+        }
+      },
+      "security": {
+        "issues": 0,
+        "resolved": 0,
+        "findings": []
+      },
+      "stability": {
+        "score": 0,
+        "gaps": []
+      },
+      "conformance": {
+        "score": 0,
+        "violations": []
+      }
+    }
+  ],
+  "journeys": [
+    {
+      "id": "j1",
+      "name": "Full scan-generate-run pipeline",
+      "steps": [
+        "Detect project framework and test runner",
+        "Analyze git diff for changed files",
+        "AI triage to determine test plans",
+        "Generate test code via AI provider",
+        "Execute generated tests locally",
+        "Aggregate results into report"
+      ],
+      "covered": false,
+      "testFile": null
+    },
+    {
+      "id": "j2",
+      "name": "Fix failing tests with AI refinement",
+      "steps": [
+        "Load run metadata from .coverit/runs",
+        "Identify failing test plans",
+        "Read failure details and test code",
+        "AI refinement to fix test code",
+        "Re-execute fixed tests",
+        "Update run progress and report"
+      ],
+      "covered": false,
+      "testFile": null
+    },
+    {
+      "id": "j3",
+      "name": "Scale codebase analysis to manifest",
+      "steps": [
+        "Detect project metadata",
+        "Initialize AI provider",
+        "AI explores codebase with tool access",
+        "Parse structured AI response",
+        "Assemble manifest with modules, journeys, contracts",
+        "Calculate quality scores",
+        "Write coverit.json"
+      ],
+      "covered": false,
+      "testFile": null
+    },
+    {
+      "id": "j4",
+      "name": "Measure and render quality dashboard",
+      "steps": [
+        "Read existing coverit.json",
+        "Scan filesystem for test files",
+        "Count test cases per module",
+        "Update module test coverage",
+        "Rescore manifest",
+        "Render terminal dashboard"
+      ],
+      "covered": false,
+      "testFile": null
+    },
+    {
+      "id": "j5",
+      "name": "MCP tool invocation pipeline",
+      "steps": [
+        "Receive MCP tool call via stdio",
+        "Parse Zod-validated parameters",
+        "Delegate to orchestrator or subsystem",
+        "Return structured JSON response"
+      ],
+      "covered": false,
+      "testFile": null
+    }
+  ],
+  "contracts": [
+    {
+      "endpoint": "TOOL coverit_analyze",
+      "method": "POST",
+      "requestSchema": "z.object({ projectRoot, testTypes?, baseBranch?, commit?, pr?, files?, staged?, all?, priorFailures? })",
+      "responseSchema": "{ runId, strategy, skipped }",
+      "covered": false,
+      "testFile": null
+    },
+    {
+      "endpoint": "TOOL coverit_generate",
+      "method": "POST",
+      "requestSchema": "z.object({ projectRoot, testTypes?, baseBranch?, commit?, pr?, files?, staged?, all? })",
+      "responseSchema": "{ runId, generated, strategy }",
+      "covered": false,
+      "testFile": null
+    },
+    {
+      "endpoint": "TOOL coverit_run",
+      "method": "POST",
+      "requestSchema": "z.object({ projectRoot, testTypes?, environment?, coverage?, baseBranch?, commit?, pr?, files?, staged?, all? })",
+      "responseSchema": "{ runId, summary, results }",
+      "covered": false,
+      "testFile": null
+    },
+    {
+      "endpoint": "TOOL coverit_execute_batch",
+      "method": "POST",
+      "requestSchema": "z.object({ projectRoot, planIds, runId?, environment?, coverage?, generateOnly?, baseBranch?, commit?, pr?, files?, staged?, all? })",
+      "responseSchema": "{ runId, summary, results }",
+      "covered": false,
+      "testFile": null
+    },
+    {
+      "endpoint": "TOOL coverit_fix",
+      "method": "POST",
+      "requestSchema": "z.object({ projectRoot, planIds?, runId?, maxRetries? })",
+      "responseSchema": "{ runId, summary, results }",
+      "covered": false,
+      "testFile": null
+    },
+    {
+      "endpoint": "TOOL coverit_recheck",
+      "method": "POST",
+      "requestSchema": "z.object({ projectRoot, planIds?, runId? })",
+      "responseSchema": "{ runId, summary, results }",
+      "covered": false,
+      "testFile": null
+    },
+    {
+      "endpoint": "TOOL coverit_verify",
+      "method": "POST",
+      "requestSchema": "z.object({ projectRoot, runId? })",
+      "responseSchema": "{ runId, summary, results }",
+      "covered": false,
+      "testFile": null
+    },
+    {
+      "endpoint": "TOOL coverit_full",
+      "method": "POST",
+      "requestSchema": "z.object({ projectRoot, testTypes?, environment?, coverage?, baseBranch?, commit?, pr?, files?, staged?, all? })",
+      "responseSchema": "CoveritReport",
+      "covered": false,
+      "testFile": null
+    },
+    {
+      "endpoint": "TOOL coverit_runs",
+      "method": "GET",
+      "requestSchema": "z.object({ projectRoot, scope? })",
+      "responseSchema": "RunMeta[]",
+      "covered": false,
+      "testFile": null
+    },
+    {
+      "endpoint": "TOOL coverit_status",
+      "method": "GET",
+      "requestSchema": "z.object({ projectRoot })",
+      "responseSchema": "{ project, score, moduleCount, modules }",
+      "covered": false,
+      "testFile": null
+    },
+    {
+      "endpoint": "TOOL coverit_run_status",
+      "method": "GET",
+      "requestSchema": "z.object({ projectRoot, runId? })",
+      "responseSchema": "RunStatus",
+      "covered": false,
+      "testFile": null
+    },
+    {
+      "endpoint": "TOOL coverit_clear",
+      "method": "DELETE",
+      "requestSchema": "z.object({ projectRoot, runId?, scope?, all?, cleanTestFiles? })",
+      "responseSchema": "{ deletedRuns, testFilesFound, testFilesDeleted }",
+      "covered": false,
+      "testFile": null
+    },
+    {
+      "endpoint": "TOOL coverit_scale",
+      "method": "POST",
+      "requestSchema": "z.object({ projectRoot })",
+      "responseSchema": "{ project, moduleCount, journeyCount, contractCount, score, modules, journeys, contracts }",
+      "covered": false,
+      "testFile": null
+    },
+    {
+      "endpoint": "TOOL coverit_measure",
+      "method": "POST",
+      "requestSchema": "z.object({ projectRoot })",
+      "responseSchema": "{ totalTestFiles, totalTestCount, score, modules }",
+      "covered": false,
+      "testFile": null
+    },
+    {
+      "endpoint": "TOOL coverit_backup",
+      "method": "GET",
+      "requestSchema": "z.object({ projectRoot })",
+      "responseSchema": "BackupJSON",
+      "covered": false,
+      "testFile": null
+    },
+    {
+      "endpoint": "TOOL coverit_restore",
+      "method": "POST",
+      "requestSchema": "z.object({ projectRoot, backup_json })",
+      "responseSchema": "{ success, runs_restored, runs_skipped }",
+      "covered": false,
+      "testFile": null
+    }
+  ],
+  "score": {
+    "overall": 0,
+    "breakdown": {
+      "functionality": 0,
+      "security": 100,
+      "stability": 0,
+      "conformance": 0,
+      "regression": 0
+    },
+    "gaps": {
+      "total": 305,
+      "critical": 305,
+      "byDimension": {
+        "functionality": {
+          "missing": 305,
+          "priority": "critical"
+        },
+        "security": {
+          "issues": 0,
+          "priority": "low"
+        },
+        "stability": {
+          "gaps": 0,
+          "priority": "critical"
+        },
+        "conformance": {
+          "violations": 0,
+          "priority": "critical"
+        }
+      }
+    },
+    "history": [
+      {
+        "date": "2026-02-26T14:11:06.373Z",
+        "score": 0,
+        "scope": "first-time"
+      }
+    ],
+    "scanned": {
+      "functionality": "2026-02-26T14:11:06.373Z"
+    }
+  }
+}
