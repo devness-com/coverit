@@ -5,15 +5,19 @@
  * auto-detection. Detection order reflects cost/convenience tradeoffs:
  *
  *   1. Claude CLI  -- free if user has Pro/Max subscription
- *   2. Anthropic   -- best quality, requires API key
- *   3. OpenAI      -- widely available, requires API key
- *   4. Ollama      -- free & local, but quality varies by model
+ *   2. Gemini CLI  -- free if user has Google AI subscription
+ *   3. Codex CLI   -- free if user has OpenAI subscription
+ *   4. Anthropic   -- best quality, requires API key
+ *   5. OpenAI      -- widely available, requires API key
+ *   6. Ollama      -- free & local, but quality varies by model
  *
  * The COVERIT_AI_PROVIDER env var can override auto-detection.
  */
 
 import type { AIProvider, AIProviderConfig, AIProviderType } from "./types.js";
 import { ClaudeCliProvider } from "./claude-cli-provider.js";
+import { GeminiCliProvider } from "./gemini-cli-provider.js";
+import { CodexCliProvider } from "./codex-cli-provider.js";
 import { AnthropicProvider } from "./anthropic-provider.js";
 import { OpenAIProvider } from "./openai-provider.js";
 import { OllamaProvider } from "./ollama-provider.js";
@@ -63,9 +67,12 @@ export async function detectBestProvider(): Promise<AIProvider> {
     );
   }
 
-  // Probe providers in priority order
+  // Probe providers in priority order — CLI wrappers first (free via
+  // existing subscriptions), then API-key providers, then local.
   const candidates: AIProvider[] = [
     new ClaudeCliProvider(),
+    new GeminiCliProvider(),
+    new CodexCliProvider(),
     new AnthropicProvider(),
     new OpenAIProvider(),
     new OllamaProvider(),
@@ -83,11 +90,17 @@ export async function detectBestProvider(): Promise<AIProvider> {
       "  1. Install Claude Code CLI (uses your Pro/Max subscription):",
       "     https://docs.anthropic.com/en/docs/claude-code",
       "",
-      "  2. Set ANTHROPIC_API_KEY for Anthropic API access",
+      "  2. Install Gemini CLI (uses your Google AI subscription):",
+      "     https://github.com/google-gemini/gemini-cli",
       "",
-      "  3. Set OPENAI_API_KEY for OpenAI API access",
+      "  3. Install Codex CLI (uses your OpenAI subscription):",
+      "     https://github.com/openai/codex",
       "",
-      "  4. Run Ollama locally: https://ollama.com",
+      "  4. Set ANTHROPIC_API_KEY for Anthropic API access",
+      "",
+      "  5. Set OPENAI_API_KEY for OpenAI API access",
+      "",
+      "  6. Run Ollama locally: https://ollama.com",
       "",
       "Or set COVERIT_AI_PROVIDER to force a specific provider.",
     ].join("\n"),
@@ -102,6 +115,10 @@ function buildProvider(
   switch (type) {
     case "claude-cli":
       return new ClaudeCliProvider(config);
+    case "gemini-cli":
+      return new GeminiCliProvider(config);
+    case "codex-cli":
+      return new CodexCliProvider(config);
     case "anthropic":
       return new AnthropicProvider(config);
     case "openai":
@@ -122,6 +139,10 @@ function getProviderHint(type: AIProviderType): string {
   switch (type) {
     case "claude-cli":
       return "Install Claude Code: https://docs.anthropic.com/en/docs/claude-code";
+    case "gemini-cli":
+      return "Install the Gemini CLI: https://github.com/google-gemini/gemini-cli";
+    case "codex-cli":
+      return "Install the Codex CLI: https://github.com/openai/codex";
     case "anthropic":
       return "Set the ANTHROPIC_API_KEY environment variable.";
     case "openai":

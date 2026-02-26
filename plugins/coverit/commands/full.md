@@ -1,10 +1,12 @@
 ---
-description: "Full SGR loop: Scan → Generate → Run with automatic retry cycles"
+description: "Full v1.0 pipeline: scale, measure, scan, generate, run, fix, and update dashboard"
 ---
 
-# Coverit Full — SGR Loop
+# Coverit Full -- v1.0 Pipeline
 
-Run the complete **SGR pipeline** (Scan → Generate → Run) with automatic retry cycles. When tests fail, it re-scans with failure context, re-generates with a different approach, and re-runs — up to N cycles.
+Run the complete coverit pipeline with quality tracking. This is the primary command for generating and running tests with automatic retry cycles.
+
+The v1.0 flow integrates the quality manifest (`coverit.json`) so you get a before/after score delta showing the impact of generated tests.
 
 Uses phased sub-agent execution to handle large PRs without timing out.
 
@@ -23,16 +25,46 @@ Parse from user input:
 - `--env <env>` - Execution environment (local, cloud-sandbox)
 - `--cycles <n>` - Maximum SGR loop cycles (default: 1, max: 5). Use 2-3 for automatic retry on failures.
 
-## Execution — SGR Loop
+## Execution -- v1.0 Pipeline
 
-The full command runs the SGR pipeline in a loop. Each cycle:
-1. **Scan** — analyze the codebase (with failure context from prior cycles)
-2. **Generate** — create test files for each plan
-3. **Run** — execute the tests
+### Phase 0: Ensure coverit.json exists
 
-If all tests pass after any cycle, stop. If tests fail and more cycles remain, start the next cycle with failure context so the AI tries a fundamentally different approach.
+Check if `<projectRoot>/coverit.json` exists by reading the file.
 
-### Initialize
+If it does NOT exist:
+1. Tell the user: "No coverit.json found. Running initial codebase analysis..."
+2. Spawn a sub-agent using the Task tool with `subagent_type: "general-purpose"`:
+
+```
+Call the `mcp__plugin_coverit_coverit__coverit_scale` MCP tool with:
+{
+  "projectRoot": "<absolute path>"
+}
+
+Return a JSON object with "overall" and "moduleCount" keys from the manifest score.
+Nothing else.
+```
+
+3. Tell the user: "Manifest created with <moduleCount> modules. Baseline score: <overall>/100"
+
+### Phase 1: Measure current state (before)
+
+Call the `mcp__plugin_coverit_coverit__coverit_measure` MCP tool **directly**:
+
+```json
+{
+  "projectRoot": "<absolute path>"
+}
+```
+
+Store the `score.overall` value as `scoreBefore`.
+
+Tell the user:
+```
+Current quality score: <scoreBefore>/100
+```
+
+### Phase 2: SGR Loop (Scan -> Generate -> Run)
 
 Set `maxCycles` from the `--cycles` argument (default 1, clamp to 1-5).
 Set `currentCycle = 1`.
@@ -41,14 +73,14 @@ Set `allCycleResults = []` to track results across cycles.
 
 ---
 
-### SGR Cycle (repeat up to maxCycles)
+#### SGR Cycle (repeat up to maxCycles)
 
 Tell the user:
 ```
 SGR Cycle {currentCycle}/{maxCycles}
 ```
 
-#### Step 1: Scan
+##### Step 1: Scan
 
 Spawn a sub-agent to analyze the codebase and get the test strategy with plan IDs.
 
@@ -70,10 +102,10 @@ Nothing else.
 
 Tell the user: "Scanning... found N plans. Run: {runId}"
 
-If 0 plans found and this is cycle 1, tell the user: "No testable changes found." and stop.
-If 0 plans found and this is cycle > 1, the AI decided all prior failures are not worth retrying — skip to final summary.
+If 0 plans found and this is cycle 1, tell the user: "No testable changes found." and skip to Phase 3.
+If 0 plans found and this is cycle > 1, the AI decided all prior failures are not worth retrying -- skip to Phase 3.
 
-#### Step 2: Plan Tracking
+##### Step 2: Plan Tracking
 
 Create a **task for each plan** using TaskCreate so progress is visible:
 - Subject: `Coverit plan_XXX: <description>`
@@ -87,7 +119,7 @@ Executing N plans (1 sub-agent per plan):
   ...
 ```
 
-#### Step 3: Execute Plans via Sub-Agents
+##### Step 3: Execute Plans via Sub-Agents
 
 Spawn **one sub-agent per plan** using the Task tool with `subagent_type: "general-purpose"` and `run_in_background: true`.
 
@@ -112,13 +144,13 @@ Return a concise summary (NOT the full JSON):
 
 **CRITICAL**: Each sub-agent MUST use the `mcp__plugin_coverit_coverit__coverit_execute_batch` MCP tool. It must NOT use the CLI, shell commands, or `gh` to fetch diffs manually.
 
-#### Step 4: Monitor Progress & Aggregate
+##### Step 4: Monitor Progress & Aggregate
 
 After launching all sub-agents, **actively monitor progress** by polling the per-plan progress files that the orchestrator writes in real-time.
 
 **Important**: Do NOT fall back to `coverit_full` or re-run the pipeline. Results are always available on disk in the progress files.
 
-##### Poll Loop
+###### Poll Loop
 
 While sub-agents are still running, repeat every 15-20 seconds:
 
@@ -128,7 +160,7 @@ While sub-agents are still running, repeat every 15-20 seconds:
 {
   "planId": "plan_001",
   "status": "generating" | "running" | "passed" | "failed" | "error" | "skipped",
-  "description": "unit tests for src/auth/service.ts — 3 function(s)",
+  "description": "unit tests for src/auth/service.ts -- 3 function(s)",
   "testFile": "src/auth/service.test.ts",
   "passed": 5,
   "failed": 0,
@@ -137,20 +169,20 @@ While sub-agents are still running, repeat every 15-20 seconds:
 }
 ```
 
-2. **Check completion**: Call `TaskOutput` with `block: false` and `timeout: 5000` for each sub-agent task ID. When a sub-agent returns output, mark its task completed via TaskUpdate. Don't worry about parsing the sub-agent's text output — the progress files are the source of truth.
+2. **Check completion**: Call `TaskOutput` with `block: false` and `timeout: 5000` for each sub-agent task ID. When a sub-agent returns output, mark its task completed via TaskUpdate. Don't worry about parsing the sub-agent's text output -- the progress files are the source of truth.
 
 3. **Print a progress update** each poll cycle:
 
 ```
 Cycle {currentCycle} Progress: 8/14 plans complete (2 generating, 4 running)
   Recently completed:
-    plan_003: passed (5/5 tests, 1.2s) — unit tests for auth/service.ts
-    plan_004: failed (3/5 tests, 0.8s) — api tests for booking/controller.ts
+    plan_003: passed (5/5 tests, 1.2s) -- unit tests for auth/service.ts
+    plan_004: failed (3/5 tests, 0.8s) -- api tests for booking/controller.ts
 ```
 
 4. **Determine completion**: All plans are done when every progress file has a terminal status (`passed`, `failed`, `error`, or `skipped`). Stop polling when this is true OR when all TaskOutput calls return completed.
 
-##### Aggregate Cycle Results
+###### Aggregate Cycle Results
 
 After all sub-agents complete, read ALL `<projectRoot>/.coverit/runs/<runId>/progress/*.json` files and aggregate:
 
@@ -164,16 +196,16 @@ Show cycle summary:
 Cycle {currentCycle} complete: N passed, M failed, K errors, J skipped
 ```
 
-#### Step 5: Check for Next Cycle
+##### Step 5: Check for Next Cycle
 
-Collect all plans with status `failed` or `error`. If none, or if `currentCycle >= maxCycles`, go to Final Summary.
+Collect all plans with status `failed` or `error`. If none, or if `currentCycle >= maxCycles`, go to Phase 3.
 
 Otherwise, **build `priorFailures` for the next cycle**:
 
 For each failed/error plan from this cycle's progress files:
 1. Read the progress file to get `planId`, `description`, `testFile`
 2. Read the generated test file from disk (`<projectRoot>/<testFile>`) to get `priorTestCode`
-3. Collect failure messages — read the batch report at `<projectRoot>/.coverit/runs/<runId>/batch-<planId>-<planId>.json`, extract `results[0].failures[].message`. If no batch report, use the progress file's status as the message.
+3. Collect failure messages -- read the batch report at `<projectRoot>/.coverit/runs/<runId>/batch-<planId>-<planId>.json`, extract `results[0].failures[].message`. If no batch report, use the progress file's status as the message.
 
 Build the `priorFailures` array:
 ```json
@@ -197,12 +229,24 @@ Increment `currentCycle` and go back to **Step 1: Scan**.
 
 ---
 
-### Final Summary
+### Phase 3: Update manifest and show final dashboard
 
-After all cycles complete, show the comprehensive summary:
+After all SGR cycles complete:
+
+1. **Measure the updated state** by calling the `mcp__plugin_coverit_coverit__coverit_measure` MCP tool **directly**:
+
+```json
+{
+  "projectRoot": "<absolute path>"
+}
+```
+
+Store the `score.overall` value as `scoreAfter`.
+
+2. **Show the comprehensive final summary**:
 
 ```
-SGR Complete — {currentCycle} cycle(s)
+SGR Complete -- {currentCycle} cycle(s)
 
 Results Summary
   Status: PASSED / FAILED
@@ -212,12 +256,15 @@ Results Summary
   Duration: Xs
 
 Per-Cycle Breakdown:
-  Cycle 1: 12 plans — 8 passed, 4 failed (run-20260215-143022-a7f3)
-  Cycle 2: 4 plans — 3 passed, 1 failed (run-20260215-143245-b8d2)
-  Cycle 3: 1 plan — 1 passed (run-20260215-143512-c9e3)
+  Cycle 1: 12 plans -- 8 passed, 4 failed (run-20260215-143022-a7f3)
+  Cycle 2: 4 plans -- 3 passed, 1 failed (run-20260215-143245-b8d2)
+  Cycle 3: 1 plan -- 1 passed (run-20260215-143512-c9e3)
+
+Quality Score: <scoreBefore>/100 -> <scoreAfter>/100  (<delta>)
+  (Show "+N" if improved, "-N" if decreased, "no change" if same)
 
 Failures (if any, list first 10):
-  1. [planId] description — N/M tests passed (Xs)
+  1. [planId] description -- N/M tests passed (Xs)
 ```
 
 If all tests pass: "All tests pass."

@@ -9,6 +9,8 @@
 
 export type AIProviderType =
   | "claude-cli"
+  | "gemini-cli"
+  | "codex-cli"
   | "anthropic"
   | "openai"
   | "ollama"

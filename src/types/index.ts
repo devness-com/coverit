@@ -462,7 +462,7 @@ export interface CoveritConfig {
   coverageThreshold?: number;
   cloudConfig?: CloudConfig;
   ai?: {
-    provider?: "claude-cli" | "anthropic" | "openai" | "ollama" | "openai-compatible";
+    provider?: "claude-cli" | "gemini-cli" | "codex-cli" | "anthropic" | "openai" | "ollama" | "openai-compatible";
     model?: string;
     apiKey?: string;
     baseUrl?: string;

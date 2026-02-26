@@ -35,6 +35,7 @@ import type {
   TestFailure,
   GeneratorResult,
   ExecutionPhase,
+  ProjectInfo,
 } from "../types/index.js";
 import type { AIProvider, AIProviderConfig } from "../ai/types.js";
 import { createAIProvider, detectBestProvider } from "../ai/provider-factory.js";
@@ -60,6 +61,25 @@ import {
   completeRun,
   updateRunMeta,
 } from "../utils/run-manager.js";
+
+// ─── V2 (manifest-driven) imports ─────────────────────────────
+import type {
+  CoveritManifest,
+  CoveritScope,
+  ScopeDepth,
+} from "../schema/coverit-manifest.js";
+import { SCOPE_DEPTHS } from "../schema/defaults.js";
+import { analyzeCodebase } from "../scale/analyzer.js";
+import { readManifest, writeManifest } from "../scale/writer.js";
+import { scanTests } from "../measure/scanner.js";
+import { rescoreManifest } from "../measure/scorer.js";
+import { scanSecurity } from "../security/scanner.js";
+import { analyzeGaps } from "../generators/gap-analyzer.js";
+import { generateForGaps } from "../generators/targeted-generator.js";
+import { runExistingTests } from "../regression/runner.js";
+import { analyzeStability } from "../stability/analyzer.js";
+import { analyzeConformance } from "../conformance/analyzer.js";
+import { detectScope } from "../utils/scope-detector.js";
 
 const COVERIT_DIR = ".coverit";
 const STRATEGY_VERSION = 4; // V4: per-run isolation in .coverit/runs/{runId}/
@@ -1646,4 +1666,461 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
     chunks.push(arr.slice(i, i + size));
   }
   return chunks;
+}
+
+// ─── V2 Manifest-Driven Pipeline ─────────────────────────────
+//
+// The v2 pipeline uses a persistent quality manifest (coverit.json) to drive
+// multi-dimensional analysis. Instead of re-discovering what to test from
+// scratch on every run, it reads the manifest to find gaps and generates
+// tests to fill them. Each quality dimension (functionality, security,
+// stability, conformance, regression) is optional and controlled by scope depth.
+
+export interface OrchestrateV2Result {
+  manifest: CoveritManifest;
+  scoreBefore: number;
+  scoreAfter: number;
+  delta: number;
+  scope: CoveritScope;
+  securityFindings: number;
+  testsGenerated: number;
+  testsRun: number;
+  testsPassed: number;
+  testsFailed: number;
+  regressions: number;
+  duration: number;
+}
+
+/**
+ * Manifest-driven orchestration pipeline (v2).
+ *
+ * Replaces the "AI decides from scratch" approach with a deterministic,
+ * gap-driven flow anchored on coverit.json. The pipeline:
+ *
+ *   1. Detect scope (or use explicit config)
+ *   2. Load/create manifest
+ *   3. Pre-measure baseline score
+ *   4. Run enabled dimensions (security, stability, conformance)
+ *   5. Analyze gaps and generate tests
+ *   6. Execute generated tests
+ *   7. Run regression suite
+ *   8. Post-measure and persist updated manifest
+ *
+ * Backwards-compatible: the existing orchestrate() is untouched.
+ */
+export async function orchestrateV2(
+  config: CoveritConfig & { scope?: CoveritScope },
+  onEvent?: CoveritEventHandler,
+): Promise<OrchestrateV2Result> {
+  const startTime = Date.now();
+  const projectRoot = config.projectRoot;
+
+  await ensureDir(join(projectRoot, COVERIT_DIR));
+  await ensureGitignore(projectRoot);
+
+  // Aggregate counters for the result
+  let securityFindings = 0;
+  let testsGenerated = 0;
+  let testsRun = 0;
+  let testsPassed = 0;
+  let testsFailed = 0;
+  let regressions = 0;
+
+  // ── 1. SCOPE DETECTION ─────────────────────────────────────
+  const scope: CoveritScope = config.scope ?? await detectScope(projectRoot, {});
+  const depth: ScopeDepth = SCOPE_DEPTHS[scope];
+
+  emit(onEvent, {
+    type: "analysis:start",
+    data: { files: 0 },
+  });
+  logger.info(`[v2] Scope: ${scope}`);
+
+  // ── 2. MANIFEST CHECK ─────────────────────────────────────
+  let manifest = await readManifest(projectRoot);
+
+  if (!manifest) {
+    // First-time or rescale: create manifest from codebase analysis
+    logger.info("[v2] No manifest found — running codebase analysis");
+    manifest = await analyzeCodebase(projectRoot);
+    await writeManifest(projectRoot, manifest);
+  }
+
+  // ── 3. PRE-MEASURE ────────────────────────────────────────
+  const scanResult = await scanTests(projectRoot, manifest.modules);
+
+  // Update manifest modules with fresh test counts
+  for (const mod of manifest.modules) {
+    const moduleData = scanResult.byModule.get(mod.path);
+    if (!moduleData) continue;
+    for (const [testType, data] of Object.entries(moduleData.tests)) {
+      const existing = mod.functionality.tests[testType as keyof typeof mod.functionality.tests];
+      if (existing && data) {
+        existing.current = data.current;
+        existing.files = data.files;
+      }
+    }
+  }
+
+  manifest = rescoreManifest(manifest);
+  const scoreBefore = manifest.score.overall;
+  logger.info(`[v2] Baseline score: ${scoreBefore}`);
+
+  // ── AI provider (shared across dimensions) ─────────────────
+  let aiProvider: AIProvider | null = null;
+  try {
+    if (config.ai?.provider) {
+      aiProvider = await createAIProvider(config.ai as AIProviderConfig);
+    } else {
+      aiProvider = await detectBestProvider();
+    }
+    logger.info(`[v2] Using AI provider: ${aiProvider.name}`);
+  } catch {
+    logger.warn("[v2] No AI provider available — AI-dependent dimensions will be skipped");
+  }
+
+  // ── Get changed files for scoped dimensions ────────────────
+  let changedFiles: string[] = [];
+  try {
+    const diffResult = await runDiff(config, projectRoot);
+    changedFiles = diffResult.files.map((f) => f.path);
+  } catch {
+    logger.warn("[v2] Could not determine changed files — using all modules");
+  }
+
+  // For scan-all or full scope, use all module files
+  const filesToScan =
+    depth.security === "scan-all" || changedFiles.length === 0
+      ? manifest.modules.flatMap((m) =>
+          m.critical?.map((c) => `${m.path}/${c.file}`) ?? [m.path],
+        )
+      : changedFiles;
+
+  // ── 4. SECURITY ───────────────────────────────────────────
+  if (depth.security !== "skip" && aiProvider) {
+    try {
+      logger.info(`[v2] Running security scan (${depth.security})`);
+      const secResult = await scanSecurity(projectRoot, filesToScan, aiProvider);
+      securityFindings = secResult.findings.length;
+
+      // Update manifest modules with security findings
+      for (const finding of secResult.findings) {
+        const mod = manifest.modules.find((m) => finding.file.startsWith(m.path));
+        if (mod) {
+          const findingKey = `${finding.checkType}:${finding.file}:${finding.line}`;
+          if (!mod.security.findings.includes(findingKey)) {
+            mod.security.findings.push(findingKey);
+            mod.security.issues = mod.security.findings.length;
+          }
+        }
+      }
+
+      // Mark security as scanned
+      manifest.score.scanned = {
+        ...manifest.score.scanned,
+        security: new Date().toISOString(),
+      };
+      logger.info(`[v2] Security: ${securityFindings} finding(s)`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn(`[v2] Security scan failed (non-fatal): ${msg}`);
+    }
+  }
+
+  // ── 5. STABILITY ──────────────────────────────────────────
+  if (depth.stability !== "skip" && aiProvider) {
+    try {
+      logger.info(`[v2] Running stability analysis (${depth.stability})`);
+      const stabResult = await analyzeStability(
+        projectRoot,
+        filesToScan,
+        aiProvider,
+      );
+
+      // Update manifest modules with stability data
+      for (const mod of manifest.modules) {
+        const moduleFindings = stabResult.findings.filter((f) =>
+          f.file.startsWith(mod.path),
+        );
+        if (moduleFindings.length > 0) {
+          mod.stability.gaps = moduleFindings.map(
+            (f) => `${f.check}:${f.file}:${f.line} — ${f.description}`,
+          );
+          mod.stability.score = Math.max(
+            0,
+            100 - moduleFindings.length * 10,
+          );
+        }
+      }
+
+      // Mark stability as scanned
+      manifest.score.scanned = {
+        ...manifest.score.scanned,
+        stability: new Date().toISOString(),
+      };
+      logger.info(`[v2] Stability: score=${stabResult.score}, findings=${stabResult.findings.length}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn(`[v2] Stability analysis failed (non-fatal): ${msg}`);
+    }
+  }
+
+  // ── 6. CONFORMANCE ────────────────────────────────────────
+  if (depth.conformance !== "skip" && aiProvider) {
+    try {
+      logger.info(`[v2] Running conformance analysis (${depth.conformance})`);
+      const confResult = await analyzeConformance(
+        projectRoot,
+        filesToScan,
+        aiProvider,
+      );
+
+      // Update manifest modules with conformance data
+      for (const mod of manifest.modules) {
+        const moduleViolations = confResult.findings.filter((f) =>
+          f.file.startsWith(mod.path),
+        );
+        if (moduleViolations.length > 0) {
+          mod.conformance.violations = moduleViolations.map(
+            (f) => `${f.check}:${f.file}:${f.line} — ${f.description}`,
+          );
+          mod.conformance.score = Math.max(
+            0,
+            100 - moduleViolations.length * 10,
+          );
+        }
+      }
+
+      // Mark conformance as scanned
+      manifest.score.scanned = {
+        ...manifest.score.scanned,
+        conformance: new Date().toISOString(),
+      };
+      logger.info(`[v2] Conformance: score=${confResult.score}, violations=${confResult.findings.length}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn(`[v2] Conformance analysis failed (non-fatal): ${msg}`);
+    }
+  }
+
+  // ── 7. GAP ANALYSIS + GENERATION ──────────────────────────
+  const shouldGenerate =
+    depth.functionality === "generate" ||
+    depth.functionality === "generate-and-run";
+
+  if (shouldGenerate && aiProvider) {
+    try {
+      logger.info("[v2] Analyzing gaps");
+      const gapAnalysis = analyzeGaps(
+        manifest,
+        changedFiles.length > 0 ? changedFiles : undefined,
+      );
+      logger.info(`[v2] Found ${gapAnalysis.totalMissing} gap(s), ${gapAnalysis.prioritized.length} actionable`);
+
+      if (gapAnalysis.prioritized.length > 0) {
+        const projectInfo = await detectProjectInfo(projectRoot);
+
+        logger.info("[v2] Generating tests for gaps");
+        const genResult = await generateForGaps(
+          gapAnalysis.prioritized,
+          projectRoot,
+          aiProvider,
+          projectInfo,
+        );
+
+        // Write generated test files to disk
+        for (const test of genResult.tests) {
+          const outPath = join(projectRoot, test.filePath);
+          await ensureDir(dirname(outPath));
+          await writeFile(outPath, test.content, "utf-8");
+        }
+
+        testsGenerated = genResult.tests.length;
+        logger.info(`[v2] Generated ${testsGenerated} test file(s)`);
+
+        emit(onEvent, {
+          type: "generation:complete",
+          data: { result: genResult },
+        });
+
+        // ── 8. EXECUTION ──────────────────────────────────────
+        if (depth.functionality === "generate-and-run" && genResult.tests.length > 0) {
+          logger.info("[v2] Executing generated tests");
+
+          const executor = createExecutor("local");
+          if ("setPackageManager" in executor && typeof (executor as Record<string, unknown>).setPackageManager === "function") {
+            (executor as unknown as { setPackageManager: (pm: string) => void }).setPackageManager(projectInfo.packageManager);
+          }
+          if ("setProjectRoot" in executor && typeof (executor as Record<string, unknown>).setProjectRoot === "function") {
+            (executor as unknown as { setProjectRoot: (root: string) => void }).setProjectRoot(projectRoot);
+          }
+
+          for (const test of genResult.tests) {
+            try {
+              const execResult = await executor.execute(test, {
+                environment: "local",
+                timeout: 120_000,
+                retries: 0,
+                parallel: false,
+                collectCoverage: false,
+              });
+
+              testsRun += execResult.totalTests;
+              testsPassed += execResult.passed;
+              testsFailed += execResult.failed;
+
+              emit(onEvent, {
+                type: "execution:complete",
+                data: { result: execResult },
+              });
+
+              // Retry with AI refinement if tests fail
+              if (execResult.status !== "passed" && execResult.failures.length > 0) {
+                const generator = new AIGenerator(aiProvider, projectInfo);
+                let sourceCode = "";
+                try {
+                  const gapForTest = gapAnalysis.prioritized.find(
+                    (g) => test.planId.includes(g.modulePath),
+                  );
+                  if (gapForTest?.sourceFiles[0]) {
+                    sourceCode = await readFile(
+                      join(projectRoot, gapForTest.sourceFiles[0]),
+                      "utf-8",
+                    );
+                  }
+                } catch {
+                  // Source may not be readable
+                }
+
+                const refined = await generator.refineWithAI({
+                  testCode: test.content,
+                  failures: execResult.failures,
+                  sourceCode,
+                });
+
+                if (refined && refined.length >= test.content.length * 0.3) {
+                  const outPath = join(projectRoot, test.filePath);
+                  await writeFile(outPath, refined, "utf-8");
+
+                  const retryResult = await executor.execute(
+                    { ...test, content: refined },
+                    {
+                      environment: "local",
+                      timeout: 120_000,
+                      retries: 0,
+                      parallel: false,
+                      collectCoverage: false,
+                    },
+                  );
+
+                  // Adjust counters: undo the initial counts and apply retry counts
+                  testsRun += retryResult.totalTests - execResult.totalTests;
+                  testsPassed += retryResult.passed - execResult.passed;
+                  testsFailed += retryResult.failed - execResult.failed;
+
+                  emit(onEvent, {
+                    type: "execution:complete",
+                    data: { result: retryResult },
+                  });
+                }
+              }
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              logger.warn(`[v2] Execution failed for ${test.filePath}: ${msg}`);
+            }
+          }
+
+          logger.info(`[v2] Execution: ${testsPassed} passed, ${testsFailed} failed`);
+        }
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn(`[v2] Gap analysis/generation failed (non-fatal): ${msg}`);
+    }
+  }
+
+  // ── 9. REGRESSION ─────────────────────────────────────────
+  if (depth.regression === "run-all") {
+    try {
+      logger.info("[v2] Running regression suite");
+      const regResult = await runExistingTests(projectRoot);
+
+      regressions = regResult.failed;
+      // Mark regression as scanned
+      manifest.score.scanned = {
+        ...manifest.score.scanned,
+        regression: new Date().toISOString(),
+      };
+      logger.info(
+        `[v2] Regression: ${regResult.passed}/${regResult.totalTests} passed, ${regResult.failed} failed`,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn(`[v2] Regression run failed (non-fatal): ${msg}`);
+    }
+  }
+
+  // ── 10. POST-MEASURE ──────────────────────────────────────
+  // Re-scan tests to capture any newly generated test files
+  const postScan = await scanTests(projectRoot, manifest.modules);
+  for (const mod of manifest.modules) {
+    const moduleData = postScan.byModule.get(mod.path);
+    if (!moduleData) continue;
+    for (const [testType, data] of Object.entries(moduleData.tests)) {
+      const existing = mod.functionality.tests[testType as keyof typeof mod.functionality.tests];
+      if (existing && data) {
+        existing.current = data.current;
+        existing.files = data.files;
+      }
+    }
+  }
+
+  manifest = rescoreManifest(manifest);
+  const scoreAfter = manifest.score.overall;
+  const delta = scoreAfter - scoreBefore;
+
+  // Tag the latest history entry (appended by rescoreManifest) with this run's scope
+  const lastEntry = manifest.score.history[manifest.score.history.length - 1];
+  if (lastEntry) {
+    lastEntry.scope = scope;
+  }
+
+  // Persist updated manifest if scope allows it
+  if (depth.updateManifest) {
+    manifest.updatedAt = new Date().toISOString();
+    await writeManifest(projectRoot, manifest);
+    logger.info("[v2] Manifest updated");
+  }
+
+  const duration = Date.now() - startTime;
+  logger.info(
+    `[v2] Complete — score: ${scoreBefore} -> ${scoreAfter} (${delta >= 0 ? "+" : ""}${delta}), duration: ${Math.round(duration / 1000)}s`,
+  );
+
+  emit(onEvent, {
+    type: "analysis:complete",
+    data: {
+      strategy: {
+        project: manifest.project as unknown as ProjectInfo,
+        plans: [],
+        executionOrder: [],
+        estimatedDuration: duration,
+      },
+    },
+  });
+
+  return {
+    manifest,
+    scoreBefore,
+    scoreAfter,
+    delta,
+    scope,
+    securityFindings,
+    testsGenerated,
+    testsRun,
+    testsPassed,
+    testsFailed,
+    regressions,
+    duration,
+  };
 }

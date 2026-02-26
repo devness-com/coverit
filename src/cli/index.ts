@@ -17,6 +17,12 @@ import { detectProjectInfo } from "../utils/framework-detector.js";
 import { isGitRepo } from "../utils/git.js";
 import { resolveRunId, listRuns, getRunStatus, getRunDir, deleteRun, clearRuns } from "../utils/run-manager.js";
 import { logger } from "../utils/logger.js";
+import { analyzeCodebase } from "../scale/analyzer.js";
+import { readManifest, writeManifest } from "../scale/writer.js";
+import { scanTests } from "../measure/scanner.js";
+import { rescoreManifest } from "../measure/scorer.js";
+import { renderDashboard } from "../measure/dashboard.js";
+import { detectScope } from "../utils/scope-detector.js";
 import type { TestType, DiffSource, CoveritConfig, CoveritEvent } from "../types/index.js";
 
 const VERSION = "0.1.0";
@@ -167,12 +173,26 @@ program
         spinner.warn("Not a git repository — analysis will be limited");
       }
 
+      // Auto-detect scope when coverit.json exists and no explicit diff flags
+      const manifest = await readManifest(projectRoot);
+      const explicitDiff = parseDiffSource(opts);
+      if (manifest && !explicitDiff) {
+        const scope = await detectScope(projectRoot, {
+          staged: opts["staged"] as boolean | undefined,
+          pr: opts["pr"] !== undefined && opts["pr"] !== false
+            ? (opts["pr"] === true ? true : Number(opts["pr"]))
+            : undefined,
+          files: opts["files"] ? (opts["files"] as string).split(",").map((p: string) => p.trim()) : undefined,
+        });
+        spinner.text = `Scanning (scope: ${scope})...`;
+      }
+
       const projectInfo = await detectProjectInfo(projectRoot);
       spinner.text = "Building test strategy...";
 
       const config: CoveritConfig = {
         projectRoot,
-        diffSource: parseDiffSource(opts),
+        diffSource: explicitDiff,
         testTypes: parseTestTypes(opts["type"] as string | undefined),
         analyzeOnly: true,
       };
@@ -276,10 +296,24 @@ program
     const spinner = ora("Starting full pipeline...").start();
 
     try {
+      // Auto-detect scope when coverit.json exists and no explicit diff flags
+      const manifest = await readManifest(projectRoot);
+      const explicitDiff = parseDiffSource(opts);
+      if (manifest && !explicitDiff) {
+        const scope = await detectScope(projectRoot, {
+          staged: opts["staged"] as boolean | undefined,
+          pr: opts["pr"] !== undefined && opts["pr"] !== false
+            ? (opts["pr"] === true ? true : Number(opts["pr"]))
+            : undefined,
+          files: opts["files"] ? (opts["files"] as string).split(",").map((p: string) => p.trim()) : undefined,
+        });
+        spinner.text = `Running pipeline (scope: ${scope})...`;
+      }
+
       const planIdsRaw = opts["planIds"] as string | undefined;
       const config: CoveritConfig = {
         projectRoot,
-        diffSource: parseDiffSource(opts),
+        diffSource: explicitDiff ?? parseDiffSource(opts),
         testTypes: parseTestTypes(opts["type"] as string | undefined),
         planIds: planIdsRaw ? planIdsRaw.split(",").map((id) => id.trim()) : undefined,
         environment: (opts["env"] as CoveritConfig["environment"]) ?? "local",
@@ -470,9 +504,34 @@ program
   });
 
 // ─── status ─────────────────────────────────────────────────
+// Show current quality score from coverit.json (instant, no scanning)
 
 program
   .command("status")
+  .argument("[path]", "Project root path", ".")
+  .description("Show current quality score from coverit.json (instant, no scanning)")
+  .action(async (pathArg: string) => {
+    const projectRoot = resolveProjectRoot(pathArg);
+
+    try {
+      const manifest = await readManifest(projectRoot);
+      if (!manifest) {
+        logger.warn("No coverit.json found. Run `coverit scale` to analyze your codebase first.");
+        return;
+      }
+
+      renderDashboard(manifest);
+    } catch (err) {
+      logger.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+  });
+
+// ─── run-status ─────────────────────────────────────────────
+// Show details for a specific coverit run (moved from old `status`)
+
+program
+  .command("run-status")
   .argument("[path]", "Project root path", ".")
   .option("--run <runId>", "Run ID to inspect")
   .option("--pr <number>", "Show latest run for a specific PR")
@@ -556,6 +615,106 @@ program
         console.log();
       }
     } catch (err) {
+      logger.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+  });
+
+// ─── scale ──────────────────────────────────────────────────
+// Full codebase analysis, generates coverit.json
+
+program
+  .command("scale")
+  .argument("[path]", "Project root path", ".")
+  .description("Analyze full codebase and generate coverit.json quality manifest")
+  .action(async (pathArg: string) => {
+    const projectRoot = resolveProjectRoot(pathArg);
+    const spinner = ora("Analyzing codebase...").start();
+
+    try {
+      spinner.text = "Detecting project structure...";
+      const manifest = await analyzeCodebase(projectRoot);
+
+      spinner.text = "Writing coverit.json...";
+      await writeManifest(projectRoot, manifest);
+
+      spinner.succeed(
+        `Analyzed ${manifest.modules.length} modules (${manifest.project.sourceFiles} files, ${manifest.project.sourceLines} lines)`,
+      );
+
+      renderDashboard(manifest);
+
+      logger.success("coverit.json written to project root");
+    } catch (err) {
+      spinner.fail("Scale analysis failed");
+      logger.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+  });
+
+// ─── measure ────────────────────────────────────────────────
+// Score against the standard (no AI, fast scan + rescore)
+
+program
+  .command("measure")
+  .argument("[path]", "Project root path", ".")
+  .description("Rescan test files and recalculate quality score (no AI, fast)")
+  .action(async (pathArg: string) => {
+    const projectRoot = resolveProjectRoot(pathArg);
+    const spinner = ora("Reading coverit.json...").start();
+
+    try {
+      const manifest = await readManifest(projectRoot);
+      if (!manifest) {
+        spinner.fail("No coverit.json found");
+        logger.warn("Run `coverit scale` first to analyze your codebase.");
+        return;
+      }
+
+      // Scan filesystem for current test counts
+      spinner.text = "Scanning test files...";
+      const scanResult = await scanTests(projectRoot, manifest.modules);
+
+      // Update module test counts from scan results
+      for (const mod of manifest.modules) {
+        const moduleData = scanResult.byModule.get(mod.path);
+        if (!moduleData) continue;
+
+        for (const [testType, scannedData] of Object.entries(moduleData.tests)) {
+          const typedKey = testType as keyof typeof mod.functionality.tests;
+          const existing = mod.functionality.tests[typedKey];
+          if (existing) {
+            // Preserve expected count, update current and files
+            existing.current = scannedData.current;
+            existing.files = scannedData.files;
+          } else {
+            // New test type discovered — add it with expected=0
+            mod.functionality.tests[typedKey] = {
+              expected: 0,
+              current: scannedData.current,
+              files: scannedData.files,
+            };
+          }
+        }
+      }
+
+      // Rescore with updated test counts
+      spinner.text = "Recalculating scores...";
+      const rescored = rescoreManifest(manifest);
+
+      // Write updated manifest
+      spinner.text = "Saving coverit.json...";
+      await writeManifest(projectRoot, rescored);
+
+      spinner.succeed(
+        `Scanned ${scanResult.totalTestFiles} test files (${scanResult.totalTestCount} tests)`,
+      );
+
+      renderDashboard(rescored);
+
+      logger.success("coverit.json updated with latest test counts");
+    } catch (err) {
+      spinner.fail("Measure failed");
       logger.error(err instanceof Error ? err.message : String(err));
       process.exit(1);
     }

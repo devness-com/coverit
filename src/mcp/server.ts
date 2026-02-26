@@ -10,8 +10,13 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { orchestrate, fixFailingTests, recheckTests, verifyExistingTests } from "../agents/orchestrator.js";
 import { listRuns, resolveRunId, getRunStatus, deleteRun, clearRuns } from "../utils/run-manager.js";
+import { analyzeCodebase } from "../scale/analyzer.js";
+import { readManifest, writeManifest } from "../scale/writer.js";
+import { scanTests } from "../measure/scanner.js";
+import { rescoreManifest } from "../measure/scorer.js";
 import { logger } from "../utils/logger.js";
 import type { TestType, DiffSource, CoveritConfig } from "../types/index.js";
+import type { FunctionalTestType } from "../schema/coverit-manifest.js";
 
 const VALID_TEST_TYPES: TestType[] = [
   "unit",
@@ -574,10 +579,58 @@ server.tool(
 );
 
 // ─── coverit_status ──────────────────────────────────────────
-// Show details for a specific coverit run.
+// Show current quality score from coverit.json (instant, no scanning).
 
 server.tool(
   "coverit_status",
+  "Show current quality score from coverit.json. Returns the manifest score breakdown, module summary, and gap analysis. Instant — no scanning or AI.",
+  {
+    projectRoot: z.string().describe("Absolute path to the project root"),
+  },
+  async ({ projectRoot }) => {
+    try {
+      const manifest = await readManifest(projectRoot);
+      if (!manifest) {
+        return {
+          content: [{ type: "text" as const, text: "No coverit.json found. Run coverit_scale first to analyze the codebase." }],
+        };
+      }
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({
+              project: manifest.project,
+              score: manifest.score,
+              moduleCount: manifest.modules.length,
+              modules: manifest.modules.map((m) => ({
+                path: m.path,
+                complexity: m.complexity,
+                files: m.files,
+                lines: m.lines,
+                tests: m.functionality.tests,
+              })),
+            }, null, 2),
+          },
+        ],
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error("coverit_status failed:", message);
+      return {
+        content: [{ type: "text" as const, text: `Error: ${message}` }],
+        isError: true,
+      };
+    }
+  },
+);
+
+// ─── coverit_run_status ─────────────────────────────────────
+// Show details for a specific coverit run.
+
+server.tool(
+  "coverit_run_status",
   "Show details for a specific coverit run including per-plan breakdown.",
   {
     projectRoot: z.string().describe("Absolute path to the project root"),
@@ -592,7 +645,7 @@ server.tool(
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      logger.error("coverit_status failed:", message);
+      logger.error("coverit_run_status failed:", message);
       return {
         content: [{ type: "text" as const, text: `Error: ${message}` }],
         isError: true,
@@ -667,6 +720,125 @@ server.tool(
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       logger.error("coverit_clear failed:", message);
+      return {
+        content: [{ type: "text" as const, text: `Error: ${message}` }],
+        isError: true,
+      };
+    }
+  },
+);
+
+// ─── coverit_scale ───────────────────────────────────────────
+// Full codebase analysis — produces coverit.json.
+
+server.tool(
+  "coverit_scale",
+  "Analyze the full codebase and generate coverit.json quality manifest. Detects modules, maps existing tests, classifies complexity, and computes baseline scores. No AI — pure filesystem analysis.",
+  {
+    projectRoot: z.string().describe("Absolute path to the project root"),
+  },
+  async ({ projectRoot }) => {
+    try {
+      const manifest = await analyzeCodebase(projectRoot);
+      await writeManifest(projectRoot, manifest);
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({
+              project: manifest.project,
+              moduleCount: manifest.modules.length,
+              score: manifest.score,
+              modules: manifest.modules.map((m) => ({
+                path: m.path,
+                complexity: m.complexity,
+                files: m.files,
+                lines: m.lines,
+                tests: m.functionality.tests,
+              })),
+            }, null, 2),
+          },
+        ],
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error("coverit_scale failed:", message);
+      return {
+        content: [{ type: "text" as const, text: `Error: ${message}` }],
+        isError: true,
+      };
+    }
+  },
+);
+
+// ─── coverit_measure ────────────────────────────────────────
+// Rescan test files and recalculate quality score (no AI, fast).
+
+server.tool(
+  "coverit_measure",
+  "Rescan the project for test files and recalculate quality scores from coverit.json. Updates test counts and rescores all dimensions. No AI — filesystem scan only.",
+  {
+    projectRoot: z.string().describe("Absolute path to the project root"),
+  },
+  async ({ projectRoot }) => {
+    try {
+      const manifest = await readManifest(projectRoot);
+      if (!manifest) {
+        return {
+          content: [{ type: "text" as const, text: "No coverit.json found. Run coverit_scale first." }],
+          isError: true,
+        };
+      }
+
+      // Scan filesystem for current test counts
+      const scanResult = await scanTests(projectRoot, manifest.modules);
+
+      // Update module test counts from scan results
+      for (const mod of manifest.modules) {
+        const moduleData = scanResult.byModule.get(mod.path);
+        if (!moduleData) continue;
+
+        for (const [testType, scannedData] of Object.entries(moduleData.tests)) {
+          const typedKey = testType as FunctionalTestType;
+          const existing = mod.functionality.tests[typedKey];
+          if (existing) {
+            existing.current = scannedData.current;
+            existing.files = scannedData.files;
+          } else {
+            mod.functionality.tests[typedKey] = {
+              expected: 0,
+              current: scannedData.current,
+              files: scannedData.files,
+            };
+          }
+        }
+      }
+
+      // Rescore and write
+      const rescored = rescoreManifest(manifest);
+      await writeManifest(projectRoot, rescored);
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({
+              totalTestFiles: scanResult.totalTestFiles,
+              totalTestCount: scanResult.totalTestCount,
+              score: rescored.score,
+              modules: rescored.modules.map((m) => ({
+                path: m.path,
+                complexity: m.complexity,
+                tests: m.functionality.tests,
+              })),
+            }, null, 2),
+          },
+        ],
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error("coverit_measure failed:", message);
       return {
         content: [{ type: "text" as const, text: `Error: ${message}` }],
         isError: true,
