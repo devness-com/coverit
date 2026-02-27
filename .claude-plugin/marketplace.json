@@ -5,15 +5,15 @@
     "email": "hello@devness.dev"
   },
   "metadata": {
-    "description": "AI-powered test generation and execution for Claude Code",
-    "version": "0.4.1"
+    "description": "AI-powered test quality platform for Claude Code",
+    "version": "0.5.0"
   },
   "plugins": [
     {
       "name": "coverit",
       "source": "./plugins/coverit",
-      "description": "Analyze codebases, generate tests, execute them, and view reports — all from Claude Code.",
-      "version": "0.4.1",
+      "description": "AI-powered test quality platform — analyze, cover, and track your codebase quality score.",
+      "version": "0.5.0",
       "author": {
         "name": "Devness"
       },
