@@ -6,14 +6,14 @@
   },
   "metadata": {
     "description": "AI-powered test quality platform for Claude Code",
-    "version": "0.5.0"
+    "version": "0.5.2"
   },
   "plugins": [
     {
       "name": "coverit",
       "source": "./plugins/coverit",
       "description": "AI-powered test quality platform — analyze, cover, and track your codebase quality score.",
-      "version": "0.5.0",
+      "version": "0.5.2",
       "author": {
         "name": "Devness"
       },
