@@ -11,6 +11,7 @@
 
 import type { AIMessage } from "./types.js";
 import type { ProjectInfo } from "../types/index.js";
+import type { CoveritManifest } from "../schema/coverit-manifest.js";
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -69,6 +70,7 @@ export interface ScaleAIContract {
  */
 export function buildScalePrompt(
   projectInfo: ProjectInfo,
+  existingManifest?: CoveritManifest,
 ): AIMessage[] {
   const system = `You are a senior QA architect performing a comprehensive codebase analysis.
 
@@ -201,6 +203,36 @@ IMPORTANT:
 - The "tests" field maps test type strings to coverage objects. Valid types: "unit", "integration", "api", "e2e", "contract".
 - Return ONLY the JSON. No markdown code fences. No explanatory text before or after.`;
 
+  const previousAnalysis = existingManifest
+    ? `
+
+## Previous Analysis
+
+A coverit.json already exists from a prior analysis. Use it as your starting point — do NOT start from scratch.
+
+- **Add** new modules for directories that appeared since the last analysis.
+- **Update** existing modules if their file counts, line counts, complexity, or test coverage changed.
+- **Remove** modules whose directories no longer exist in the codebase.
+- **Correct** any errors you find in the previous analysis (wrong counts, misclassified complexity, etc.).
+- **Preserve** test coverage data (current counts and file paths) unless you verify they've changed.
+- **Discover** new journeys and contracts from new features, keep existing ones that are still valid.
+
+Previous manifest (${existingManifest.modules.length} modules, score ${existingManifest.score.overall}/100):
+
+${JSON.stringify({
+  modules: existingManifest.modules.map((m) => ({
+    path: m.path,
+    files: m.files,
+    lines: m.lines,
+    complexity: m.complexity,
+    tests: m.functionality.tests,
+  })),
+  journeys: existingManifest.journeys,
+  contracts: existingManifest.contracts,
+}, null, 2)}
+`
+    : "";
+
   const user = `Analyze this project and produce the quality manifest JSON.
 
 Project: ${projectInfo.name}
@@ -210,7 +242,7 @@ Test Framework: ${projectInfo.testFramework}
 Language: ${projectInfo.language}
 Has Existing Tests: ${projectInfo.hasExistingTests ? "yes" : "no"}
 ${projectInfo.existingTestPatterns.length > 0 ? `Test Patterns Found: ${projectInfo.existingTestPatterns.join(", ")}` : ""}
-
+${previousAnalysis}
 Start by exploring the file structure, then read source and test files to build a complete picture.`;
 
   return [

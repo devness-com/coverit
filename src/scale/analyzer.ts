@@ -35,6 +35,7 @@ import {
   type ScaleAIModule,
 } from "../ai/scale-prompts.js";
 import type { AIProvider } from "../ai/types.js";
+import { readManifest } from "./writer.js";
 import { logger } from "../utils/logger.js";
 
 // ─── Constants ───────────────────────────────────────────────
@@ -73,12 +74,20 @@ export async function analyzeCodebase(
     `Detected: ${projectInfo.framework} / ${projectInfo.testFramework}`,
   );
 
-  // Step 2: Initialize AI provider
+  // Step 2: Read existing manifest (if any) for incremental analysis
+  const existingManifest = await readManifest(projectRoot);
+  if (existingManifest) {
+    logger.debug(
+      `Found existing coverit.json (${existingManifest.modules.length} modules, score ${existingManifest.score.overall}/100)`,
+    );
+  }
+
+  // Step 3: Initialize AI provider
   const provider = aiProvider ?? (await createAIProvider());
   logger.debug(`Using AI provider: ${provider.name}`);
 
-  // Step 3: Build prompt and call AI with tool access
-  const messages = buildScalePrompt(projectInfo);
+  // Step 4: Build prompt and call AI with tool access
+  const messages = buildScalePrompt(projectInfo, existingManifest ?? undefined);
 
   logger.debug("Sending analysis prompt to AI with tool access...");
   const response = await provider.generate(messages, {
@@ -91,13 +100,13 @@ export async function analyzeCodebase(
     `AI analysis complete (${response.content.length} chars, model: ${response.model})`,
   );
 
-  // Step 4: Parse AI response
+  // Step 5: Parse AI response
   const aiResult = parseScaleResponse(response.content);
   logger.debug(
     `Parsed: ${aiResult.modules.length} modules, ${aiResult.journeys.length} journeys, ${aiResult.contracts.length} contracts`,
   );
 
-  // Step 5: Assemble full manifest
+  // Step 6: Assemble full manifest
   const now = new Date().toISOString();
 
   const modules: ModuleEntry[] = aiResult.modules.map(aiModuleToEntry);
@@ -112,9 +121,12 @@ export async function analyzeCodebase(
       ? aiResult.sourceLines
       : modules.reduce((sum, m) => sum + m.lines, 0);
 
+  // Preserve scanned dates from existing manifest
+  const scannedDates = existingManifest?.score.scanned ?? {};
+
   const preliminary: CoveritManifest = {
     version: 1,
-    createdAt: now,
+    createdAt: existingManifest?.createdAt ?? now,
     updatedAt: now,
 
     project: {
@@ -127,7 +139,7 @@ export async function analyzeCodebase(
       sourceLines: totalSourceLines,
     },
 
-    dimensions: DEFAULT_DIMENSIONS,
+    dimensions: existingManifest?.dimensions ?? DEFAULT_DIMENSIONS,
     modules,
 
     journeys: aiResult.journeys.map((j) => ({
@@ -167,23 +179,27 @@ export async function analyzeCodebase(
         },
       },
       history: [],
-      // Only functionality has been scanned at this point
-      scanned: { functionality: now },
+      scanned: { ...scannedDates, functionality: now },
     },
   };
 
   // Use the scoring engine for consistent scoring
   const scoreResult = calculateScore(preliminary);
 
+  // Preserve history from existing manifest, append new entry
+  const previousHistory = existingManifest?.score.history ?? [];
+  const scope = existingManifest ? "re-analysis" : "first-time";
+
   const manifest: CoveritManifest = {
     ...preliminary,
     score: {
       ...scoreResult,
       history: [
+        ...previousHistory,
         {
           date: now,
           score: scoreResult.overall,
-          scope: "first-time",
+          scope,
         },
       ],
     },
