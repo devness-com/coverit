@@ -1,6 +1,6 @@
 # coverit
 
-**Your code, covered. One command.**
+**Your code, covered. AI-powered test quality.**
 
 <!-- badges -->
 [![Version](https://img.shields.io/npm/v/@devness/coverit)](https://www.npmjs.com/package/@devness/coverit)
@@ -9,92 +9,112 @@
 
 ## What is coverit?
 
-coverit is an AI-powered test generation and execution platform. It analyzes your code changes, determines what tests are needed, generates them, runs them, and reports the results. One command: `coverit run`.
+coverit is an AI-powered test quality platform. It analyzes your entire codebase, identifies coverage gaps across 5 quality dimensions, generates tests to fill them, and tracks your score over time — all through a single persistent manifest: `coverit.json`.
+
+Three commands. That's it.
 
 ## Quick Start
 
 ```bash
-# Install globally
-npm install -g @devness/coverit
+# Install as a Claude Code plugin
+npx @devness/coverit mcp
 
-# Or run with npx (no install)
-npx @devness/coverit run
-
-# Scan first (dry run)
-coverit scan
-
-# Full pipeline
-coverit run
+# Or use directly via CLI
+npx @devness/coverit analyze    # AI explores your codebase → creates coverit.json
+npx @devness/coverit cover      # AI writes tests for gaps → updates your score
+npx @devness/coverit status     # Show your quality dashboard
 ```
-
-## Features
-
-- **Smart diff analysis** -- parses git diffs to identify exactly what changed: new endpoints, modified functions, added components.
-- **Automatic test strategy** -- decides which test types to generate (unit, API, E2E, mobile, desktop) based on file types and framework detection.
-- **Multi-framework support** -- generates tests for Vitest, Jest, Playwright, Detox, and more, using the correct idioms for each.
-- **Framework detection** -- identifies Hono, Express, NestJS, React, Expo, Tauri, and other frameworks from your project config.
-- **Parallel execution** -- organizes tests into execution phases and runs independent plans concurrently.
-- **Coverage tracking** -- collects line, branch, function, and statement coverage from test runners.
-- **MCP integration** -- use coverit directly inside Claude Code as a set of MCP tools.
-- **Local + Cloud** -- execute tests locally or in cloud sandboxes (E2B, Docker, Hetzner).
 
 ## How It Works
 
 ```
-git diff → analyze → strategize → generate → execute → report
+analyze → coverit.json → cover → updated coverit.json → status
 ```
 
-| Step | What happens |
-|------|-------------|
-| **Diff** | Parses git changes to identify modified files, hunks, and line ranges. |
-| **Analyze** | Scans source code to extract functions, classes, endpoints, components, and dependencies. |
-| **Strategize** | Builds a `TestStrategy` with prioritized `TestPlan` items and phased execution order. |
-| **Generate** | Produces test files using framework-specific generators (unit, API, E2E, mobile, desktop). |
-| **Execute** | Runs generated tests via local runners, browsers, simulators, or cloud sandboxes. |
-| **Report** | Aggregates results into a `CoveritReport` with pass/fail counts, coverage, and failure details. |
+| Command | What happens |
+|---------|-------------|
+| **analyze** | AI explores your codebase with tool access (read files, search code, run commands). Discovers modules, maps existing tests, classifies complexity, identifies user journeys and API contracts. Produces `coverit.json`. |
+| **cover** | AI reads gaps from `coverit.json`, writes test files for each module, runs them, fixes failures, and updates the quality score. |
+| **status** | Instantly displays your quality dashboard from `coverit.json`. No AI, no scanning. |
+
+### The Manifest: `coverit.json`
+
+`coverit.json` is the single source of truth. It's git-tracked, persistent, and contains:
+
+- **Project info** — framework, language, test runner, file/line counts
+- **Modules** — each source directory with complexity, file counts, and test coverage (current vs expected)
+- **Quality score** — 0-100, weighted across 5 dimensions (ISO 25010)
+- **Gaps** — what's missing, ranked by severity
+- **Journeys** — user flows that need E2E coverage
+- **Contracts** — API endpoints that need contract tests
 
 ## CLI Reference
 
 | Command | Description |
 |---------|-------------|
-| `coverit scan [path]` | Analyze changes and display the test strategy without generating or running tests. |
-| `coverit generate [path]` | Generate test files based on the analysis, but do not execute them. |
-| `coverit run [path]` | Full pipeline: analyze, generate, execute, and report. |
-| `coverit report` | Display the results of the last run. |
+| `coverit analyze [path]` | AI analyzes codebase and creates `coverit.json` |
+| `coverit cover [path]` | AI generates tests from gaps and updates score |
+| `coverit status [path]` | Show quality dashboard from `coverit.json` |
+| `coverit clear [path]` | Delete `coverit.json` and `.coverit/` for a fresh start |
 
-## CLI Options
+### Cover Options
 
 | Option | Description |
 |--------|-------------|
-| `--type <type>` | Restrict to a specific test type: `unit`, `api`, `e2e-browser`, `e2e-mobile`, `e2e-desktop`. |
-| `--env <env>` | Execution environment: `local`, `cloud-sandbox`, `browser`, `mobile-simulator`, `desktop-app`. |
-| `--coverage` | Collect coverage data during execution. |
-| `--dry-run` | Show what would happen without writing files or running tests. |
-| `--verbose` | Enable debug-level logging (`COVERIT_DEBUG=1`). |
+| `--modules <paths>` | Only cover specific modules (comma-separated) |
 
-## MCP Integration
+## Claude Code Integration
 
-Add coverit as an MCP server in your Claude Code config:
+coverit works as a Claude Code plugin with slash commands:
 
-```json
-{
-  "mcpServers": {
-    "coverit": {
-      "command": "npx",
-      "args": ["@devness/coverit", "mcp"]
-    }
-  }
-}
+| Command | Description |
+|---------|-------------|
+| `/coverit:analyze` | AI analyzes codebase and creates `coverit.json` |
+| `/coverit:cover` | AI generates tests from gaps and updates score |
+| `/coverit:status` | Show quality dashboard |
+
+### Setup
+
+```bash
+npx @devness/coverit mcp
 ```
+
+This adds coverit as an MCP server to your Claude Code config.
 
 ### MCP Tools
 
 | Tool | Description |
 |------|-------------|
-| `coverit_analyze` | Analyze code changes and return the test strategy. |
-| `coverit_generate` | Generate test files from a strategy. |
-| `coverit_run` | Execute generated tests and return results. |
-| `coverit_full` | Full pipeline: analyze, generate, execute, report. |
+| `coverit_analyze` | AI analyzes codebase → `coverit.json` |
+| `coverit_cover` | AI generates tests from gaps → updates score |
+| `coverit_status` | Show quality dashboard (instant, no AI) |
+| `coverit_clear` | Delete `coverit.json` and `.coverit/` |
+| `coverit_backup` | Export `coverit.json` as JSON |
+| `coverit_restore` | Import `coverit.json` from backup |
+
+## Quality Dimensions
+
+coverit measures quality across 5 dimensions mapped to ISO 25010:
+
+| Dimension | What it checks |
+|-----------|---------------|
+| **Functionality** | Unit, integration, API, E2E, and contract test coverage |
+| **Security** | OWASP Top 10, injection, auth bypass, data exposure |
+| **Stability** | Error handling, edge cases, resource cleanup |
+| **Conformance** | Naming conventions, patterns, architectural rules |
+| **Regression** | Baseline test results, breaking changes |
+
+### Testing Diamond
+
+coverit follows the Testing Diamond strategy (not the outdated Testing Pyramid):
+
+| Test Type | Target % | Purpose |
+|-----------|----------|---------|
+| Integration | ~50% | Module boundaries, real dependencies |
+| Unit | ~20% | Pure functions, algorithms, edge cases |
+| API | ~15% | HTTP endpoints, request/response contracts |
+| E2E | ~10% | Critical user journeys |
+| Contract | ~5% | API schema validation |
 
 ## Supported Frameworks
 
@@ -111,61 +131,31 @@ Add coverit as an MCP server in your Claude Code config:
 
 ```
 ┌──────────────┐
-│  CLI / MCP   │  ← Entry points
+│  CLI / MCP   │  ← Entry points (3 commands)
 └──────┬───────┘
        │
-       ▼
-┌──────────────┐
-│ Orchestrator  │  ← Coordinates pipeline
-└──────┬───────┘
+       ├── analyze ──→ AI with tool access ──→ coverit.json
        │
-       ├──────────────┬──────────────┐
-       ▼              ▼              ▼
-┌────────────┐ ┌───────────┐ ┌────────────┐
-│  Analysis   │ │ Generators │ │  Executors  │
-│  Engine     │ │            │ │             │
-│ - Diff      │ │ - Unit     │ │ - Local     │
-│ - Scanner   │ │ - API      │ │ - Cloud     │
-│ - Deps      │ │ - E2E      │ │ - Browser   │
-│ - Strategy  │ │ - Mobile   │ │ - Simulator │
-└────────────┘ │ - Desktop  │ └──────┬──────┘
-               └───────────┘        │
-                                    ▼
-                             ┌────────────┐
-                             │  Reporter   │
-                             └────────────┘
+       ├── cover ────→ AI reads gaps ──→ writes tests ──→ runs ──→ updates coverit.json
+       │
+       └── status ───→ reads coverit.json ──→ dashboard
 ```
 
-See [docs/architecture.md](docs/architecture.md) for a detailed breakdown.
-
-## Configuration
-
-Create a `coverit.config.ts` in your project root:
-
-```ts
-import { defineConfig } from "coverit";
-
-export default defineConfig({
-  projectRoot: ".",
-  testTypes: ["unit", "api", "e2e-browser"],
-  environment: "local",
-  coverageThreshold: 80,
-});
+```
+src/
+├── ai/           AI providers (Claude, Gemini, Codex, Anthropic, OpenAI, Ollama)
+├── scale/        Codebase analyzer + manifest writer
+├── cover/        Test generation pipeline
+├── measure/      Test scanner, scorer, dashboard
+├── scoring/      Score engine, weights, thresholds
+├── schema/       coverit.json types + defaults
+├── types/        Core type definitions
+├── utils/        Logger, framework detector
+├── mcp/          MCP server (6 tools)
+└── cli/          CLI (4 commands)
 ```
 
-See [docs/configuration.md](docs/configuration.md) for all options.
-
-## Roadmap
-
-- Cloud execution (E2B, Docker)
-- AI-powered test refinement on failure
-- PR comment integration (GitHub Actions)
-- VS Code extension
-- Coverage trend tracking across runs
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
+See [docs/architecture.md](docs/architecture.md) for details.
 
 ## License
 
