@@ -1,0 +1,119 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+---
+
+<DocsLayout title="Getting Started" description="Get started with coverit — AI-powered test quality for your codebase.">
+  <h1 class="font-heading text-3xl font-bold mb-6 text-text">Getting Started</h1>
+
+  <!-- What is coverit? -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">What is coverit?</h2>
+  <p class="font-body text-text leading-relaxed mb-4">
+    Coverit is an AI-powered test quality platform. It scans your codebase, identifies testing gaps,
+    generates tests to fill them, and tracks your quality score over time. Everything revolves around
+    a single file: <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">coverit.json</code> &mdash;
+    a persistent, git-tracked quality manifest that serves as the single source of truth.
+  </p>
+  <p class="font-body text-text leading-relaxed mb-4">
+    The entire system is built on four commands:
+    <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">scan</code>,
+    <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">cover</code>,
+    <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">run</code>, and
+    <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">status</code>.
+    AI does the heavy lifting &mdash; exploring your code with real tool access, understanding your
+    architecture, and writing tests that actually pass.
+  </p>
+
+  <!-- Prerequisites -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">Prerequisites</h2>
+  <ul class="ml-6 list-disc mb-4">
+    <li class="mb-2 font-body text-text leading-relaxed">
+      <strong>Node.js 18+</strong> &mdash; required for running coverit
+    </li>
+    <li class="mb-2 font-body text-text leading-relaxed">
+      <strong>Claude Code</strong> (recommended) &mdash; coverit works best inside Claude Code,
+      where it runs as an MCP server and the AI can use tools directly. You can also use it
+      standalone with any supported <a href="/docs/providers" class="text-accent hover:text-accent-hover underline">AI provider</a>.
+    </li>
+  </ul>
+
+  <!-- Installation -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">Installation</h2>
+  <p class="font-body text-text leading-relaxed mb-4">
+    Run the setup wizard. It auto-detects your AI tools and configures MCP integration:
+  </p>
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code>npx @devness/coverit</code></pre>
+  <p class="font-body text-text leading-relaxed mb-4">
+    This will detect installed AI tools (Claude Code, Gemini CLI, Codex CLI, etc.) and
+    configure the MCP server for whichever tools you have. No manual configuration needed.
+  </p>
+
+  <!-- Your first scan -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">Your first scan</h2>
+  <p class="font-body text-text leading-relaxed mb-4">
+    Navigate to your project root and run the scan command. AI will explore your codebase,
+    discover modules, map existing tests, classify complexity, and identify user journeys
+    and API contracts:
+  </p>
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code>npx @devness/coverit scan</code></pre>
+  <p class="font-body text-text leading-relaxed mb-4">
+    This creates <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">coverit.json</code> in
+    your project root with a complete quality manifest including your baseline score.
+  </p>
+
+  <!-- View your score -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">View your score</h2>
+  <p class="font-body text-text leading-relaxed mb-4">
+    Check your quality dashboard at any time. This command is instant &mdash; it reads directly
+    from <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">coverit.json</code> with
+    no AI calls:
+  </p>
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code>npx @devness/coverit status</code></pre>
+  <p class="font-body text-text leading-relaxed mb-4">
+    The dashboard shows your overall score (0&ndash;100), broken down across quality dimensions:
+    Functionality, Security, Stability, Conformance, and Regression.
+  </p>
+
+  <!-- Generate tests -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">Generate tests</h2>
+  <p class="font-body text-text leading-relaxed mb-4">
+    Have AI generate tests to fill the gaps identified by your scan:
+  </p>
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code>npx @devness/coverit cover</code></pre>
+  <p class="font-body text-text leading-relaxed mb-4">
+    The AI reads the gaps in <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">coverit.json</code>,
+    writes test files for each module, runs them, fixes any failures, and updates your quality score.
+    You'll see a before/after comparison when it finishes.
+  </p>
+
+  <!-- Fix failures -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">Fix failures</h2>
+  <p class="font-body text-text leading-relaxed mb-4">
+    If you have existing tests that are failing, let the AI fix them:
+  </p>
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code>npx @devness/coverit run</code></pre>
+  <p class="font-body text-text leading-relaxed mb-4">
+    This runs your existing test suite, sends any failures to the AI for fixing, rescans the
+    codebase, and updates your score. It's the fastest way to go from red to green.
+  </p>
+
+  <!-- Next steps -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">Next steps</h2>
+  <ul class="ml-6 list-disc mb-4">
+    <li class="mb-2 font-body text-text leading-relaxed">
+      <a href="/docs/commands" class="text-accent hover:text-accent-hover underline">Command Reference</a> &mdash;
+      Full documentation for all commands and their options
+    </li>
+    <li class="mb-2 font-body text-text leading-relaxed">
+      <a href="/docs/config" class="text-accent hover:text-accent-hover underline">Configuration</a> &mdash;
+      Customize coverit with a config file
+    </li>
+    <li class="mb-2 font-body text-text leading-relaxed">
+      <a href="/docs/providers" class="text-accent hover:text-accent-hover underline">AI Providers</a> &mdash;
+      Choose between Claude, Gemini, Codex, OpenAI, Anthropic API, or Ollama
+    </li>
+    <li class="mb-2 font-body text-text leading-relaxed">
+      <a href="/docs/mcp" class="text-accent hover:text-accent-hover underline">MCP Setup</a> &mdash;
+      Use coverit as an MCP server inside Claude Code and other AI tools
+    </li>
+  </ul>
+</DocsLayout>

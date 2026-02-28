@@ -16,11 +16,28 @@ Four commands. That's it.
 
 ## Quick Start
 
-```bash
-# Set up coverit (auto-detects your AI tools)
-npx @devness/coverit
+### Claude Code
 
-# Then use via CLI
+Install the plugin for MCP tools + slash commands:
+
+```
+/plugin marketplace add devness-com/coverit
+/plugin install coverit@coverit
+```
+
+### Other AI Tools (Cursor, Windsurf, VS Code, etc.)
+
+```bash
+npx @devness/coverit
+```
+
+This auto-detects your AI tools and configures the MCP server interactively.
+
+### CLI
+
+Once installed, use via CLI in any project:
+
+```bash
 npx @devness/coverit scan      # AI scans & analyzes your codebase → creates coverit.json
 npx @devness/coverit cover     # AI writes tests for gaps → updates your score
 npx @devness/coverit run       # Run existing tests, fix failures → updates your score
@@ -75,14 +92,7 @@ scan → coverit.json → cover/run → updated coverit.json → status
 
 ## Claude Code Integration
 
-`npx @devness/coverit` handles setup automatically — it configures the MCP server so Claude Code can use coverit's tools directly.
-
-Optionally, install the plugin for slash command shortcuts:
-
-```bash
-/plugin marketplace add devness-com/coverit
-/plugin install coverit@coverit
-```
+The plugin gives you both MCP tools and slash commands:
 
 | Slash Command | Description |
 |---------|-------------|

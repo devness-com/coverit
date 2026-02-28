@@ -1,0 +1,78 @@
+---
+import TerminalMockup from './TerminalMockup.astro';
+
+const steps = [
+  {
+    number: 1,
+    title: 'Install',
+    code: 'npx @devness/coverit',
+  },
+  {
+    number: 2,
+    title: 'Scan your codebase',
+    code: 'npx @devness/coverit scan',
+  },
+  {
+    number: 3,
+    title: 'See your score',
+    code: 'npx @devness/coverit status',
+  },
+];
+---
+
+<section class="animate-on-scroll">
+  <div class="mx-auto max-w-[800px] px-6 py-24 md:py-32">
+    <!-- Heading -->
+    <h2 class="font-heading font-bold text-3xl md:text-4xl text-text text-center mb-16">
+      Get Started in 30 Seconds
+    </h2>
+
+    <!-- Steps -->
+    <div class="relative ml-5 md:ml-10 mb-16">
+      {steps.map((step, i) => (
+        <div class="relative flex items-start gap-5 pb-10 last:pb-0">
+          {/* Vertical connecting line */}
+          {i < steps.length - 1 && (
+            <div class="absolute left-5 top-10 bottom-0 w-px bg-border" />
+          )}
+
+          {/* Number badge */}
+          <div class="relative z-10 flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-full bg-accent text-[#faf7f2] font-heading font-bold text-base">
+            {step.number}
+          </div>
+
+          {/* Step content */}
+          <div class="pt-1.5">
+            <h3 class="font-heading font-semibold text-lg text-text mb-2">
+              {step.title}
+            </h3>
+            <code class="inline-block font-mono text-sm bg-bg-code text-[#f5f0e8] rounded-lg px-4 py-2.5">
+              {step.code}
+            </code>
+          </div>
+        </div>
+      ))}
+    </div>
+
+    <!-- Terminal mockup with dashboard output -->
+    <TerminalMockup title="coverit status">
+      <pre class="text-[#f5f0e8] whitespace-pre"><span class="text-[#7a6e5f]">┌─────────────────────────────────────────────┐</span>
+<span class="text-[#7a6e5f]">│</span>  <span class="font-bold text-[#f5f0e8]">coverit</span> <span class="text-[#7a6e5f]">— Quality Dashboard</span>                <span class="text-[#7a6e5f]">│</span>
+<span class="text-[#7a6e5f]">├─────────────────────────────────────────────┤</span>
+<span class="text-[#7a6e5f]">│</span>                                             <span class="text-[#7a6e5f]">│</span>
+<span class="text-[#7a6e5f]">│</span>  Overall Score: <span class="text-amber font-bold">82/100</span>                      <span class="text-[#7a6e5f]">│</span>
+<span class="text-[#7a6e5f]">│</span>                                             <span class="text-[#7a6e5f]">│</span>
+<span class="text-[#7a6e5f]">│</span>  <span class="text-text-muted">Functionality</span>  <span class="text-accent">████████</span><span class="text-[#3a332a]">░░</span>  <span class="text-amber">78</span>/100          <span class="text-[#7a6e5f]">│</span>
+<span class="text-[#7a6e5f]">│</span>  <span class="text-text-muted">Security</span>       <span class="text-accent">█████████</span><span class="text-[#3a332a]">░</span>  <span class="text-amber">88</span>/100          <span class="text-[#7a6e5f]">│</span>
+<span class="text-[#7a6e5f]">│</span>  <span class="text-text-muted">Stability</span>      <span class="text-accent">████████</span><span class="text-[#3a332a]">░░</span>  <span class="text-amber">80</span>/100          <span class="text-[#7a6e5f]">│</span>
+<span class="text-[#7a6e5f]">│</span>  <span class="text-text-muted">Conformance</span>    <span class="text-accent">█████████</span><span class="text-[#3a332a]">░</span>  <span class="text-amber">85</span>/100          <span class="text-[#7a6e5f]">│</span>
+<span class="text-[#7a6e5f]">│</span>  <span class="text-text-muted">Regression</span>     <span class="text-accent">███████</span><span class="text-[#3a332a]">░░░</span>  <span class="text-amber">72</span>/100          <span class="text-[#7a6e5f]">│</span>
+<span class="text-[#7a6e5f]">│</span>                                             <span class="text-[#7a6e5f]">│</span>
+<span class="text-[#7a6e5f]">│</span>  <span class="text-text-muted">Modules:</span> 12 scanned · 8 covered           <span class="text-[#7a6e5f]">│</span>
+<span class="text-[#7a6e5f]">│</span>  <span class="text-text-muted">Tests:</span> <span class="text-[#28c840]">47 passing</span> · <span class="text-[#ff5f57]">2 failing</span>              <span class="text-[#7a6e5f]">│</span>
+<span class="text-[#7a6e5f]">│</span>  <span class="text-text-muted">Last scan:</span> just now                        <span class="text-[#7a6e5f]">│</span>
+<span class="text-[#7a6e5f]">│</span>                                             <span class="text-[#7a6e5f]">│</span>
+<span class="text-[#7a6e5f]">└─────────────────────────────────────────────┘</span></pre>
+    </TerminalMockup>
+  </div>
+</section>

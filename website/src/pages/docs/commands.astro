@@ -1,0 +1,251 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+---
+
+<DocsLayout title="Command Reference" description="Complete reference for all coverit CLI commands.">
+  <h1 class="font-heading text-3xl font-bold mb-6 text-text">Command Reference</h1>
+
+  <p class="font-body text-text leading-relaxed mb-4">
+    Coverit has five commands. The four core commands &mdash;
+    <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">scan</code>,
+    <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">cover</code>,
+    <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">run</code>, and
+    <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">status</code> &mdash;
+    form the main workflow. The <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">clear</code> command
+    is a utility for starting fresh.
+  </p>
+
+  <!-- scan -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">scan</h2>
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code>coverit scan [path]</code></pre>
+  <p class="font-body text-text leading-relaxed mb-4">
+    AI scans and analyzes your entire codebase, then creates (or overwrites)
+    <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">coverit.json</code> &mdash;
+    the quality manifest that all other commands read from.
+  </p>
+
+  <h3 class="font-heading text-xl font-semibold mt-8 mb-3 text-text">What it does</h3>
+  <ul class="ml-6 list-disc mb-4">
+    <li class="mb-2 font-body text-text leading-relaxed">Discovers all modules and their source files</li>
+    <li class="mb-2 font-body text-text leading-relaxed">Maps existing tests to their source modules</li>
+    <li class="mb-2 font-body text-text leading-relaxed">Classifies module complexity (simple, moderate, complex)</li>
+    <li class="mb-2 font-body text-text leading-relaxed">Identifies user journeys and API contracts</li>
+    <li class="mb-2 font-body text-text leading-relaxed">Computes baseline quality scores across five dimensions</li>
+  </ul>
+
+  <h3 class="font-heading text-xl font-semibold mt-8 mb-3 text-text">Arguments</h3>
+  <table class="w-full border-collapse mb-6">
+    <thead>
+      <tr class="bg-bg-warm">
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Argument</th>
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Description</th>
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Default</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="border border-border p-3 font-mono text-sm">[path]</td>
+        <td class="border border-border p-3 font-body text-sm">Project root path</td>
+        <td class="border border-border p-3 font-mono text-sm">.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3 class="font-heading text-xl font-semibold mt-8 mb-3 text-text">Example</h3>
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code># Scan the current directory
+coverit scan
+
+# Scan a specific project
+coverit scan ./packages/api</code></pre>
+
+  <!-- cover -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">cover</h2>
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code>coverit cover [path] [--modules &lt;paths&gt;]</code></pre>
+  <p class="font-body text-text leading-relaxed mb-4">
+    AI reads the gaps from <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">coverit.json</code>,
+    writes test files for each module with gaps, runs them, fixes any failures, and updates the
+    quality score. This is the primary command for improving your test coverage.
+  </p>
+
+  <h3 class="font-heading text-xl font-semibold mt-8 mb-3 text-text">What it does</h3>
+  <ul class="ml-6 list-disc mb-4">
+    <li class="mb-2 font-body text-text leading-relaxed">Reads gaps and priorities from <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">coverit.json</code></li>
+    <li class="mb-2 font-body text-text leading-relaxed">Generates test files targeting uncovered functionality</li>
+    <li class="mb-2 font-body text-text leading-relaxed">Runs the generated tests to verify they pass</li>
+    <li class="mb-2 font-body text-text leading-relaxed">Sends failures to AI for fixing (iterates until passing or max retries)</li>
+    <li class="mb-2 font-body text-text leading-relaxed">Rescans and updates the quality score in <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">coverit.json</code></li>
+  </ul>
+
+  <h3 class="font-heading text-xl font-semibold mt-8 mb-3 text-text">Arguments &amp; Options</h3>
+  <table class="w-full border-collapse mb-6">
+    <thead>
+      <tr class="bg-bg-warm">
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Argument / Option</th>
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Description</th>
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Default</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="border border-border p-3 font-mono text-sm">[path]</td>
+        <td class="border border-border p-3 font-body text-sm">Project root path</td>
+        <td class="border border-border p-3 font-mono text-sm">.</td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-mono text-sm">--modules &lt;paths&gt;</td>
+        <td class="border border-border p-3 font-body text-sm">Only cover specific modules (comma-separated paths)</td>
+        <td class="border border-border p-3 font-body text-sm italic text-text-muted">All modules</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3 class="font-heading text-xl font-semibold mt-8 mb-3 text-text">Example</h3>
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code># Cover all modules with gaps
+coverit cover
+
+# Cover only specific modules
+coverit cover --modules src/auth,src/billing</code></pre>
+
+  <!-- run -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">run</h2>
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code>coverit run [path] [--modules &lt;paths&gt;]</code></pre>
+  <p class="font-body text-text leading-relaxed mb-4">
+    Runs your existing test suite, sends any failures to AI for fixing, rescans the codebase,
+    and updates the quality score. Use this when you have failing tests that need attention.
+  </p>
+
+  <h3 class="font-heading text-xl font-semibold mt-8 mb-3 text-text">What it does</h3>
+  <ul class="ml-6 list-disc mb-4">
+    <li class="mb-2 font-body text-text leading-relaxed">Executes the project's existing test suite</li>
+    <li class="mb-2 font-body text-text leading-relaxed">Captures test output and identifies failures</li>
+    <li class="mb-2 font-body text-text leading-relaxed">Sends failing tests to AI for analysis and fixing</li>
+    <li class="mb-2 font-body text-text leading-relaxed">Re-runs fixed tests to verify they pass</li>
+    <li class="mb-2 font-body text-text leading-relaxed">Rescans the codebase and updates <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">coverit.json</code></li>
+  </ul>
+
+  <h3 class="font-heading text-xl font-semibold mt-8 mb-3 text-text">Arguments &amp; Options</h3>
+  <table class="w-full border-collapse mb-6">
+    <thead>
+      <tr class="bg-bg-warm">
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Argument / Option</th>
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Description</th>
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Default</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="border border-border p-3 font-mono text-sm">[path]</td>
+        <td class="border border-border p-3 font-body text-sm">Project root path</td>
+        <td class="border border-border p-3 font-mono text-sm">.</td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-mono text-sm">--modules &lt;paths&gt;</td>
+        <td class="border border-border p-3 font-body text-sm">Only run tests for specific modules (comma-separated paths)</td>
+        <td class="border border-border p-3 font-body text-sm italic text-text-muted">All modules</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3 class="font-heading text-xl font-semibold mt-8 mb-3 text-text">Example</h3>
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code># Run all tests and fix failures
+coverit run
+
+# Run tests for specific modules only
+coverit run --modules src/auth,src/payments</code></pre>
+
+  <!-- status -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">status</h2>
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code>coverit status [path]</code></pre>
+  <p class="font-body text-text leading-relaxed mb-4">
+    Instantly displays the quality dashboard from <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">coverit.json</code>.
+    No AI calls, no scanning &mdash; it reads the manifest directly and renders your current
+    quality score with a breakdown by dimension and module.
+  </p>
+
+  <h3 class="font-heading text-xl font-semibold mt-8 mb-3 text-text">Arguments</h3>
+  <table class="w-full border-collapse mb-6">
+    <thead>
+      <tr class="bg-bg-warm">
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Argument</th>
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Description</th>
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Default</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="border border-border p-3 font-mono text-sm">[path]</td>
+        <td class="border border-border p-3 font-body text-sm">Project root path</td>
+        <td class="border border-border p-3 font-mono text-sm">.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3 class="font-heading text-xl font-semibold mt-8 mb-3 text-text">Example</h3>
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code># Show dashboard for current project
+coverit status</code></pre>
+
+  <!-- clear -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">clear</h2>
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code>coverit clear [path] [--manifest-only]</code></pre>
+  <p class="font-body text-text leading-relaxed mb-4">
+    Deletes <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">coverit.json</code> and
+    the <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">.coverit/</code> directory
+    for a clean start. Useful when you want to re-scan from scratch.
+  </p>
+
+  <h3 class="font-heading text-xl font-semibold mt-8 mb-3 text-text">Arguments &amp; Options</h3>
+  <table class="w-full border-collapse mb-6">
+    <thead>
+      <tr class="bg-bg-warm">
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Argument / Option</th>
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Description</th>
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Default</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="border border-border p-3 font-mono text-sm">[path]</td>
+        <td class="border border-border p-3 font-body text-sm">Project root path</td>
+        <td class="border border-border p-3 font-mono text-sm">.</td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-mono text-sm">--manifest-only</td>
+        <td class="border border-border p-3 font-body text-sm">Only delete coverit.json, keep the .coverit/ directory</td>
+        <td class="border border-border p-3 font-mono text-sm">false</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3 class="font-heading text-xl font-semibold mt-8 mb-3 text-text">Example</h3>
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code># Delete everything and start fresh
+coverit clear
+
+# Only delete the manifest, keep cached data
+coverit clear --manifest-only</code></pre>
+
+  <!-- Typical workflow -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">Typical workflow</h2>
+  <p class="font-body text-text leading-relaxed mb-4">
+    A common workflow for improving test quality in an existing project:
+  </p>
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code># 1. Scan your codebase to establish a baseline
+coverit scan
+
+# 2. Check your current score
+coverit status
+
+# 3. Generate tests to fill gaps
+coverit cover
+
+# 4. Run tests and fix any failures
+coverit run
+
+# 5. Check your improved score
+coverit status</code></pre>
+  <p class="font-body text-text leading-relaxed mb-4">
+    Repeat steps 3&ndash;5 to iteratively improve your quality score. Each round of
+    <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">cover</code> and
+    <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">run</code> targets
+    the remaining gaps.
+  </p>
+</DocsLayout>

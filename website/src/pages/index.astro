@@ -1,0 +1,36 @@
+---
+import PageLayout from '../layouts/PageLayout.astro';
+import Hero from '../components/Hero.astro';
+import Problem from '../components/Problem.astro';
+import Pipeline from '../components/Pipeline.astro';
+import Features from '../components/Features.astro';
+import InstallSteps from '../components/InstallSteps.astro';
+import OpenSource from '../components/OpenSource.astro';
+---
+
+<PageLayout title="AI-Powered Test Quality" description="Know your code's true strength. AI-powered test quality for Claude Code.">
+  <Hero />
+  <Problem />
+  <Pipeline />
+  <Features />
+  <InstallSteps />
+  <OpenSource />
+</PageLayout>
+
+<script>
+  const observer = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('animate-visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    },
+    { threshold: 0.1 }
+  );
+
+  document.querySelectorAll('.animate-on-scroll').forEach((el) => {
+    observer.observe(el);
+  });
+</script>

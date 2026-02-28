@@ -1,0 +1,106 @@
+---
+const currentYear = new Date().getFullYear();
+
+const productLinks = [
+  { href: '/docs', label: 'Docs' },
+  { href: '/changelog', label: 'Changelog' },
+  { href: 'https://github.com/devness-com/coverit', label: 'GitHub', external: true },
+];
+
+const resourceLinks = [
+  { href: 'https://www.npmjs.com/package/@devness/coverit', label: 'npm', external: true },
+  { href: '/docs', label: 'Getting Started' },
+  { href: '/docs/commands', label: 'CLI Reference' },
+];
+
+const legalLinks = [
+  { href: 'https://github.com/devness-com/coverit/blob/main/LICENSE', label: 'License', external: true },
+  { href: 'https://github.com/devness-com/coverit/blob/main/SECURITY.md', label: 'Security Policy', external: true },
+];
+---
+
+<footer class="bg-bg-warm border-t border-border">
+  <div class="max-w-6xl mx-auto px-6 py-16">
+    <!-- Column grid -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-12 md:gap-8">
+      <!-- Product -->
+      <div>
+        <h3 class="font-heading text-sm font-semibold uppercase tracking-wider text-text mb-4">
+          Product
+        </h3>
+        <ul class="space-y-3">
+          {productLinks.map((link) => (
+            <li>
+              <a
+                href={link.href}
+                class="text-sm text-text-muted hover:text-accent transition-colors"
+                {...(link.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+              >
+                {link.label}
+                {link.external && (
+                  <span class="inline-block ml-1 opacity-50" aria-hidden="true">&nearr;</span>
+                )}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <!-- Resources -->
+      <div>
+        <h3 class="font-heading text-sm font-semibold uppercase tracking-wider text-text mb-4">
+          Resources
+        </h3>
+        <ul class="space-y-3">
+          {resourceLinks.map((link) => (
+            <li>
+              <a
+                href={link.href}
+                class="text-sm text-text-muted hover:text-accent transition-colors"
+                {...(link.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+              >
+                {link.label}
+                {link.external && (
+                  <span class="inline-block ml-1 opacity-50" aria-hidden="true">&nearr;</span>
+                )}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <!-- Legal -->
+      <div>
+        <h3 class="font-heading text-sm font-semibold uppercase tracking-wider text-text mb-4">
+          Legal
+        </h3>
+        <ul class="space-y-3">
+          {legalLinks.map((link) => (
+            <li>
+              <a
+                href={link.href}
+                class="text-sm text-text-muted hover:text-accent transition-colors"
+                {...(link.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+              >
+                {link.label}
+                {link.external && (
+                  <span class="inline-block ml-1 opacity-50" aria-hidden="true">&nearr;</span>
+                )}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+
+    <!-- Bottom bar -->
+    <div class="mt-16 pt-8 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-4">
+      <p class="text-sm text-text-muted">
+        &copy; {currentYear} Built by <a href="https://devness.com" class="hover:text-accent transition-colors">Devness</a>
+      </p>
+      <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-mono bg-border text-text-muted">
+        AGPL-3.0
+      </span>
+    </div>
+  </div>
+</footer>

@@ -1,0 +1,226 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+---
+
+<DocsLayout title="Configuration" description="Configure coverit with a coverit.config.ts file.">
+  <h1 class="font-heading text-3xl font-bold mb-6 text-text">Configuration</h1>
+
+  <p class="font-body text-text leading-relaxed mb-4">
+    Coverit works out of the box with zero configuration. It auto-detects your project structure,
+    test framework, and AI provider. For most projects, you don't need a config file at all.
+  </p>
+  <p class="font-body text-text leading-relaxed mb-4">
+    When you need to customize behavior, create a
+    <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">coverit.config.ts</code> file
+    in your project root.
+  </p>
+
+  <!-- Basic config -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">Basic config</h2>
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code>import &#123; defineConfig &#125; from "coverit";
+
+export default defineConfig(&#123;
+  projectRoot: ".",
+  testTypes: ["unit", "api", "e2e-browser"],
+  environment: "local",
+&#125;);</code></pre>
+  <p class="font-body text-text leading-relaxed mb-4">
+    The <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">defineConfig</code> helper
+    provides type checking and autocompletion. All fields are optional.
+  </p>
+
+  <!-- Options reference -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">Options reference</h2>
+
+  <h3 class="font-heading text-xl font-semibold mt-8 mb-3 text-text">Project</h3>
+  <table class="w-full border-collapse mb-6">
+    <thead>
+      <tr class="bg-bg-warm">
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Option</th>
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Type</th>
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Default</th>
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="border border-border p-3 font-mono text-sm">projectRoot</td>
+        <td class="border border-border p-3 font-mono text-sm">string</td>
+        <td class="border border-border p-3 font-mono text-sm">"."</td>
+        <td class="border border-border p-3 font-body text-sm">Root directory to analyze</td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-mono text-sm">targetPaths</td>
+        <td class="border border-border p-3 font-mono text-sm">string[]</td>
+        <td class="border border-border p-3 font-body text-sm italic text-text-muted">All files</td>
+        <td class="border border-border p-3 font-body text-sm">Restrict analysis to specific files or directories</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3 class="font-heading text-xl font-semibold mt-8 mb-3 text-text">Test types</h3>
+  <table class="w-full border-collapse mb-6">
+    <thead>
+      <tr class="bg-bg-warm">
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Option</th>
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Type</th>
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Default</th>
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="border border-border p-3 font-mono text-sm">testTypes</td>
+        <td class="border border-border p-3 font-mono text-sm">string[]</td>
+        <td class="border border-border p-3 font-body text-sm italic text-text-muted">All applicable</td>
+        <td class="border border-border p-3 font-body text-sm">Which test types to generate</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="font-body text-text leading-relaxed mb-4">
+    Available test types:
+  </p>
+  <ul class="ml-6 list-disc mb-4">
+    <li class="mb-2 font-body text-text leading-relaxed"><code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">unit</code> &mdash; Unit tests for individual functions and classes</li>
+    <li class="mb-2 font-body text-text leading-relaxed"><code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">integration</code> &mdash; Integration tests across module boundaries</li>
+    <li class="mb-2 font-body text-text leading-relaxed"><code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">api</code> &mdash; API endpoint tests (HTTP/REST/GraphQL)</li>
+    <li class="mb-2 font-body text-text leading-relaxed"><code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">e2e-browser</code> &mdash; End-to-end browser tests (Playwright)</li>
+    <li class="mb-2 font-body text-text leading-relaxed"><code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">e2e-mobile</code> &mdash; End-to-end mobile tests (Detox)</li>
+    <li class="mb-2 font-body text-text leading-relaxed"><code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">e2e-desktop</code> &mdash; End-to-end desktop app tests</li>
+    <li class="mb-2 font-body text-text leading-relaxed"><code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">snapshot</code> &mdash; Snapshot/visual regression tests</li>
+    <li class="mb-2 font-body text-text leading-relaxed"><code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">performance</code> &mdash; Performance and load tests</li>
+  </ul>
+
+  <h3 class="font-heading text-xl font-semibold mt-8 mb-3 text-text">Execution</h3>
+  <table class="w-full border-collapse mb-6">
+    <thead>
+      <tr class="bg-bg-warm">
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Option</th>
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Type</th>
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Default</th>
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="border border-border p-3 font-mono text-sm">environment</td>
+        <td class="border border-border p-3 font-mono text-sm">string</td>
+        <td class="border border-border p-3 font-mono text-sm">"local"</td>
+        <td class="border border-border p-3 font-body text-sm">Where to run tests</td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-mono text-sm">framework</td>
+        <td class="border border-border p-3 font-mono text-sm">string</td>
+        <td class="border border-border p-3 font-body text-sm italic text-text-muted">Auto-detected</td>
+        <td class="border border-border p-3 font-body text-sm">Override the auto-detected test framework</td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-mono text-sm">skipExecution</td>
+        <td class="border border-border p-3 font-mono text-sm">boolean</td>
+        <td class="border border-border p-3 font-mono text-sm">false</td>
+        <td class="border border-border p-3 font-body text-sm">Generate tests but don't execute them</td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-mono text-sm">coverageThreshold</td>
+        <td class="border border-border p-3 font-mono text-sm">number</td>
+        <td class="border border-border p-3 font-body text-sm italic text-text-muted">None</td>
+        <td class="border border-border p-3 font-body text-sm">Minimum coverage percentage; fail if below</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="font-body text-text leading-relaxed mb-4">
+    Available environments:
+    <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">local</code>,
+    <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">cloud-sandbox</code>,
+    <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">browser</code>,
+    <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">mobile-simulator</code>,
+    <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">desktop-app</code>.
+  </p>
+  <p class="font-body text-text leading-relaxed mb-4">
+    Available frameworks:
+    <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">vitest</code>,
+    <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">jest</code>,
+    <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">playwright</code>,
+    <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">detox</code>,
+    <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">pytest</code>.
+  </p>
+
+  <!-- Example configs -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">Example configurations</h2>
+
+  <h3 class="font-heading text-xl font-semibold mt-8 mb-3 text-text">API-only project (Hono / Express)</h3>
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code>import &#123; defineConfig &#125; from "coverit";
+
+export default defineConfig(&#123;
+  projectRoot: ".",
+  testTypes: ["unit", "api"],
+  environment: "local",
+  framework: "vitest",
+  coverageThreshold: 90,
+&#125;);</code></pre>
+
+  <h3 class="font-heading text-xl font-semibold mt-8 mb-3 text-text">React SPA</h3>
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code>import &#123; defineConfig &#125; from "coverit";
+
+export default defineConfig(&#123;
+  projectRoot: ".",
+  testTypes: ["unit", "snapshot", "e2e-browser"],
+  environment: "local",
+  framework: "vitest",
+  coverageThreshold: 80,
+&#125;);</code></pre>
+
+  <h3 class="font-heading text-xl font-semibold mt-8 mb-3 text-text">Mobile app (Expo + Detox)</h3>
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code>import &#123; defineConfig &#125; from "coverit";
+
+export default defineConfig(&#123;
+  projectRoot: ".",
+  testTypes: ["unit", "e2e-mobile"],
+  environment: "mobile-simulator",
+  framework: "detox",
+  coverageThreshold: 70,
+&#125;);</code></pre>
+
+  <h3 class="font-heading text-xl font-semibold mt-8 mb-3 text-text">Full-stack monorepo</h3>
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code>import &#123; defineConfig &#125; from "coverit";
+
+export default defineConfig(&#123;
+  projectRoot: ".",
+  targetPaths: ["packages/api", "packages/web", "packages/mobile"],
+  testTypes: ["unit", "api", "e2e-browser", "e2e-mobile"],
+  environment: "local",
+  coverageThreshold: 75,
+&#125;);</code></pre>
+
+  <!-- Environment variable -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">Environment variables</h2>
+  <p class="font-body text-text leading-relaxed mb-4">
+    You can override the AI provider without a config file using an environment variable:
+  </p>
+  <table class="w-full border-collapse mb-6">
+    <thead>
+      <tr class="bg-bg-warm">
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Variable</th>
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="border border-border p-3 font-mono text-sm">COVERIT_AI_PROVIDER</td>
+        <td class="border border-border p-3 font-body text-sm">Force a specific AI provider (e.g. <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">claude-cli</code>, <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">anthropic</code>, <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">ollama</code>)</td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-mono text-sm">ANTHROPIC_API_KEY</td>
+        <td class="border border-border p-3 font-body text-sm">API key for the Anthropic provider</td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-mono text-sm">OPENAI_API_KEY</td>
+        <td class="border border-border p-3 font-body text-sm">API key for the OpenAI provider</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="font-body text-text leading-relaxed mb-4">
+    See <a href="/docs/providers" class="text-accent hover:text-accent-hover underline">AI Providers</a> for
+    details on each provider and how auto-detection works.
+  </p>
+</DocsLayout>

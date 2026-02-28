@@ -1,0 +1,24 @@
+---
+interface Props {
+  icon: string;
+  title: string;
+  description: string;
+  delay?: string;
+}
+
+const { icon, title, description, delay = '0s' } = Astro.props;
+---
+
+<div
+  class="animate-on-scroll feature-card bg-bg-warm border border-border rounded-xl shadow-sm p-6 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5"
+  style={`animation-delay: ${delay};`}
+>
+  <!-- Icon circle -->
+  <div
+    class="flex items-center justify-center w-12 h-12 rounded-full bg-amber/10 text-amber mb-4"
+    set:html={icon}
+  />
+
+  <h3 class="font-heading font-semibold text-lg text-text mb-2">{title}</h3>
+  <p class="font-body text-sm text-text-muted leading-relaxed">{description}</p>
+</div>

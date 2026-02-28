@@ -1,0 +1,134 @@
+---
+import ScoreGauge from './ScoreGauge.astro';
+---
+
+<section class="relative overflow-hidden">
+  <div class="mx-auto max-w-[1200px] px-6 pt-8 pb-24 md:pt-12 md:pb-32 lg:pt-16 lg:pb-40">
+    <div class="flex flex-col items-center gap-16 md:flex-row md:items-center md:gap-12 lg:gap-20">
+      <!-- Left column: text -->
+      <div class="flex-1 max-w-2xl md:max-w-none md:basis-[60%]">
+        <p
+          class="font-body text-sm text-text-muted uppercase tracking-[0.2em] mb-4"
+        >
+          AI-powered test quality
+        </p>
+
+        <h1
+          class="font-heading font-black text-5xl md:text-6xl lg:text-7xl text-text leading-[1.05] mb-6"
+        >
+          Know Your Code's<br class="hidden sm:inline" /> True Strength
+        </h1>
+
+        <p
+          class="font-body text-lg text-text-muted max-w-lg mb-10 leading-relaxed"
+        >
+          Scan your codebase. Generate tests for gaps. Fix failures automatically.
+          Four commands, one manifest.
+        </p>
+
+        <!-- Install command box -->
+        <div
+          class="install-box group flex items-center gap-3 bg-bg-code rounded-lg px-5 py-3.5 mb-8 max-w-md"
+        >
+          <span class="font-mono text-sm text-text-muted select-none shrink-0" aria-hidden="true"
+            >$</span
+          >
+          <code class="font-mono text-sm text-[#f5f0e8] flex-1 select-all" id="install-cmd"
+            >npx @devness/coverit</code
+          >
+          <button
+            type="button"
+            class="copy-btn shrink-0 p-1.5 rounded-md text-text-muted hover:text-[#f5f0e8] transition-colors cursor-pointer"
+            aria-label="Copy install command"
+            data-cmd="npx @devness/coverit"
+          >
+            <!-- Clipboard icon -->
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="copy-icon"
+            >
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            <!-- Check icon (hidden by default) -->
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="check-icon hidden"
+            >
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+          </button>
+        </div>
+
+        <!-- CTA button -->
+        <a
+          href="/docs"
+          class="inline-block font-heading font-semibold text-base bg-accent text-[#faf7f2] rounded-lg px-8 py-3 shadow-md hover:bg-accent-hover hover:shadow-lg transition-all duration-200"
+        >
+          Get Started
+        </a>
+      </div>
+
+      <!-- Right column: gauge -->
+      <div class="flex-shrink-0 md:basis-[40%] flex items-center justify-center">
+        <ScoreGauge score={82} size={200} />
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  function setupCopyButtons() {
+    document.querySelectorAll<HTMLButtonElement>('.copy-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const cmd = btn.dataset.cmd;
+        if (!cmd) return;
+
+        try {
+          await navigator.clipboard.writeText(cmd);
+        } catch {
+          // Fallback for older browsers
+          const textarea = document.createElement('textarea');
+          textarea.value = cmd;
+          textarea.style.position = 'fixed';
+          textarea.style.opacity = '0';
+          document.body.appendChild(textarea);
+          textarea.select();
+          document.execCommand('copy');
+          document.body.removeChild(textarea);
+        }
+
+        const copyIcon = btn.querySelector('.copy-icon') as HTMLElement;
+        const checkIcon = btn.querySelector('.check-icon') as HTMLElement;
+
+        if (copyIcon && checkIcon) {
+          copyIcon.classList.add('hidden');
+          checkIcon.classList.remove('hidden');
+
+          setTimeout(() => {
+            copyIcon.classList.remove('hidden');
+            checkIcon.classList.add('hidden');
+          }, 2000);
+        }
+      });
+    });
+  }
+
+  setupCopyButtons();
+</script>

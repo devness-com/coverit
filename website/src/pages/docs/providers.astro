@@ -1,0 +1,257 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+---
+
+<DocsLayout title="AI Providers" description="Configure which AI provider coverit uses for scanning and test generation.">
+  <h1 class="font-heading text-3xl font-bold mb-6 text-text">AI Providers</h1>
+
+  <p class="font-body text-text leading-relaxed mb-4">
+    Coverit needs an AI provider to scan your codebase and generate tests. When running as
+    a standalone CLI tool, it auto-detects the best available provider. When running as an
+    MCP server inside Claude Code, Claude itself is the AI &mdash; no external provider is needed.
+  </p>
+
+  <!-- Auto-detection -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">Auto-detection</h2>
+  <p class="font-body text-text leading-relaxed mb-4">
+    When no provider is explicitly configured, coverit probes each one in priority order and
+    uses the first that's available. The order reflects cost and convenience &mdash; free CLI
+    wrappers first, then API-key providers, then local models:
+  </p>
+  <ol class="ml-6 list-decimal mb-4">
+    <li class="mb-2 font-body text-text leading-relaxed"><strong>Claude CLI</strong> &mdash; free with a Claude Pro/Max subscription</li>
+    <li class="mb-2 font-body text-text leading-relaxed"><strong>Gemini CLI</strong> &mdash; free with a Google AI subscription</li>
+    <li class="mb-2 font-body text-text leading-relaxed"><strong>Codex CLI</strong> &mdash; free with an OpenAI subscription</li>
+    <li class="mb-2 font-body text-text leading-relaxed"><strong>Anthropic API</strong> &mdash; best quality, requires API key</li>
+    <li class="mb-2 font-body text-text leading-relaxed"><strong>OpenAI API</strong> &mdash; widely available, requires API key</li>
+    <li class="mb-2 font-body text-text leading-relaxed"><strong>Ollama</strong> &mdash; free and local, quality varies by model</li>
+  </ol>
+  <p class="font-body text-text leading-relaxed mb-4">
+    You can override auto-detection with the
+    <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">COVERIT_AI_PROVIDER</code> environment variable:
+  </p>
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code>COVERIT_AI_PROVIDER=anthropic coverit scan</code></pre>
+
+  <!-- Claude CLI -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">Claude CLI</h2>
+  <table class="w-full border-collapse mb-6">
+    <tbody>
+      <tr>
+        <td class="border border-border p-3 font-body font-semibold text-sm bg-bg-warm w-40">Provider ID</td>
+        <td class="border border-border p-3 font-mono text-sm">claude-cli</td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-body font-semibold text-sm bg-bg-warm">Cost</td>
+        <td class="border border-border p-3 font-body text-sm">Free (uses your Pro/Max subscription)</td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-body font-semibold text-sm bg-bg-warm">Requires</td>
+        <td class="border border-border p-3 font-body text-sm">Claude Code CLI installed and authenticated</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="font-body text-text leading-relaxed mb-4">
+    The default and recommended provider. Uses the
+    <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">claude --print</code> command
+    to send prompts to Claude. Provides the highest quality results because Claude can use
+    built-in tools (Read, Grep, Glob, Bash) to explore your codebase directly.
+  </p>
+  <p class="font-body text-text leading-relaxed mb-4">
+    Install Claude Code from
+    <a href="https://docs.anthropic.com/en/docs/claude-code" class="text-accent hover:text-accent-hover underline" target="_blank" rel="noopener noreferrer">docs.anthropic.com</a>.
+  </p>
+
+  <!-- Gemini CLI -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">Gemini CLI</h2>
+  <table class="w-full border-collapse mb-6">
+    <tbody>
+      <tr>
+        <td class="border border-border p-3 font-body font-semibold text-sm bg-bg-warm w-40">Provider ID</td>
+        <td class="border border-border p-3 font-mono text-sm">gemini-cli</td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-body font-semibold text-sm bg-bg-warm">Cost</td>
+        <td class="border border-border p-3 font-body text-sm">Free (uses your Google AI subscription)</td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-body font-semibold text-sm bg-bg-warm">Requires</td>
+        <td class="border border-border p-3 font-body text-sm">Gemini CLI installed and authenticated</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="font-body text-text leading-relaxed mb-4">
+    Uses the <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">gemini</code> CLI
+    to send prompts to Google's Gemini models. A good alternative if you already have a Google
+    AI subscription.
+  </p>
+  <p class="font-body text-text leading-relaxed mb-4">
+    Install from
+    <a href="https://github.com/google-gemini/gemini-cli" class="text-accent hover:text-accent-hover underline" target="_blank" rel="noopener noreferrer">github.com/google-gemini/gemini-cli</a>.
+  </p>
+
+  <!-- Codex CLI -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">Codex CLI</h2>
+  <table class="w-full border-collapse mb-6">
+    <tbody>
+      <tr>
+        <td class="border border-border p-3 font-body font-semibold text-sm bg-bg-warm w-40">Provider ID</td>
+        <td class="border border-border p-3 font-mono text-sm">codex-cli</td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-body font-semibold text-sm bg-bg-warm">Cost</td>
+        <td class="border border-border p-3 font-body text-sm">Free (uses your OpenAI subscription)</td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-body font-semibold text-sm bg-bg-warm">Requires</td>
+        <td class="border border-border p-3 font-body text-sm">Codex CLI installed and authenticated</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="font-body text-text leading-relaxed mb-4">
+    Uses OpenAI's <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">codex</code> CLI.
+    A good choice if you're already in the OpenAI ecosystem with an active subscription.
+  </p>
+  <p class="font-body text-text leading-relaxed mb-4">
+    Install from
+    <a href="https://github.com/openai/codex" class="text-accent hover:text-accent-hover underline" target="_blank" rel="noopener noreferrer">github.com/openai/codex</a>.
+  </p>
+
+  <!-- Anthropic API -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">Anthropic API</h2>
+  <table class="w-full border-collapse mb-6">
+    <tbody>
+      <tr>
+        <td class="border border-border p-3 font-body font-semibold text-sm bg-bg-warm w-40">Provider ID</td>
+        <td class="border border-border p-3 font-mono text-sm">anthropic</td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-body font-semibold text-sm bg-bg-warm">Cost</td>
+        <td class="border border-border p-3 font-body text-sm">Pay-per-use API pricing</td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-body font-semibold text-sm bg-bg-warm">Requires</td>
+        <td class="border border-border p-3 font-mono text-sm">ANTHROPIC_API_KEY</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="font-body text-text leading-relaxed mb-4">
+    Direct API access to Anthropic's Claude models. Provides excellent quality results, but
+    requires an API key and incurs per-token costs. Set the environment variable:
+  </p>
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code>export ANTHROPIC_API_KEY=sk-ant-...</code></pre>
+
+  <!-- OpenAI API -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">OpenAI API</h2>
+  <table class="w-full border-collapse mb-6">
+    <tbody>
+      <tr>
+        <td class="border border-border p-3 font-body font-semibold text-sm bg-bg-warm w-40">Provider ID</td>
+        <td class="border border-border p-3 font-mono text-sm">openai</td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-body font-semibold text-sm bg-bg-warm">Cost</td>
+        <td class="border border-border p-3 font-body text-sm">Pay-per-use API pricing</td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-body font-semibold text-sm bg-bg-warm">Requires</td>
+        <td class="border border-border p-3 font-mono text-sm">OPENAI_API_KEY</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="font-body text-text leading-relaxed mb-4">
+    Direct API access to OpenAI's models (GPT-4, etc.). Widely available and well-supported.
+    Set the environment variable:
+  </p>
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code>export OPENAI_API_KEY=sk-...</code></pre>
+  <p class="font-body text-text leading-relaxed mb-4">
+    Coverit also supports <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">openai-compatible</code>
+    as a provider type, which works with any API endpoint that follows the OpenAI API format
+    (e.g., Azure OpenAI, Together AI, Groq).
+  </p>
+
+  <!-- Ollama -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">Ollama</h2>
+  <table class="w-full border-collapse mb-6">
+    <tbody>
+      <tr>
+        <td class="border border-border p-3 font-body font-semibold text-sm bg-bg-warm w-40">Provider ID</td>
+        <td class="border border-border p-3 font-mono text-sm">ollama</td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-body font-semibold text-sm bg-bg-warm">Cost</td>
+        <td class="border border-border p-3 font-body text-sm">Free (runs locally)</td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-body font-semibold text-sm bg-bg-warm">Requires</td>
+        <td class="border border-border p-3 font-body text-sm">Ollama running locally (<code class="bg-bg-warm px-1 py-0.5 rounded font-mono text-sm">ollama serve</code>)</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="font-body text-text leading-relaxed mb-4">
+    Run models entirely on your local machine. Free and private, but quality varies significantly
+    depending on the model you choose. Best suited for experimentation or when you cannot use
+    cloud-based providers.
+  </p>
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code># Start Ollama
+ollama serve
+
+# Pull a capable model
+ollama pull llama3.1
+
+# Use with coverit
+COVERIT_AI_PROVIDER=ollama coverit scan</code></pre>
+  <p class="font-body text-text leading-relaxed mb-4">
+    Install Ollama from <a href="https://ollama.com" class="text-accent hover:text-accent-hover underline" target="_blank" rel="noopener noreferrer">ollama.com</a>.
+  </p>
+
+  <!-- Provider comparison -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">Provider comparison</h2>
+  <table class="w-full border-collapse mb-6">
+    <thead>
+      <tr class="bg-bg-warm">
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Provider</th>
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Quality</th>
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Cost</th>
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Setup</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="border border-border p-3 font-body text-sm">Claude CLI</td>
+        <td class="border border-border p-3 font-body text-sm">Excellent</td>
+        <td class="border border-border p-3 font-body text-sm">Free (subscription)</td>
+        <td class="border border-border p-3 font-body text-sm">Install CLI</td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-body text-sm">Gemini CLI</td>
+        <td class="border border-border p-3 font-body text-sm">Very good</td>
+        <td class="border border-border p-3 font-body text-sm">Free (subscription)</td>
+        <td class="border border-border p-3 font-body text-sm">Install CLI</td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-body text-sm">Codex CLI</td>
+        <td class="border border-border p-3 font-body text-sm">Very good</td>
+        <td class="border border-border p-3 font-body text-sm">Free (subscription)</td>
+        <td class="border border-border p-3 font-body text-sm">Install CLI</td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-body text-sm">Anthropic API</td>
+        <td class="border border-border p-3 font-body text-sm">Excellent</td>
+        <td class="border border-border p-3 font-body text-sm">Pay-per-use</td>
+        <td class="border border-border p-3 font-body text-sm">API key</td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-body text-sm">OpenAI API</td>
+        <td class="border border-border p-3 font-body text-sm">Good</td>
+        <td class="border border-border p-3 font-body text-sm">Pay-per-use</td>
+        <td class="border border-border p-3 font-body text-sm">API key</td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-body text-sm">Ollama</td>
+        <td class="border border-border p-3 font-body text-sm">Varies</td>
+        <td class="border border-border p-3 font-body text-sm">Free (local)</td>
+        <td class="border border-border p-3 font-body text-sm">Install + model</td>
+      </tr>
+    </tbody>
+  </table>
+</DocsLayout>

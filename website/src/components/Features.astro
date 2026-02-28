@@ -1,0 +1,70 @@
+---
+import FeatureCard from './FeatureCard.astro';
+
+const features = [
+  {
+    title: 'AI-Driven Analysis',
+    description:
+      'No heuristics. AI explores your code with real tool access \u2014 reads files, searches patterns, runs commands.',
+    icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`,
+  },
+  {
+    title: '5 Quality Dimensions',
+    description:
+      'ISO 25010 mapped: Functionality, Security, Stability, Conformance, and Regression testing.',
+    icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
+  },
+  {
+    title: 'Smart Test Generation',
+    description:
+      'AI generates tests, runs them, fixes failures. All in one command.',
+    icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/><path d="M15 3l-2 6 2 3-2 3 2 6" opacity="0.5" stroke-dasharray="2 2"/></svg>`,
+  },
+  {
+    title: 'Testing Diamond',
+    description:
+      'Integration ~50%, Unit ~20%, API ~15%, E2E ~10%, Contract ~5%. The right balance.',
+    icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 22 12 12 22 2 12"/></svg>`,
+  },
+  {
+    title: 'Persistent Manifest',
+    description:
+      'coverit.json tracks everything. Git-tracked, cross-session, your single source of truth.',
+    icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>`,
+  },
+  {
+    title: 'Multiple AI Providers',
+    description:
+      'Claude, Gemini, Codex, Ollama, OpenAI, Anthropic API. Use what you have.',
+    icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>`,
+  },
+];
+---
+
+<section class="bg-bg">
+  <div class="mx-auto max-w-[1100px] px-6 py-24 md:py-32">
+    <!-- Section heading -->
+    <div class="text-center mb-14">
+      <h2 class="font-heading text-3xl md:text-4xl font-bold text-text mb-4">
+        Built for Real Quality
+      </h2>
+      <p class="font-body text-lg text-text-muted max-w-xl mx-auto leading-relaxed">
+        Everything AI-driven. No heuristics, no guesswork &mdash; just real analysis and real tests.
+      </p>
+    </div>
+
+    <!-- Feature grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {
+        features.map((feature, i) => (
+          <FeatureCard
+            icon={feature.icon}
+            title={feature.title}
+            description={feature.description}
+            delay={`${i * 0.1}s`}
+          />
+        ))
+      }
+    </div>
+  </div>
+</section>

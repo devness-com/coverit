@@ -1,0 +1,79 @@
+---
+interface Props {
+  currentPath: string;
+}
+
+const { currentPath } = Astro.props;
+
+const links = [
+  { href: '/docs', label: 'Getting Started' },
+  { href: '/docs/commands', label: 'Commands' },
+  { href: '/docs/config', label: 'Configuration' },
+  { href: '/docs/providers', label: 'AI Providers' },
+  { href: '/docs/mcp', label: 'MCP Setup' },
+];
+
+function isActive(href: string): boolean {
+  // Normalize trailing slashes for comparison
+  const normalized = currentPath.replace(/\/$/, '') || '/';
+  const normalizedHref = href.replace(/\/$/, '') || '/';
+  return normalized === normalizedHref;
+}
+---
+
+<nav aria-label="Documentation navigation">
+  <!-- Desktop sidebar -->
+  <div class="sticky top-24">
+    <p class="font-heading uppercase tracking-wide text-xs text-text-muted mb-4 px-4">
+      Documentation
+    </p>
+    <ul class="space-y-0.5">
+      {links.map((link) => (
+        <li>
+          <a
+            href={link.href}
+            class:list={[
+              'block py-2 px-4 text-sm font-body transition-colors',
+              isActive(link.href)
+                ? 'border-l-2 border-accent text-accent font-semibold'
+                : 'border-l-2 border-transparent text-text-muted hover:text-text',
+            ]}
+          >
+            {link.label}
+          </a>
+        </li>
+      ))}
+    </ul>
+  </div>
+
+  <!-- Mobile navigation (collapsible) -->
+  <div class="md:hidden mb-6">
+    <input type="checkbox" id="docs-nav-toggle" class="hidden peer" aria-hidden="true" />
+    <label
+      for="docs-nav-toggle"
+      class="flex items-center justify-between w-full py-3 px-4 bg-bg-warm rounded-lg cursor-pointer text-sm font-body text-text-muted hover:text-text transition-colors"
+    >
+      <span class="font-heading uppercase tracking-wide text-xs">Documentation</span>
+      <svg class="w-4 h-4 transition-transform peer-checked:rotate-180" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+        <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+      </svg>
+    </label>
+    <ul class="hidden peer-checked:block mt-2 space-y-0.5 bg-bg-warm rounded-lg py-2">
+      {links.map((link) => (
+        <li>
+          <a
+            href={link.href}
+            class:list={[
+              'block py-2 px-4 text-sm font-body transition-colors',
+              isActive(link.href)
+                ? 'text-accent font-semibold'
+                : 'text-text-muted hover:text-text',
+            ]}
+          >
+            {link.label}
+          </a>
+        </li>
+      ))}
+    </ul>
+  </div>
+</nav>

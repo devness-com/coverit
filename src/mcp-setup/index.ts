@@ -20,6 +20,7 @@ const registry = createToolRegistry({
     endMarker: '<!-- coverit:end -->',
   },
   instructionFileName: 'coverit',
+  pluginId: 'coverit@coverit',
 });
 
 const runner = createSetupRunner({

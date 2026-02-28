@@ -1,0 +1,218 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+---
+
+<DocsLayout title="MCP Server Setup" description="Set up coverit as an MCP server for Claude Code and other AI tools.">
+  <h1 class="font-heading text-3xl font-bold mb-6 text-text">MCP Server Setup</h1>
+
+  <p class="font-body text-text leading-relaxed mb-4">
+    Coverit works as an <a href="https://modelcontextprotocol.io" class="text-accent hover:text-accent-hover underline" target="_blank" rel="noopener noreferrer">MCP (Model Context Protocol)</a>
+    server. This means AI tools like Claude Code can use coverit's capabilities directly through
+    a standardized protocol, without you running CLI commands manually.
+  </p>
+
+  <!-- What is MCP -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">What is MCP?</h2>
+  <p class="font-body text-text leading-relaxed mb-4">
+    The Model Context Protocol (MCP) is an open standard that allows AI assistants to use
+    external tools. When coverit runs as an MCP server, the AI can call coverit's functions
+    directly &mdash; scanning your codebase, generating tests, and fixing failures without
+    you copying commands back and forth.
+  </p>
+  <p class="font-body text-text leading-relaxed mb-4">
+    This is the recommended way to use coverit with Claude Code. The AI orchestrates the
+    entire workflow: scanning, identifying gaps, writing tests, running them, and reporting results.
+  </p>
+
+  <!-- Auto setup -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">Automatic setup</h2>
+  <p class="font-body text-text leading-relaxed mb-4">
+    The easiest way to configure MCP is to run the setup wizard:
+  </p>
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code>npx @devness/coverit</code></pre>
+  <p class="font-body text-text leading-relaxed mb-4">
+    This detects your installed AI tools (Claude Code, Gemini CLI, Cursor, Windsurf, etc.) and
+    configures the MCP server for each one automatically. No manual JSON editing required.
+  </p>
+  <p class="font-body text-text leading-relaxed mb-4">
+    You can also run the setup wizard explicitly:
+  </p>
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code>npx @devness/coverit mcp</code></pre>
+
+  <!-- Manual configuration -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">Manual configuration</h2>
+  <p class="font-body text-text leading-relaxed mb-4">
+    If you prefer to configure manually, add the following to your MCP configuration file.
+  </p>
+
+  <h3 class="font-heading text-xl font-semibold mt-8 mb-3 text-text">Claude Desktop</h3>
+  <p class="font-body text-text leading-relaxed mb-4">
+    Add to <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">claude_desktop_config.json</code>:
+  </p>
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code>&#123;
+  "mcpServers": &#123;
+    "coverit": &#123;
+      "command": "npx",
+      "args": ["-y", "@devness/coverit@latest"]
+    &#125;
+  &#125;
+&#125;</code></pre>
+
+  <h3 class="font-heading text-xl font-semibold mt-8 mb-3 text-text">Claude Code</h3>
+  <p class="font-body text-text leading-relaxed mb-4">
+    Add to <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">.mcp.json</code> in your project root:
+  </p>
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code>&#123;
+  "mcpServers": &#123;
+    "coverit": &#123;
+      "command": "npx",
+      "args": ["-y", "@devness/coverit@latest"]
+    &#125;
+  &#125;
+&#125;</code></pre>
+
+  <!-- MCP Tools -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">MCP tools</h2>
+  <p class="font-body text-text leading-relaxed mb-4">
+    Once configured, the following 7 tools become available to the AI:
+  </p>
+  <table class="w-full border-collapse mb-6">
+    <thead>
+      <tr class="bg-bg-warm">
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Tool</th>
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="border border-border p-3 font-mono text-sm">coverit_scan</td>
+        <td class="border border-border p-3 font-body text-sm">AI scans and analyzes the codebase, creates <code class="bg-bg-warm px-1 py-0.5 rounded font-mono text-sm">coverit.json</code></td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-mono text-sm">coverit_cover</td>
+        <td class="border border-border p-3 font-body text-sm">Generates tests from gaps, runs them, fixes failures, updates score</td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-mono text-sm">coverit_run</td>
+        <td class="border border-border p-3 font-body text-sm">Runs existing tests, fixes failures via AI, rescans and updates score</td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-mono text-sm">coverit_status</td>
+        <td class="border border-border p-3 font-body text-sm">Shows the quality dashboard from <code class="bg-bg-warm px-1 py-0.5 rounded font-mono text-sm">coverit.json</code> (instant, no AI)</td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-mono text-sm">coverit_clear</td>
+        <td class="border border-border p-3 font-body text-sm">Deletes <code class="bg-bg-warm px-1 py-0.5 rounded font-mono text-sm">coverit.json</code> and <code class="bg-bg-warm px-1 py-0.5 rounded font-mono text-sm">.coverit/</code> for a fresh start</td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-mono text-sm">coverit_backup</td>
+        <td class="border border-border p-3 font-body text-sm">Exports <code class="bg-bg-warm px-1 py-0.5 rounded font-mono text-sm">coverit.json</code> as a portable backup</td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-mono text-sm">coverit_restore</td>
+        <td class="border border-border p-3 font-body text-sm">Imports <code class="bg-bg-warm px-1 py-0.5 rounded font-mono text-sm">coverit.json</code> from a backup</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="font-body text-text leading-relaxed mb-4">
+    Each tool accepts a <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">projectRoot</code>
+    parameter &mdash; the absolute path to the project being analyzed.
+  </p>
+
+  <!-- Claude Code plugin -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">Claude Code plugin</h2>
+  <p class="font-body text-text leading-relaxed mb-4">
+    Coverit is also available as a Claude Code plugin, which bundles the MCP server with
+    slash commands for a streamlined experience. Install it from the marketplace:
+  </p>
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code>/plugin marketplace add devness-com/coverit</code></pre>
+  <p class="font-body text-text leading-relaxed mb-4">
+    The plugin provides both the MCP tools above and the following slash commands.
+  </p>
+
+  <!-- Slash commands -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">Slash commands</h2>
+  <p class="font-body text-text leading-relaxed mb-4">
+    When using coverit as a Claude Code plugin, you get convenient slash commands:
+  </p>
+  <table class="w-full border-collapse mb-6">
+    <thead>
+      <tr class="bg-bg-warm">
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Command</th>
+        <th class="border border-border p-3 text-left font-body font-semibold text-sm">Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="border border-border p-3 font-mono text-sm">/coverit:scan</td>
+        <td class="border border-border p-3 font-body text-sm">AI scans and analyzes codebase, creates <code class="bg-bg-warm px-1 py-0.5 rounded font-mono text-sm">coverit.json</code>, shows dashboard</td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-mono text-sm">/coverit:cover</td>
+        <td class="border border-border p-3 font-body text-sm">AI generates tests from gaps, shows before/after score</td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-mono text-sm">/coverit:run</td>
+        <td class="border border-border p-3 font-body text-sm">Runs existing tests, AI fixes failures</td>
+      </tr>
+      <tr>
+        <td class="border border-border p-3 font-mono text-sm">/coverit:status</td>
+        <td class="border border-border p-3 font-body text-sm">Shows quality dashboard from <code class="bg-bg-warm px-1 py-0.5 rounded font-mono text-sm">coverit.json</code></td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="font-body text-text leading-relaxed mb-4">
+    Slash commands are the quickest way to use coverit. Just type the command in Claude Code
+    and the AI handles everything &mdash; delegating to a sub-agent for heavy work and reporting
+    results back to you.
+  </p>
+
+  <!-- How it works -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">How it works</h2>
+  <p class="font-body text-text leading-relaxed mb-4">
+    When coverit runs as an MCP server, the flow is different from standalone CLI usage:
+  </p>
+  <ul class="ml-6 list-disc mb-4">
+    <li class="mb-2 font-body text-text leading-relaxed">
+      <strong>No external AI provider needed</strong> &mdash; the AI tool (Claude Code) is
+      itself the AI. Coverit doesn't need to call out to any separate provider.
+    </li>
+    <li class="mb-2 font-body text-text leading-relaxed">
+      <strong>Direct tool access</strong> &mdash; the AI can read files, search code, and run
+      commands directly through its own tool capabilities.
+    </li>
+    <li class="mb-2 font-body text-text leading-relaxed">
+      <strong>Conversational context</strong> &mdash; the AI has full context of your
+      conversation, so it can make smarter decisions about what to test and how.
+    </li>
+  </ul>
+  <p class="font-body text-text leading-relaxed mb-4">
+    When you invoke <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">npx @devness/coverit</code>
+    in a non-TTY (piped) context, it automatically starts the MCP server. In a TTY (terminal)
+    context, it runs the setup wizard instead.
+  </p>
+
+  <!-- Troubleshooting -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">Troubleshooting</h2>
+
+  <h3 class="font-heading text-xl font-semibold mt-8 mb-3 text-text">MCP server not detected</h3>
+  <p class="font-body text-text leading-relaxed mb-4">
+    If your AI tool doesn't see the coverit MCP tools, try:
+  </p>
+  <ul class="ml-6 list-disc mb-4">
+    <li class="mb-2 font-body text-text leading-relaxed">Re-run the setup wizard: <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">npx @devness/coverit</code></li>
+    <li class="mb-2 font-body text-text leading-relaxed">Restart your AI tool (Claude Code, Cursor, etc.) to reload MCP configurations</li>
+    <li class="mb-2 font-body text-text leading-relaxed">Verify <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">.mcp.json</code> exists in your project root with the correct configuration</li>
+  </ul>
+
+  <h3 class="font-heading text-xl font-semibold mt-8 mb-3 text-text">Tools time out</h3>
+  <p class="font-body text-text leading-relaxed mb-4">
+    The scan and cover operations use AI to explore your codebase, which can take several
+    minutes for large projects. If tools are timing out:
+  </p>
+  <ul class="ml-6 list-disc mb-4">
+    <li class="mb-2 font-body text-text leading-relaxed">Ensure you have a stable internet connection (for cloud-based providers)</li>
+    <li class="mb-2 font-body text-text leading-relaxed">For very large codebases, use <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">targetPaths</code> in your config to limit scope</li>
+    <li class="mb-2 font-body text-text leading-relaxed">Run the CLI version instead: <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">npx @devness/coverit scan</code></li>
+  </ul>
+</DocsLayout>

@@ -1,0 +1,131 @@
+---
+interface Props {
+  score?: number;
+  size?: number;
+}
+
+const { score = 82, size = 200 } = Astro.props;
+
+const radius = 80;
+const strokeWidth = 10;
+const circumference = 2 * Math.PI * radius;
+const offset = circumference - (score / 100) * circumference;
+const viewBox = `0 0 ${size} ${size}`;
+const center = size / 2;
+---
+
+<div class="score-gauge flex flex-col items-center gap-3">
+  <div class="gauge-wrapper relative" style={`width: ${size}px; height: ${size}px;`}>
+    <svg
+      viewBox={viewBox}
+      width={size}
+      height={size}
+      class="gauge-svg"
+      role="img"
+      aria-label={`Quality score: ${score} out of 100`}
+    >
+      <!-- Background ring -->
+      <circle
+        cx={center}
+        cy={center}
+        r={radius}
+        fill="none"
+        stroke="var(--color-border)"
+        stroke-width={strokeWidth}
+      />
+      <!-- Filled arc -->
+      <circle
+        cx={center}
+        cy={center}
+        r={radius}
+        fill="none"
+        stroke="var(--color-accent)"
+        stroke-width={strokeWidth}
+        stroke-linecap="round"
+        stroke-dasharray={circumference}
+        stroke-dashoffset={circumference}
+        class="gauge-arc"
+        transform={`rotate(-90 ${center} ${center})`}
+        style={`--gauge-target: ${offset};`}
+      />
+    </svg>
+    <!-- Score number overlay -->
+    <div class="absolute inset-0 flex flex-col items-center justify-center">
+      <span
+        class="gauge-number font-heading font-bold text-4xl text-accent leading-none"
+        data-target={score}
+      >
+        0
+      </span>
+      <span class="font-body text-sm text-text-muted mt-0.5">/100</span>
+    </div>
+  </div>
+  <span class="text-xs font-body text-text-muted uppercase tracking-[0.2em]">Quality Score</span>
+</div>
+
+<style>
+  .gauge-wrapper {
+    filter: drop-shadow(0 0 20px rgba(196, 98, 58, 0.12));
+  }
+
+  .gauge-arc {
+    animation: gauge-fill 1.5s ease-out 0.3s forwards;
+  }
+
+  @keyframes gauge-fill {
+    to {
+      stroke-dashoffset: var(--gauge-target);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .gauge-arc {
+      animation: none;
+      stroke-dashoffset: var(--gauge-target);
+    }
+
+    .gauge-number {
+      /* JS counter animation is also disabled via this class check */
+    }
+  }
+</style>
+
+<script>
+  function animateGaugeNumbers() {
+    const numbers = document.querySelectorAll<HTMLElement>('.gauge-number');
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    numbers.forEach((el) => {
+      const target = parseInt(el.dataset.target || '0', 10);
+
+      if (prefersReducedMotion) {
+        el.textContent = String(target);
+        return;
+      }
+
+      const duration = 1500;
+      const delay = 300;
+      const start = performance.now() + delay;
+
+      function tick(now: number) {
+        const elapsed = now - start;
+        if (elapsed < 0) {
+          requestAnimationFrame(tick);
+          return;
+        }
+        const progress = Math.min(elapsed / duration, 1);
+        // ease-out cubic
+        const eased = 1 - Math.pow(1 - progress, 3);
+        const current = Math.round(eased * target);
+        el.textContent = String(current);
+        if (progress < 1) {
+          requestAnimationFrame(tick);
+        }
+      }
+
+      requestAnimationFrame(tick);
+    });
+  }
+
+  animateGaugeNumbers();
+</script>

@@ -1,0 +1,147 @@
+---
+import PageLayout from '../layouts/PageLayout.astro';
+
+interface ChangeEntry {
+  text: string;
+}
+
+interface ChangeGroup {
+  type: 'Added' | 'Changed' | 'Removed';
+  entries: ChangeEntry[];
+}
+
+interface VersionRelease {
+  version: string;
+  date: string;
+  groups: ChangeGroup[];
+}
+
+const releases: VersionRelease[] = [
+  {
+    version: '0.5.3',
+    date: '2026-02-14',
+    groups: [
+      {
+        type: 'Added',
+        entries: [
+          { text: 'run command — run existing tests, AI fixes failures, rescan and update score' },
+          { text: 'AI run prompts (src/ai/run-prompts.ts)' },
+          { text: 'Run pipeline (src/run/pipeline.ts)' },
+        ],
+      },
+      {
+        type: 'Changed',
+        entries: [
+          { text: 'Renamed analyze command to scan across CLI, MCP, and skill files' },
+          { text: 'Updated MCP server to 7 tools (added coverit_run)' },
+          { text: 'Updated CLI to 5 commands (added run)' },
+        ],
+      },
+    ],
+  },
+  {
+    version: '0.5.0',
+    date: '2026-02-10',
+    groups: [
+      {
+        type: 'Added',
+        entries: [
+          { text: 'Initial public release' },
+          { text: 'scan command — AI-driven codebase analysis creating coverit.json' },
+          { text: 'cover command — AI generates tests from coverage gaps' },
+          { text: 'status command — instant quality dashboard from coverit.json' },
+          { text: 'clear command — reset manifest and working directory' },
+          { text: 'MCP server with 6 tools (scan, cover, status, clear, backup, restore)' },
+          { text: 'CLI with 4 commands' },
+          { text: 'Claude Code plugin with slash commands' },
+          { text: '6 AI providers: Claude CLI, Gemini CLI, Codex CLI, Anthropic API, OpenAI API, Ollama' },
+          { text: 'Quality scoring across 5 ISO 25010 dimensions' },
+          { text: 'Testing Diamond strategy (Integration 50%, Unit 20%, API 15%, E2E 10%, Contract 5%)' },
+        ],
+      },
+    ],
+  },
+];
+
+const badgeStyles: Record<string, string> = {
+  Added: 'bg-green-800/10 text-green-800 border border-green-800/20',
+  Changed: 'bg-blue-800/10 text-blue-800 border border-blue-800/20',
+  Removed: 'bg-red-800/10 text-red-800 border border-red-800/20',
+};
+---
+
+<PageLayout title="Changelog" description="All notable changes to coverit — AI-powered test quality for Claude Code.">
+  <section class="bg-bg">
+    <div class="mx-auto max-w-[800px] px-6 py-24 md:py-32">
+      <!-- Page heading -->
+      <div class="mb-16">
+        <h1 class="font-heading text-4xl font-bold text-text mb-3">
+          Changelog
+        </h1>
+        <p class="font-body text-lg text-text-muted leading-relaxed">
+          All notable changes to coverit.
+        </p>
+      </div>
+
+      <!-- Timeline -->
+      <div class="relative">
+        <!-- Vertical line -->
+        <div class="absolute left-[5px] top-2 bottom-0 w-[2px] bg-border"></div>
+
+        <!-- Releases -->
+        <div class="space-y-12">
+          {releases.map((release, index) => (
+            <div class="relative pl-10">
+              <!-- Timeline dot -->
+              <div
+                class:list={[
+                  'absolute left-0 top-[6px] w-3 h-3 rounded-full ring-4 ring-bg',
+                  index === 0 ? 'bg-accent' : 'bg-border-strong',
+                ]}
+              />
+
+              <!-- Version header -->
+              <div class="mb-4">
+                <h2 class="font-heading text-2xl font-bold text-text">
+                  v{release.version}
+                </h2>
+                <time class="font-mono text-sm text-text-muted">
+                  {release.date}
+                </time>
+              </div>
+
+              <!-- Version card -->
+              <div class="bg-bg-warm border border-border rounded-xl shadow-sm p-6">
+                <div class="space-y-6">
+                  {release.groups.map((group) => (
+                    <div>
+                      <!-- Type badge -->
+                      <span
+                        class:list={[
+                          'inline-block font-mono text-xs font-semibold px-2.5 py-1 rounded-md mb-3',
+                          badgeStyles[group.type],
+                        ]}
+                      >
+                        {group.type}
+                      </span>
+
+                      <!-- Entries -->
+                      <ul class="space-y-2">
+                        {group.entries.map((entry) => (
+                          <li class="flex items-start gap-3 font-body text-sm text-text leading-relaxed">
+                            <span class="mt-2 block w-1.5 h-1.5 rounded-full bg-border-strong shrink-0" />
+                            <span>{entry.text}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  </section>
+</PageLayout>

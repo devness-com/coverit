@@ -1,0 +1,26 @@
+---
+import PageLayout from './PageLayout.astro';
+import DocsSidebar from '../components/DocsSidebar.astro';
+
+interface Props {
+  title: string;
+  description?: string;
+}
+
+const { title, description } = Astro.props;
+---
+
+<PageLayout title={title} description={description}>
+  <div class="max-w-6xl mx-auto px-6 flex gap-8">
+    <aside class="hidden md:block w-60 shrink-0 py-8">
+      <DocsSidebar currentPath={Astro.url.pathname} />
+    </aside>
+    <article class="flex-1 max-w-3xl py-8 min-w-0">
+      <!-- Mobile sidebar -->
+      <div class="md:hidden">
+        <DocsSidebar currentPath={Astro.url.pathname} />
+      </div>
+      <slot />
+    </article>
+  </div>
+</PageLayout>
