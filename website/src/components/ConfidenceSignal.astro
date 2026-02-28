@@ -1,0 +1,43 @@
+---
+import TerminalMockup from './TerminalMockup.astro';
+---
+
+<section class="bg-bg animate-on-scroll">
+  <div class="mx-auto max-w-[900px] px-6 py-24 md:py-32">
+    <!-- Heading -->
+    <div class="text-center mb-12">
+      <h2 class="font-heading text-3xl md:text-4xl font-bold text-text mb-4">
+        Not More Tests. More Confidence.
+      </h2>
+      <p class="font-body text-lg text-text-muted max-w-2xl mx-auto leading-relaxed">
+        AI can generate 50 unit tests in seconds. But that's just coverage numbers.
+        What you actually need is a <span class="text-text font-medium">signal</span> &mdash; not a feeling.
+      </p>
+    </div>
+
+    <!-- Terminal showing the confidence signal -->
+    <TerminalMockup title="coverit status">
+      <pre class="text-[#f5f0e8] whitespace-pre"><span class="text-[#7a6e5f]">┌─────────────────────────────────────────────────────────────┐</span>
+<span class="text-[#7a6e5f]">│</span>  <span class="font-bold text-[#f5f0e8]">coverit</span> <span class="text-[#7a6e5f]">— Quality Dashboard</span>                                <span class="text-[#7a6e5f]">│</span>
+<span class="text-[#7a6e5f]">├─────────────────────────────────────────────────────────────┤</span>
+<span class="text-[#7a6e5f]">│</span>                                                             <span class="text-[#7a6e5f]">│</span>
+<span class="text-[#7a6e5f]">│</span>  Overall Score: <span class="text-amber font-bold">74/100</span>                                      <span class="text-[#7a6e5f]">│</span>
+<span class="text-[#7a6e5f]">│</span>                                                             <span class="text-[#7a6e5f]">│</span>
+<span class="text-[#7a6e5f]">│</span>  <span class="text-[#ff5f57] font-bold">Security: 1 critical issue</span>                                <span class="text-[#7a6e5f]">│</span>
+<span class="text-[#7a6e5f]">│</span>    <span class="text-[#ff5f57]">SQL injection in booking.service.ts:142</span>                  <span class="text-[#7a6e5f]">│</span>
+<span class="text-[#7a6e5f]">│</span>                                                             <span class="text-[#7a6e5f]">│</span>
+<span class="text-[#7a6e5f]">│</span>  <span class="text-[#febc2e]">Functionality: 3 integration tests missing</span>                <span class="text-[#7a6e5f]">│</span>
+<span class="text-[#7a6e5f]">│</span>    <span class="text-text-muted">payment flow, user signup, password reset</span>               <span class="text-[#7a6e5f]">│</span>
+<span class="text-[#7a6e5f]">│</span>                                                             <span class="text-[#7a6e5f]">│</span>
+<span class="text-[#7a6e5f]">│</span>  <span class="text-[#28c840]">Regression: All 147 existing tests passing</span>                <span class="text-[#7a6e5f]">│</span>
+<span class="text-[#7a6e5f]">│</span>                                                             <span class="text-[#7a6e5f]">│</span>
+<span class="text-[#7a6e5f]">└─────────────────────────────────────────────────────────────┘</span></pre>
+    </TerminalMockup>
+
+    <!-- The point -->
+    <p class="font-body text-lg text-text text-center mt-10 leading-relaxed max-w-2xl mx-auto">
+      <span class="font-semibold">This</span> is what coverit gives you.
+      You know exactly where you stand and exactly what to fix.
+    </p>
+  </div>
+</section>

@@ -10,10 +10,16 @@ import PageLayout from '../layouts/PageLayout.astro';
       <h1 class="font-heading text-3xl md:text-4xl font-bold text-text mb-6">
         What is coverit?
       </h1>
+      <p class="font-body text-lg md:text-xl text-text-muted leading-relaxed mb-6">
+        AI made writing code trivially easy. Teams ship faster than ever. But "fast" without
+        "safe" is just technical debt accumulating at 10x speed. Coverage numbers don't tell you
+        the truth about your codebase &mdash; coverit does.
+      </p>
       <p class="font-body text-lg md:text-xl text-text-muted leading-relaxed">
-        coverit is an AI-powered test quality platform. It doesn't just measure coverage &mdash;
-        it scans 5 quality dimensions, identifies real gaps, generates tests to fill them, and
-        tracks your score over time. Four commands. One manifest. Real quality.
+        coverit is an AI-powered test quality platform that gives you a real confidence signal.
+        It scans 5 quality dimensions (mapped to ISO 25010), identifies real gaps, generates tests
+        to fill them, and tracks your score over time. The test generation is the delivery mechanism &mdash;
+        the <span class="text-text font-semibold">confidence signal</span> is the product.
       </p>
     </section>
 
@@ -32,7 +38,7 @@ import PageLayout from '../layouts/PageLayout.astro';
 
       <div class="space-y-10">
         <!-- Principle 1 -->
-        <div class="border-l-3 border-accent pl-6 md:pl-8">
+        <div class="border-l-2 border-accent pl-6 md:pl-8">
           <p class="font-heading text-xl md:text-2xl font-semibold text-text mb-3">
             "Coverage isn't quality."
           </p>
@@ -44,7 +50,7 @@ import PageLayout from '../layouts/PageLayout.astro';
         </div>
 
         <!-- Principle 2 -->
-        <div class="border-l-3 border-accent pl-6 md:pl-8">
+        <div class="border-l-2 border-accent pl-6 md:pl-8">
           <p class="font-heading text-xl md:text-2xl font-semibold text-text mb-3">
             "The Testing Diamond, not the Pyramid."
           </p>
@@ -55,7 +61,7 @@ import PageLayout from '../layouts/PageLayout.astro';
         </div>
 
         <!-- Principle 3 -->
-        <div class="border-l-3 border-accent pl-6 md:pl-8">
+        <div class="border-l-2 border-accent pl-6 md:pl-8">
           <p class="font-heading text-xl md:text-2xl font-semibold text-text mb-3">
             "AI explores, not heuristics."
           </p>

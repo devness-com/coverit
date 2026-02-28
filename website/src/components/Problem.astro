@@ -1,19 +1,52 @@
 <section class="animate-on-scroll">
-  <div class="mx-auto max-w-3xl px-6 py-24 md:py-32">
-    <!-- Opening quote -->
-    <blockquote class="text-center">
+  <div class="mx-auto max-w-4xl px-6 py-24 md:py-32">
+    <!-- Opening -->
+    <blockquote class="text-center mb-12">
       <p class="font-heading text-3xl md:text-4xl text-text leading-snug italic">
-        "Most teams think they're covered."
+        "AI removed the bottleneck of writing code."
+      </p>
+      <p class="font-body text-lg text-text-muted mt-4">
+        Don't let testing become the new bottleneck.
       </p>
     </blockquote>
 
-    <div class="mt-8 space-y-5 text-center">
-      <p class="font-body text-lg md:text-xl text-text leading-relaxed">
-        Their test suite says 80%. But <span class="text-accent font-semibold">coverage isn't quality</span>.
-      </p>
-      <p class="font-body text-lg md:text-xl text-text-muted leading-relaxed">
-        Your tests might pass &mdash; but are they testing the right things?
-      </p>
+    <!-- The real problems -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-16">
+      <!-- Problem 1 -->
+      <div class="bg-bg-warm border border-border rounded-xl p-6">
+        <p class="font-heading font-bold text-lg text-text mb-2">Speed creates risk</p>
+        <p class="font-body text-base text-text-muted leading-relaxed">
+          AI lets you ship faster than ever. More code, more changes, more surface area.
+          The faster you move, the more you need a <span class="text-text font-semibold">safety net</span>.
+        </p>
+      </div>
+
+      <!-- Problem 2 -->
+      <div class="bg-bg-warm border border-border rounded-xl p-6">
+        <p class="font-heading font-bold text-lg text-text mb-2">No shared standard</p>
+        <p class="font-body text-base text-text-muted leading-relaxed">
+          Every developer prompts AI differently. One gets thorough tests, another gets superficial ones.
+          There's no consistent bar for what <span class="text-text font-semibold">"well-tested" means</span>.
+        </p>
+      </div>
+
+      <!-- Problem 3 -->
+      <div class="bg-bg-warm border border-border rounded-xl p-6">
+        <p class="font-heading font-bold text-lg text-text mb-2">Coverage isn't quality</p>
+        <p class="font-body text-base text-text-muted leading-relaxed">
+          80% line coverage looks great in a report. But are those tests checking the right things?
+          Are they catching security issues? <span class="text-text font-semibold">Edge cases? Regressions?</span>
+        </p>
+      </div>
+
+      <!-- Problem 4 -->
+      <div class="bg-bg-warm border border-border rounded-xl p-6">
+        <p class="font-heading font-bold text-lg text-text mb-2">No confidence signal</p>
+        <p class="font-body text-base text-text-muted leading-relaxed">
+          "Is it safe to ship?" is still answered by <span class="text-text font-semibold">gut feel</span>,
+          not data. You need a single, objective score that tells you where you stand.
+        </p>
+      </div>
     </div>
 
     <!-- Decorative divider -->
@@ -23,10 +56,10 @@
       <span class="block h-px w-16 bg-border"></span>
     </div>
 
-    <!-- Transition paragraph -->
+    <!-- Transition -->
     <p class="font-body text-lg text-text-muted text-center leading-relaxed max-w-2xl mx-auto">
-      coverit uses AI to scan <span class="text-text font-medium">5 quality dimensions</span>,
-      find real gaps, and generate tests that matter.
+      AI made writing tests <span class="text-text font-medium">essentially free</span>.
+      The question isn't "should we test more?" &mdash; it's "why aren't we testing everything?"
     </p>
   </div>
 </section>

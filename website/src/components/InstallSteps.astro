@@ -1,6 +1,4 @@
 ---
-import TerminalMockup from './TerminalMockup.astro';
-
 const methods = [
   {
     number: 1,
@@ -24,6 +22,7 @@ const methods = [
     lines: [
       'npx @devness/coverit scan      # Scan your codebase',
       'npx @devness/coverit cover     # Generate tests for gaps',
+      'npx @devness/coverit run       # Run tests, fix failures',
       'npx @devness/coverit status    # See your score',
     ],
   },
@@ -70,25 +69,5 @@ const methods = [
       ))}
     </div>
 
-    <!-- Terminal mockup with dashboard output -->
-    <TerminalMockup title="coverit status">
-      <pre class="text-[#f5f0e8] whitespace-pre"><span class="text-[#7a6e5f]">┌─────────────────────────────────────────────┐</span>
-<span class="text-[#7a6e5f]">│</span>  <span class="font-bold text-[#f5f0e8]">coverit</span> <span class="text-[#7a6e5f]">— Quality Dashboard</span>                <span class="text-[#7a6e5f]">│</span>
-<span class="text-[#7a6e5f]">├─────────────────────────────────────────────┤</span>
-<span class="text-[#7a6e5f]">│</span>                                             <span class="text-[#7a6e5f]">│</span>
-<span class="text-[#7a6e5f]">│</span>  Overall Score: <span class="text-amber font-bold">82/100</span>                      <span class="text-[#7a6e5f]">│</span>
-<span class="text-[#7a6e5f]">│</span>                                             <span class="text-[#7a6e5f]">│</span>
-<span class="text-[#7a6e5f]">│</span>  <span class="text-text-muted">Functionality</span>  <span class="text-accent">████████</span><span class="text-[#3a332a]">░░</span>  <span class="text-amber">78</span>/100          <span class="text-[#7a6e5f]">│</span>
-<span class="text-[#7a6e5f]">│</span>  <span class="text-text-muted">Security</span>       <span class="text-accent">█████████</span><span class="text-[#3a332a]">░</span>  <span class="text-amber">88</span>/100          <span class="text-[#7a6e5f]">│</span>
-<span class="text-[#7a6e5f]">│</span>  <span class="text-text-muted">Stability</span>      <span class="text-accent">████████</span><span class="text-[#3a332a]">░░</span>  <span class="text-amber">80</span>/100          <span class="text-[#7a6e5f]">│</span>
-<span class="text-[#7a6e5f]">│</span>  <span class="text-text-muted">Conformance</span>    <span class="text-accent">█████████</span><span class="text-[#3a332a]">░</span>  <span class="text-amber">85</span>/100          <span class="text-[#7a6e5f]">│</span>
-<span class="text-[#7a6e5f]">│</span>  <span class="text-text-muted">Regression</span>     <span class="text-accent">███████</span><span class="text-[#3a332a]">░░░</span>  <span class="text-amber">72</span>/100          <span class="text-[#7a6e5f]">│</span>
-<span class="text-[#7a6e5f]">│</span>                                             <span class="text-[#7a6e5f]">│</span>
-<span class="text-[#7a6e5f]">│</span>  <span class="text-text-muted">Modules:</span> 12 scanned · 8 covered           <span class="text-[#7a6e5f]">│</span>
-<span class="text-[#7a6e5f]">│</span>  <span class="text-text-muted">Tests:</span> <span class="text-[#28c840]">47 passing</span> · <span class="text-[#ff5f57]">2 failing</span>              <span class="text-[#7a6e5f]">│</span>
-<span class="text-[#7a6e5f]">│</span>  <span class="text-text-muted">Last scan:</span> just now                        <span class="text-[#7a6e5f]">│</span>
-<span class="text-[#7a6e5f]">│</span>                                             <span class="text-[#7a6e5f]">│</span>
-<span class="text-[#7a6e5f]">└─────────────────────────────────────────────┘</span></pre>
-    </TerminalMockup>
   </div>
 </section>

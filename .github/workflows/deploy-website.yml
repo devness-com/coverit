@@ -1,0 +1,53 @@
+name: Deploy Website
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'website/**'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: arc-runner-devness-com
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: cd website && bun install --frozen-lockfile
+
+      - name: Build website
+        run: cd website && bun run build
+
+      - name: Build Docker image
+        run: |
+          cp -r website/dist website/deploy/dist
+          docker build --platform linux/amd64 -t coverit-web:latest website/deploy
+          rm -rf website/deploy/dist
+
+      - name: Load SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+      - name: Export image and import into k3s
+        run: |
+          docker save coverit-web:latest | ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key root@${{ secrets.DEPLOY_HOST }} k3s ctr images import -
+
+      - name: Restart deployment
+        run: |
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key root@${{ secrets.DEPLOY_HOST }} k3s kubectl rollout restart deployment/web -n coverit
+
+      - name: Wait for rollout
+        run: |
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key root@${{ secrets.DEPLOY_HOST }} k3s kubectl rollout status deployment/web -n coverit --timeout=120s
+
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
