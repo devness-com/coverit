@@ -1,0 +1,88 @@
+{
+  "name": "@devness/coverit",
+  "version": "0.5.3",
+  "description": "AI-powered test generation and execution platform. Scan features, generate tests, run them — one command.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "bin": {
+    "coverit": "./dist/entry.js"
+  },
+  "files": [
+    "dist/**/*",
+    "plugins/**/*",
+    ".claude-plugin/**/*",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "cli": "bun run src/cli/index.ts",
+    "mcp": "bun run src/mcp/server.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write src/",
+    "prepublishOnly": "npm run build && chmod +x dist/entry.js",
+    "publish:patch": "./scripts/publish.sh patch",
+    "publish:minor": "./scripts/publish.sh minor",
+    "publish:major": "./scripts/publish.sh major",
+    "release": "./scripts/publish.sh patch"
+  },
+  "keywords": [
+    "coverit",
+    "test-generation",
+    "ai-testing",
+    "test-automation",
+    "coverage",
+    "vitest",
+    "jest",
+    "playwright",
+    "e2e-testing",
+    "unit-testing",
+    "api-testing",
+    "claude",
+    "ai",
+    "cli"
+  ],
+  "author": "Devness",
+  "license": "AGPL-3.0-only",
+  "homepage": "https://coverit.dev",
+  "bugs": {
+    "url": "https://github.com/devness-com/coverit/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/devness-com/coverit.git"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@devness/mcp-setup": "^0.1.0",
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "chalk": "^5.4.1",
+    "commander": "^13.1.0",
+    "fast-glob": "^3.3.3",
+    "glob": "^11.0.1",
+    "ora": "^8.2.0",
+    "simple-git": "^3.27.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "eslint": "^9.20.0",
+    "prettier": "^3.5.1",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}

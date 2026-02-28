@@ -1,0 +1,6 @@
+{
+  "coverit": {
+    "command": "npx",
+    "args": ["-y", "@devness/coverit@latest"]
+  }
+}

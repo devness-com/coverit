@@ -1,0 +1,38 @@
+{
+  "name": "coverit",
+  "owner": {
+    "name": "Devness",
+    "email": "hello@devness.dev"
+  },
+  "metadata": {
+    "description": "AI-powered test quality platform for Claude Code",
+    "version": "0.5.3"
+  },
+  "plugins": [
+    {
+      "name": "coverit",
+      "source": {
+        "source": "npm",
+        "package": "@devness/coverit",
+        "version": "latest"
+      },
+      "description": "AI-powered test quality platform — scan, cover, run, and track your codebase quality score.",
+      "version": "0.5.3",
+      "author": {
+        "name": "Devness"
+      },
+      "homepage": "https://coverit.dev",
+      "repository": "https://github.com/devness-com/coverit",
+      "license": "AGPL-3.0-only",
+      "keywords": [
+        "testing",
+        "test-generation",
+        "coverage",
+        "ai-testing",
+        "vitest",
+        "jest",
+        "playwright"
+      ]
+    }
+  ]
+}
