@@ -14,28 +14,40 @@ coverit is an AI-powered test quality platform. It scans and analyzes your entir
 
 Four commands. That's it.
 
-## Quick Start
+## Installation
 
-### Claude Code
+### 1. Claude Code (Plugin)
 
-Install the plugin for MCP tools + slash commands:
+Install the plugin for MCP tools, slash commands, and CLAUDE.md instructions — all in one step:
 
 ```
 /plugin marketplace add devness-com/coverit
 /plugin install coverit@coverit
 ```
 
-### Other AI Tools (Cursor, Windsurf, VS Code, etc.)
+This gives you:
+- MCP tools (`coverit_scan`, `coverit_cover`, `coverit_run`, `coverit_status`, etc.)
+- Slash commands (`/coverit:scan`, `/coverit:cover`, `/coverit:run`, `/coverit:status`)
+
+### 2. Other AI Tools (MCP)
+
+For Cursor, Windsurf, VS Code, Gemini CLI, Zed, Cline, Codex, Goose, and more:
 
 ```bash
 npx @devness/coverit
 ```
 
-This auto-detects your AI tools and configures the MCP server interactively.
+This scans for AI tools on your machine, lets you choose which to configure, and sets up the MCP server interactively. Manage your installation anytime:
 
-### CLI
+```bash
+npx @devness/coverit              # Install / reconfigure
+npx @devness/coverit --remove     # Uninstall from configured tools
+npx @devness/coverit --status     # Show configuration status
+```
 
-Once installed, use via CLI in any project:
+### 3. CLI (Standalone)
+
+Use directly via `npx` in any project — no MCP or plugin required:
 
 ```bash
 npx @devness/coverit scan      # AI scans & analyzes your codebase → creates coverit.json
@@ -90,18 +102,9 @@ scan → coverit.json → cover/run → updated coverit.json → status
 |--------|-------------|
 | `--modules <paths>` | Only run tests for specific modules (comma-separated) |
 
-## Claude Code Integration
+## MCP Tools
 
-The plugin gives you both MCP tools and slash commands:
-
-| Slash Command | Description |
-|---------|-------------|
-| `/coverit:scan` | AI scans and analyzes codebase → creates `coverit.json` |
-| `/coverit:cover` | AI generates tests from gaps and updates score |
-| `/coverit:run` | Run existing tests, fix failures, update score |
-| `/coverit:status` | Show quality dashboard |
-
-### MCP Tools
+Available in all AI tools after installation (plugin or npx):
 
 | Tool | Description |
 |------|-------------|

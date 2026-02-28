@@ -38,14 +38,30 @@ import DocsLayout from '../../layouts/DocsLayout.astro';
 
   <!-- Installation -->
   <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">Installation</h2>
+
+  <h3 class="font-heading text-lg font-semibold mt-8 mb-3 text-text">1. Claude Code (Plugin)</h3>
   <p class="font-body text-text leading-relaxed mb-4">
-    Run the setup wizard. It auto-detects your AI tools and configures MCP integration:
+    Install the plugin for MCP tools, slash commands, and CLAUDE.md instructions:
+  </p>
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code>/plugin marketplace add devness-com/coverit
+/plugin install coverit@coverit</code></pre>
+
+  <h3 class="font-heading text-lg font-semibold mt-8 mb-3 text-text">2. Other AI Tools (MCP)</h3>
+  <p class="font-body text-text leading-relaxed mb-4">
+    For Cursor, Windsurf, VS Code, Gemini CLI, Zed, Cline, Codex, Goose, and more &mdash;
+    run the setup wizard. It scans for AI tools on your machine and configures the MCP server interactively:
   </p>
   <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code>npx @devness/coverit</code></pre>
+
+  <h3 class="font-heading text-lg font-semibold mt-8 mb-3 text-text">3. CLI (Standalone)</h3>
   <p class="font-body text-text leading-relaxed mb-4">
-    This will detect installed AI tools (Claude Code, Gemini CLI, Codex CLI, etc.) and
-    configure the MCP server for whichever tools you have. No manual configuration needed.
+    Use directly via <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">npx</code> in
+    any project &mdash; no MCP or plugin required:
   </p>
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code>npx @devness/coverit scan      # Scan your codebase
+npx @devness/coverit cover     # Generate tests for gaps
+npx @devness/coverit run       # Run tests, fix failures
+npx @devness/coverit status    # Show quality dashboard</code></pre>
 
   <!-- Your first scan -->
   <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">Your first scan</h2>
