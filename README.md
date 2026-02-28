@@ -6,6 +6,7 @@
 [![Version](https://img.shields.io/npm/v/@devness/coverit)](https://www.npmjs.com/package/@devness/coverit)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
 [![Downloads](https://img.shields.io/npm/dm/@devness/coverit)](https://www.npmjs.com/package/@devness/coverit)
+[![GitHub](https://img.shields.io/github/stars/devness-com/coverit)](https://github.com/devness-com/coverit)
 
 ## What is coverit?
 
@@ -16,10 +17,10 @@ Four commands. That's it.
 ## Quick Start
 
 ```bash
-# Install as a Claude Code plugin
-npx @devness/coverit mcp
+# Set up coverit (auto-detects your AI tools)
+npx @devness/coverit
 
-# Or use directly via CLI
+# Then use via CLI
 npx @devness/coverit scan      # AI scans & analyzes your codebase → creates coverit.json
 npx @devness/coverit cover     # AI writes tests for gaps → updates your score
 npx @devness/coverit run       # Run existing tests, fix failures → updates your score
@@ -74,22 +75,21 @@ scan → coverit.json → cover/run → updated coverit.json → status
 
 ## Claude Code Integration
 
-coverit works as a Claude Code plugin with slash commands:
+`npx @devness/coverit` handles setup automatically — it configures the MCP server so Claude Code can use coverit's tools directly.
 
-| Command | Description |
+Optionally, install the plugin for slash command shortcuts:
+
+```bash
+/plugin marketplace add devness-com/coverit
+/plugin install coverit@coverit
+```
+
+| Slash Command | Description |
 |---------|-------------|
 | `/coverit:scan` | AI scans and analyzes codebase → creates `coverit.json` |
 | `/coverit:cover` | AI generates tests from gaps and updates score |
 | `/coverit:run` | Run existing tests, fix failures, update score |
 | `/coverit:status` | Show quality dashboard |
-
-### Setup
-
-```bash
-npx @devness/coverit mcp
-```
-
-This adds coverit as an MCP server to your Claude Code config.
 
 ### MCP Tools
 
@@ -171,6 +171,10 @@ src/
 
 See [docs/architecture.md](docs/architecture.md) for details.
 
+## Contributing
+
+[Contributing guide](Contributing) · [Report an issue](https://github.com/devness-com/coverit/issues)
+
 ## License
 
-[AGPL-3.0](LICENSE)
+[AGPL-3.0](LICENSE) · [devness-com/coverit](https://github.com/devness-com/coverit)
