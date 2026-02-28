@@ -1,63 +1,107 @@
 ---
 const layers = [
-  { name: 'E2E', percentage: '10%', color: 'var(--color-accent)', description: 'Critical user paths' },
-  { name: 'API', percentage: '15%', color: 'var(--color-amber)', description: 'Contract validation' },
-  { name: 'Integration', percentage: '50%', color: 'var(--color-accent-hover)', description: 'Business logic boundaries' },
-  { name: 'Unit', percentage: '20%', color: 'var(--color-amber-dim)', description: 'Low-level implementation' },
-  { name: 'Contract', percentage: '5%', color: 'var(--color-text-muted)', description: 'Provider agreements' }
+  { id: 'e2e', name: 'E2E', height: 10, color: '#FF8A65', description: 'Critical user paths' },
+  { id: 'api', name: 'API', height: 15, color: '#FFB74D', description: 'Contract validation' },
+  { id: 'integration', name: 'Integration', height: 50, color: '#FF7043', description: 'Business logic boundaries' },
+  { id: 'unit', name: 'Unit', height: 20, color: '#FFB74D', description: 'Low-level logic' },
+  { id: 'contract', name: 'Contract', height: 5, color: '#A1887F', description: 'Provider agreements' }
 ];
+
+// Polygon shapes for each layer to form a perfect diamond
+const clipPaths = {
+  e2e: 'polygon(50% 0%, 50% 0%, 65% 100%, 35% 100%)',
+  api: 'polygon(35% 0%, 65% 0%, 85% 100%, 15% 100%)',
+  integration: 'polygon(15% 0%, 85% 0%, 100% 50%, 85% 100%, 15% 100%, 0% 50%)',
+  unit: 'polygon(15% 0%, 85% 0%, 65% 100%, 35% 100%)',
+  contract: 'polygon(35% 0%, 65% 0%, 50% 100%, 50% 100%)'
+};
 ---
 
-<div class="testing-diamond flex flex-col items-center py-16 px-6 paper-card rounded-2xl overflow-visible">
-  <h3 class="font-heading font-black text-2xl text-text mb-12 text-center">The Testing Diamond</h3>
-  
-  <div class="relative w-full max-w-[420px] h-[480px] flex flex-col justify-between gap-1 group">
-    {layers.map((layer, i) => (
-      <div 
-        class="diamond-layer relative group/layer cursor-help transition-all duration-500 hover:scale-[1.02]"
-        style={`height: ${layer.percentage};`}
-      >
-        <!-- Shape -->
-        <div 
-          class="absolute inset-0 transition-all duration-300 flex items-center justify-center overflow-hidden rounded-lg border border-white/20 shadow-lg"
-          style={`background-color: ${layer.color}; opacity: ${0.7 + (i * 0.05)};`}
-        >
-          <!-- Layer Label -->
-          <div class="relative z-10 flex flex-col items-center gap-0.5 pointer-events-none">
-             <span class="font-heading font-black text-white text-xs md:text-sm tracking-widest">{layer.name}</span>
-             <span class="font-mono text-[9px] md:text-[10px] text-white/70 font-bold">{layer.percentage}</span>
-          </div>
-          
-          <!-- Glossy overlay -->
-          <div class="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent opacity-40"></div>
-        </div>
+<div class="testing-diamond-container flex flex-col items-center py-4 px-2 overflow-visible relative group/container">
+  <!-- Decorative background elements - scaled down -->
+  <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] bg-accent/10 rounded-full blur-[100px] pointer-events-none opacity-50"></div>
 
-        <!-- Tooltip (Positioned on the Left to avoid screen edge) -->
-        <div class="absolute right-[calc(100%+1.5rem)] top-1/2 -translate-y-1/2 w-48 md:w-56 opacity-0 translate-x-4 pointer-events-none group-hover/layer:opacity-100 group-hover/layer:translate-x-0 transition-all duration-400 z-30">
-           <div class="bg-bg-code/95 backdrop-blur-md p-4 md:p-5 rounded-2xl shadow-2xl border border-border-strong/20">
-              <p class="font-heading font-black text-amber text-[10px] md:text-xs uppercase tracking-[0.2em] mb-2">{layer.name} Focus</p>
-              <p class="font-body text-xs md:text-sm text-[#f5f0e8]/80 leading-relaxed font-medium">{layer.description}</p>
-           </div>
-           <!-- Connecting Arrow -->
-           <div class="absolute top-1/2 -right-2 -translate-y-1/2 w-4 h-4 bg-bg-code/95 border-r border-b border-border-strong/20 rotate-[-45deg]"></div>
-        </div>
-      </div>
-    ))}
+  <div class="relative z-10 text-center mb-10 max-w-sm">
+    <h3 class="font-heading font-black text-3xl md:text-4xl text-text mb-3 tracking-tight leading-tight">
+      The Testing <span class="text-accent italic">Diamond</span>
+    </h3>
+    <p class="font-body text-base text-text-muted leading-relaxed">
+      Modern systems thrive on <span class="text-text font-bold">Integration</span> — where the real complexity lives.
+    </p>
   </div>
 
-  <p class="font-body text-sm text-text-muted mt-12 text-center max-w-sm leading-relaxed italic opacity-80">
-    "Focus on the boundaries where real bugs live."
-  </p>
+  <div class="relative w-full max-w-[320px] flex items-center justify-center">
+    <!-- Central Diamond Stack -->
+    <div class="relative h-[480px] w-full flex flex-col gap-[1px] perspective-1000 group">
+      {layers.map((layer, i) => (
+        <div 
+          class="relative group/layer cursor-help transition-all duration-500 hover:scale-[1.05] hover:z-50"
+          style={`height: ${layer.height}%;`}
+        >
+          <!-- Individual Clipped Layer -->
+          <div 
+            class="absolute inset-0 transition-all duration-300 shadow-lg overflow-hidden"
+            style={`
+              clip-path: ${clipPaths[layer.id]}; 
+              background: linear-gradient(135deg, ${layer.color} 0%, color-mix(in srgb, ${layer.color}, black 20%) 100%);
+            `}
+          >
+            <!-- Glossy Glass Effect -->
+            <div class="absolute inset-0 bg-gradient-to-tr from-white/30 via-transparent to-transparent opacity-40"></div>
+            
+            <!-- Label Content (Percentage Only) -->
+            <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none p-2 text-center">
+               <span class="font-mono text-[14px] sm:text-base md:text-lg text-white font-black drop-shadow-md opacity-90 group-hover/layer:opacity-100 transition-opacity">
+                 {layer.height}%
+               </span>
+            </div>
+            
+            <!-- Pulse Glow for Integration -->
+            {layer.id === 'integration' && (
+              <div class="absolute inset-0 bg-white/10 animate-pulse mix-blend-overlay"></div>
+            )}
+          </div>
+
+          <!-- Tooltip (Visible on hover - shows name and description) -->
+          <div class="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-48 opacity-0 pointer-events-none group-hover/layer:opacity-100 group-hover/layer:pointer-events-auto transition-all duration-300 z-[100]">
+             <div class="bg-bg-code/95 backdrop-blur-md p-3 rounded-xl shadow-2xl border border-border-strong/20 text-center">
+                <p class="font-heading font-black text-accent text-[11px] uppercase tracking-wider mb-1">{layer.name}</p>
+                <p class="font-body text-[11px] text-white/80 leading-relaxed">{layer.description}</p>
+             </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+
+  <div class="mt-12 px-6 py-2 bg-accent/5 rounded-full border border-accent/10">
+    <p class="font-body text-[11px] text-accent italic opacity-90 text-center">
+      "Integration tests are the highest signal in modern engineering."
+    </p>
+  </div>
 </div>
 
 <style>
-  .testing-diamond {
-    background-image: radial-gradient(circle at top right, var(--color-bg-warm), transparent);
+  .perspective-1000 {
+    perspective: 1000px;
   }
   
-  .diamond-layer:nth-child(1) { width: 35%; align-self: center; }
-  .diamond-layer:nth-child(2) { width: 65%; align-self: center; }
-  .diamond-layer:nth-child(3) { width: 95%; align-self: center; }
-  .diamond-layer:nth-child(4) { width: 75%; align-self: center; }
-  .diamond-layer:nth-child(5) { width: 45%; align-self: center; }
+  .testing-diamond-container::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(circle at 50% 50%, var(--color-bg-warm), transparent 70%);
+    z-index: -1;
+    opacity: 0.5;
+  }
+
+  /* Floating animation for the diamond stack */
+  .group\/container:hover .group {
+    animation: float 4s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
 </style>

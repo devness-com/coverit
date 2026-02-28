@@ -28,6 +28,26 @@ import HeroVisual from './HeroVisual.astro';
           AI scans your gaps. Writes tests that pass. Runs and fixes them. <span class="text-text font-semibold">One score tells you where you stand.</span>
         </p>
 
+        <!-- Compact rotating install carousel -->
+        <div class="hero-install-carousel mb-8 max-w-lg" role="region" aria-label="Installation methods">
+          <div class="flex items-center gap-3 px-4 py-3 rounded-xl bg-bg-code/80 border border-border-strong/10 overflow-hidden">
+            <span class="hero-install-label font-heading font-bold text-[10px] uppercase tracking-widest text-accent whitespace-nowrap transition-opacity duration-300">Claude Code</span>
+            <span class="text-border-strong/30 select-none">|</span>
+            <div class="relative flex-1 overflow-hidden h-5">
+              <code class="hero-install-cmd absolute inset-0 font-mono text-xs text-[#f5f0e8] truncate leading-5 transition-all duration-400"></code>
+            </div>
+            <button class="hero-install-copy p-1 text-text-muted/40 hover:text-amber/60 transition-colors shrink-0" title="Copy to clipboard">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            </button>
+          </div>
+          <!-- Progress dots -->
+          <div class="flex justify-center gap-2 mt-2">
+            <button class="hero-dot w-2 h-2 rounded-full bg-accent transition-colors duration-300 cursor-pointer hover:scale-125" data-index="0" aria-label="Claude Code"></button>
+            <button class="hero-dot w-2 h-2 rounded-full bg-border-strong/20 transition-colors duration-300 cursor-pointer hover:scale-125" data-index="1" aria-label="Any AI Tool"></button>
+            <button class="hero-dot w-2 h-2 rounded-full bg-border-strong/20 transition-colors duration-300 cursor-pointer hover:scale-125" data-index="2" aria-label="Standalone CLI"></button>
+          </div>
+        </div>
+
         <div class="flex flex-col sm:flex-row items-center gap-5">
            <a
              href="#install-steps"
@@ -36,11 +56,6 @@ import HeroVisual from './HeroVisual.astro';
              Get Started
              <svg class="group-hover:translate-x-1 transition-transform" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
            </a>
-
-           <div class="flex items-center gap-3 px-5 py-3.5 rounded-xl bg-bg-code border border-border-strong/10 shadow-inner group cursor-copy active:scale-95 transition-transform" onclick="navigator.clipboard.writeText('npx @devness/coverit')">
-              <code class="font-mono text-xs text-[#f5f0e8]">npx @devness/coverit</code>
-              <svg class="text-text-muted/40 group-hover:text-amber/60 transition-colors" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-           </div>
         </div>
       </div>
 
@@ -52,4 +67,80 @@ import HeroVisual from './HeroVisual.astro';
     </div>
   </div>
 </section>
+
+<script>
+  const methods = [
+    { label: 'Claude Code', cmd: '/plugin marketplace add devness-com/coverit', copy: '/plugin marketplace add devness-com/coverit\n/plugin install coverit@coverit' },
+    { label: 'Any AI Tool', cmd: 'npx @devness/coverit', copy: 'npx @devness/coverit' },
+    { label: 'Standalone CLI', cmd: 'npx @devness/coverit scan', copy: 'npx @devness/coverit scan' },
+  ];
+
+  function initCarousel() {
+    const carousel = document.querySelector('.hero-install-carousel') as HTMLElement;
+    const label = document.querySelector('.hero-install-label') as HTMLElement;
+    const cmd = document.querySelector('.hero-install-cmd') as HTMLElement;
+    const copyBtn = document.querySelector('.hero-install-copy') as HTMLElement;
+    const dots = document.querySelectorAll('.hero-dot');
+    if (!carousel || !label || !cmd) return;
+
+    let current = 0;
+    let paused = false;
+    let timer: ReturnType<typeof setInterval>;
+
+    function show(index: number) {
+      current = index;
+      const m = methods[index];
+      // Fade out
+      label.style.opacity = '0';
+      cmd.style.opacity = '0';
+      cmd.style.transform = 'translateY(8px)';
+
+      setTimeout(() => {
+        label.textContent = m.label;
+        cmd.textContent = m.cmd;
+        // Fade in
+        label.style.opacity = '1';
+        cmd.style.opacity = '1';
+        cmd.style.transform = 'translateY(0)';
+      }, 200);
+
+      dots.forEach((dot, i) => {
+        dot.classList.toggle('bg-accent', i === index);
+        dot.classList.toggle('bg-border-strong/20', i !== index);
+      });
+    }
+
+    // Initial render (no fade)
+    label.textContent = methods[0].label;
+    cmd.textContent = methods[0].cmd;
+    cmd.style.opacity = '1';
+
+    // Copy handler
+    copyBtn?.addEventListener('click', () => {
+      navigator.clipboard.writeText(methods[current].copy);
+    });
+
+    // Dot click navigation
+    dots.forEach(dot => {
+      dot.addEventListener('click', () => {
+        const index = Number((dot as HTMLElement).dataset.index);
+        if (index !== current) show(index);
+      });
+    });
+
+    // Pause on hover, resume on leave
+    carousel.addEventListener('mouseenter', () => { paused = true; });
+    carousel.addEventListener('mouseleave', () => { paused = false; });
+
+    // Auto-rotate every 3.5s (skips when paused)
+    timer = setInterval(() => {
+      if (!paused) {
+        show((current + 1) % methods.length);
+      }
+    }, 3500);
+  }
+
+  initCarousel();
+  document.addEventListener('astro:after-swap', initCarousel);
+</script>
 

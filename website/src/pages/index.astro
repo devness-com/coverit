@@ -33,19 +33,13 @@ import OpenSource from '../components/OpenSource.astro';
 
   <!-- Interactive Workflow -->
   <section class="bg-bg-warm/30 border-y border-border-strong/10">
-     <div class="mx-auto max-w-[1200px] px-6 py-24 md:py-32">
-        <div class="flex flex-col lg:flex-row items-start gap-16">
-           <div class="flex-1 order-2 lg:order-1">
-              <Pipeline />
-           </div>
-           <div class="lg:w-[500px] shrink-0 order-1 lg:order-2 animate-on-scroll">
-              <div class="text-center mb-8">
-                 <h3 class="font-heading font-black text-2xl text-text mb-4">Live Simulation</h3>
-                 <p class="font-body text-sm text-text-muted max-w-sm mx-auto">Watch how AI analyzes, generates, and verifies quality in real-time.</p>
-              </div>
-              <TerminalMockup title="coverit status" initialContent="<span class='text-text-muted/40'>Waiting for command...</span>" />
-           </div>
+     <Pipeline />
+     <div class="mx-auto max-w-[600px] px-6 pb-24 md:pb-32 animate-on-scroll">
+        <div class="text-center mb-6">
+           <h3 class="font-heading font-black text-xl text-text mb-2">Live Simulation</h3>
+           <p class="font-body text-sm text-text-muted max-w-sm mx-auto">Click a command above to see it in action.</p>
         </div>
+        <TerminalMockup title="coverit status" initialContent="<span class='text-text-muted/40'>Click a command above...</span>" />
      </div>
   </section>
 
