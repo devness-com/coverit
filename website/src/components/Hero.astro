@@ -1,6 +1,5 @@
 ---
 import HeroVisual from './HeroVisual.astro';
-import InstallSteps from './InstallSteps.astro';
 ---
 
 <section class="relative overflow-hidden pt-8 md:pt-12 lg:pt-16 pb-16 md:pb-24 bg-bg">
@@ -17,26 +16,21 @@ import InstallSteps from './InstallSteps.astro';
               <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span>
               <span class="relative inline-flex rounded-full h-2 w-2 bg-accent"></span>
            </span>
-           AI-Powered Test Quality
+           AI Test Quality Platform
         </div>
 
         <h1 class="font-heading font-black text-4xl md:text-5xl lg:text-7xl text-text leading-[0.95] mb-5 tracking-tight">
-          AI Writes Your <span class="italic text-accent underline decoration-accent/20 underline-offset-8">Code.</span><br/> 
-          Now Let AI <span class="font-body italic font-normal text-text-muted">Test It Too.</span>
+          Ship Every Line<br/>
+          <span class="font-body italic font-normal text-accent">With Confidence.</span>
         </h1>
 
         <p class="font-body text-base md:text-lg text-text-muted max-w-xl mb-8 leading-relaxed">
-          The first test quality platform that scans your codebase, finds gaps, and <span class="text-text font-semibold">generates tests that actually pass.</span>
+          AI scans your gaps. Writes tests that pass. Runs and fixes them. <span class="text-text font-semibold">One score tells you where you stand.</span>
         </p>
-
-        <!-- Installation Steps Integration (Tabbed View) -->
-        <div class="mb-10 w-full max-w-2xl">
-           <InstallSteps showHeading={false} />
-        </div>
 
         <div class="flex flex-col sm:flex-row items-center gap-5">
            <a
-             href="/docs"
+             href="#install-steps"
              class="group inline-flex items-center gap-2.5 font-heading font-black text-sm bg-accent text-white rounded-xl px-8 py-4 shadow-editorial-lg hover:bg-accent-hover hover:-translate-y-0.5 transition-all duration-300 w-full sm:w-auto justify-center"
            >
              Get Started
