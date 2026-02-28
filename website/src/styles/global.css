@@ -18,8 +18,26 @@
   --font-mono: 'Fira Code', monospace;
 }
 
+/* Dark mode: override design tokens for system preference */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #151210;
+    --color-bg-warm: #1e1a16;
+    --color-bg-code: #0c0a08;
+    --color-text: #e8e0d4;
+    --color-text-muted: #9a8e7f;
+    --color-accent: #d4724a;
+    --color-accent-hover: #e8825a;
+    --color-amber: #e4b057;
+    --color-amber-dim: #c8963e;
+    --color-border: #2e2820;
+    --color-border-strong: #3e3630;
+  }
+}
+
 html {
   scroll-behavior: smooth;
+  color-scheme: light dark;
 }
 
 body {
