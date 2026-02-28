@@ -1,73 +1,179 @@
 ---
+interface Props {
+  showHeading?: boolean;
+  id?: string;
+}
+
+const { showHeading = true, id } = Astro.props;
+
 const methods = [
   {
+    id: 'claude',
     number: 1,
-    title: 'Claude Code',
-    subtitle: 'Plugin with MCP tools + slash commands',
+    label: 'Claude Code',
+    title: 'Claude Code Plugin',
+    subtitle: 'MCP tools + slash commands',
     lines: [
       '/plugin marketplace add devness-com/coverit',
-      '/plugin install coverit@coverit',
+      '/plugin install coverit@coverit'
     ],
   },
   {
+    id: 'mcp',
     number: 2,
-    title: 'Other AI Tools',
-    subtitle: 'Cursor, Windsurf, VS Code, Gemini CLI, Zed, Cline, and more',
+    label: 'Any AI Tool (MCP)',
+    title: 'MCP for Other AI Tools',
+    subtitle: 'Cursor, Windsurf, VS Code, etc.',
     lines: ['npx @devness/coverit'],
   },
   {
+    id: 'cli',
     number: 3,
-    title: 'CLI',
-    subtitle: 'Use directly in any project — no MCP required',
-    lines: [
-      'npx @devness/coverit scan      # Scan your codebase',
-      'npx @devness/coverit cover     # Generate tests for gaps',
-      'npx @devness/coverit run       # Run tests, fix failures',
-      'npx @devness/coverit status    # See your score',
-    ],
+    label: 'Standalone CLI',
+    title: 'Standalone CLI',
+    subtitle: 'Use directly in any project',
+    lines: ['npx @devness/coverit scan'],
   },
 ];
 ---
 
-<section class="animate-on-scroll">
-  <div class="mx-auto max-w-[800px] px-6 py-24 md:py-32">
+<div id={id} class="install-steps-container animate-on-scroll w-full max-w-2xl mx-auto">
+  <div class:list={["px-6", showHeading ? "py-24 md:py-32" : "py-4"]}>
     <!-- Heading -->
-    <h2 class="font-heading font-bold text-3xl md:text-4xl text-text text-center mb-4">
-      Three Ways to Install
-    </h2>
-    <p class="font-body text-text-muted text-center mb-16 max-w-lg mx-auto">
-      Choose the path that fits your workflow.
-    </p>
+    {showHeading && (
+      <>
+        <h2 class="font-heading font-bold text-3xl md:text-4xl text-text text-center mb-4">
+          Three Ways to Install
+        </h2>
+        <p class="font-body text-text-muted text-center mb-12 max-w-lg mx-auto">
+          Choose the path that fits your workflow.
+        </p>
+      </>
+    )}
 
-    <!-- Methods -->
-    <div class="relative ml-5 md:ml-10 mb-16">
+    <!-- Tab Selector (Segmented Control) -->
+    <div class="flex p-1 bg-bg-warm/80 backdrop-blur-sm rounded-xl border border-border/50 mb-6 shadow-inner">
       {methods.map((method, i) => (
-        <div class="relative flex items-start gap-5 pb-10 last:pb-0">
-          {/* Vertical connecting line */}
-          {i < methods.length - 1 && (
-            <div class="absolute left-5 top-10 bottom-0 w-px bg-border" />
-          )}
+        <button
+          data-tab-target={method.id}
+          class:list={[
+            "flex-1 py-2 px-3 rounded-lg font-heading font-bold text-[11px] md:text-xs uppercase tracking-wider transition-all duration-300",
+            i === 0 ? "bg-accent text-white shadow-editorial" : "text-text-muted hover:text-text hover:bg-accent/5"
+          ]}
+        >
+          {method.label}
+        </button>
+      ))}
+    </div>
 
-          {/* Number badge */}
-          <div class="relative z-10 flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-full bg-accent text-[#faf7f2] font-heading font-bold text-base">
-            {method.number}
-          </div>
+    <!-- Tab Content -->
+    <div class="relative min-h-[140px]">
+      {methods.map((method, i) => (
+        <div
+          id={`content-${method.id}`}
+          class:list={[
+            "tab-content paper-card p-6 rounded-2xl border-accent/10 transition-all duration-500",
+            i === 0 ? "relative z-10 opacity-100 translate-y-0" : "absolute inset-0 opacity-0 translate-y-4 pointer-events-none"
+          ]}
+        >
+          <div class="flex items-start gap-4">
+            {/* Number badge */}
+            <div class="flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-full bg-accent/10 text-accent font-heading font-bold text-sm">
+              {method.number}
+            </div>
 
-          {/* Method content */}
-          <div class="pt-1.5 flex-1">
-            <h3 class="font-heading font-semibold text-lg text-text mb-1">
-              {method.title}
-            </h3>
-            <p class="font-body text-sm text-text-muted mb-3">{method.subtitle}</p>
-            <div class="bg-bg-code rounded-lg px-4 py-3 space-y-1">
-              {method.lines.map((line) => (
-                <code class="block font-mono text-sm text-[#f5f0e8]">{line}</code>
-              ))}
+            {/* Content */}
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center justify-between mb-1">
+                <h3 class="font-heading font-black text-lg text-text">
+                  {method.title}
+                </h3>
+                <span class="font-mono text-[9px] text-accent/60 uppercase tracking-widest font-bold">Recommended</span>
+              </div>
+              <p class="font-body text-xs text-text-muted mb-4">{method.subtitle}</p>
+              
+              <div class="group relative">
+                <div class="bg-bg-code rounded-xl px-4 py-3.5 pr-12 overflow-hidden border border-white/5 space-y-1">
+                  {method.lines.map(line => (
+                    <code class="block font-mono text-[13px] text-[#f5f0e8] truncate selection:bg-accent/30">{line}</code>
+                  ))}
+                </div>
+                <button 
+                  onclick={`navigator.clipboard.writeText('${method.lines.join('\\n')}')`}
+                  class="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-text-muted/40 hover:text-amber/60 transition-colors"
+                  title="Copy to clipboard"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                </button>
+              </div>
             </div>
           </div>
         </div>
       ))}
     </div>
-
   </div>
-</section>
+</div>
+
+<style>
+  .tab-content {
+    transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* Active state for tab content */
+  .tab-content.is-active {
+    position: relative !important;
+    z-index: 10 !important;
+    opacity: 1 !important;
+    transform: translateY(0) !important;
+    pointer-events: auto !important;
+  }
+
+  /* Tab button active state */
+  button[data-tab-target].is-active {
+    background-color: var(--color-accent);
+    color: white;
+    box-shadow: var(--shadow-editorial);
+  }
+</style>
+
+<script>
+  function initTabs() {
+    const containers = document.querySelectorAll('.install-steps-container');
+    
+    containers.forEach(container => {
+      const buttons = container.querySelectorAll('button[data-tab-target]');
+      const contents = container.querySelectorAll('.tab-content');
+
+      buttons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const targetId = btn.getAttribute('data-tab-target');
+          
+          // Update buttons
+          buttons.forEach(b => {
+            b.classList.remove('bg-accent', 'text-white', 'shadow-editorial', 'is-active');
+            b.classList.add('text-text-muted');
+          });
+          btn.classList.add('bg-accent', 'text-white', 'shadow-editorial', 'is-active');
+          btn.classList.remove('text-text-muted');
+
+          // Update contents
+          contents.forEach(content => {
+            if (content.id === `content-${targetId}`) {
+              content.classList.add('is-active', 'opacity-100', 'translate-y-0');
+              content.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+              content.style.position = 'relative';
+            } else {
+              content.classList.remove('is-active', 'opacity-100', 'translate-y-0');
+              content.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+              content.style.position = 'absolute';
+            }
+          });
+        });
+      });
+    });
+  }
+
+  // Run on load and after swaps
+  initTabs();
+  document.addEventListener('astro:after-swap', initTabs);
+</script>

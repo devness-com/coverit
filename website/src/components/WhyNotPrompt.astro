@@ -1,56 +1,83 @@
-<section class="animate-on-scroll">
-  <div class="mx-auto max-w-[900px] px-6 py-24 md:py-32">
+---
+---
+<section class="animate-on-scroll bg-bg-warm/30 border-y border-border-strong/10">
+  <div class="mx-auto max-w-[1000px] px-6 py-24 md:py-32">
     <!-- Heading -->
-    <div class="text-center mb-12">
-      <h2 class="font-heading text-3xl md:text-4xl font-bold text-text mb-4">
+    <div class="text-center mb-16">
+      <h2 class="font-heading text-4xl md:text-5xl font-black text-text mb-6 leading-tight">
         "I Can Just Ask ChatGPT."
       </h2>
       <p class="font-body text-lg text-text-muted max-w-2xl mx-auto leading-relaxed">
-        You can. And that takes 30 seconds. But what you get is one developer's one-time prompt
-        with no memory, no standard, and no security analysis.
+        You can. But manual prompting is a <span class="text-accent italic font-medium">single-point failure</span>. 
+        Coverit turns individual effort into institutional quality.
       </p>
     </div>
 
-    <!-- Comparison table -->
-    <div class="overflow-x-auto">
-      <table class="w-full border-collapse">
-        <thead>
-          <tr>
-            <th class="font-heading text-left text-sm uppercase tracking-wider text-text-muted pb-4 pr-4 border-b border-border">
-              Manual AI Prompting
-            </th>
-            <th class="font-heading text-left text-sm uppercase tracking-wider text-accent pb-4 pl-4 border-b border-border">
-              coverit
-            </th>
-          </tr>
-        </thead>
-        <tbody class="font-body text-base">
-          <tr class="border-b border-border/50">
-            <td class="py-4 pr-4 text-text-muted">Developer decides what to test</td>
-            <td class="py-4 pl-4 text-text font-medium">Standard knows what's missing</td>
-          </tr>
-          <tr class="border-b border-border/50">
-            <td class="py-4 pr-4 text-text-muted">No memory between sessions</td>
-            <td class="py-4 pl-4 text-text font-medium">coverit.json remembers everything</td>
-          </tr>
-          <tr class="border-b border-border/50">
-            <td class="py-4 pr-4 text-text-muted">Every developer prompts differently</td>
-            <td class="py-4 pl-4 text-text font-medium">Same standard for the whole team</td>
-          </tr>
-          <tr class="border-b border-border/50">
-            <td class="py-4 pr-4 text-text-muted">Developer judges "enough"</td>
-            <td class="py-4 pl-4 text-text font-medium">Score tells you objectively</td>
-          </tr>
-          <tr class="border-b border-border/50">
-            <td class="py-4 pr-4 text-text-muted">Security checked separately (or not at all)</td>
-            <td class="py-4 pl-4 text-text font-medium">Security is always evaluated</td>
-          </tr>
-          <tr>
-            <td class="py-4 pr-4 text-text-muted">No visibility into gaps</td>
-            <td class="py-4 pl-4 text-text font-medium">Gaps quantified, prioritized, tracked</td>
-          </tr>
-        </tbody>
-      </table>
+    <!-- Comparison Container -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 relative">
+      <!-- Decorative Connector (Desktop) -->
+      <div class="hidden md:block absolute left-1/2 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-border-strong/50 to-transparent -translate-x-1/2"></div>
+
+      <!-- Manual AI Prompting -->
+      <div class="space-y-6">
+        <h3 class="font-heading text-xl font-bold text-text-muted/60 uppercase tracking-widest text-center mb-8">
+          Manual AI Prompting
+        </h3>
+        
+        {[
+          { text: "Developer decides what to test", icon: "×" },
+          { text: "No memory between sessions", icon: "×" },
+          { text: "Every developer prompts differently", icon: "×" },
+          { text: "Developer judges \"enough\"", icon: "×" },
+          { text: "Security checked separately (or not)", icon: "×" },
+          { text: "No visibility into gaps", icon: "×" }
+        ].map((item, i) => (
+          <div 
+            class="flex items-center gap-4 p-4 rounded-xl border border-transparent transition-all duration-300 group hover:bg-white/50 dark:hover:bg-black/20"
+            style={`transition-delay: ${i * 50}ms`}
+          >
+            <div class="w-8 h-8 rounded-full bg-text-muted/10 text-text-muted flex items-center justify-center shrink-0 font-mono text-xl group-hover:scale-110 transition-transform">
+              {item.icon}
+            </div>
+            <p class="font-body text-text-muted leading-tight">{item.text}</p>
+          </div>
+        ))}
+      </div>
+
+      <!-- coverit -->
+      <div class="space-y-6">
+        <h3 class="font-heading text-xl font-bold text-accent uppercase tracking-widest text-center mb-8">
+          Coverit
+        </h3>
+
+        {[
+          { text: "Standard knows what's missing", icon: "✓" },
+          { text: "coverit.json remembers everything", icon: "✓" },
+          { text: "Same standard for the whole team", icon: "✓" },
+          { text: "Score tells you objectively", icon: "✓" },
+          { text: "Security is always evaluated", icon: "✓" },
+          { text: "Gaps quantified, prioritized, tracked", icon: "✓" }
+        ].map((item, i) => (
+          <div 
+            class="flex items-center gap-4 p-4 rounded-xl paper-card border-accent/20 transition-all duration-500 group hover:border-accent hover:shadow-editorial-lg hover:-translate-y-1"
+            style={`transition-delay: ${i * 50}ms`}
+          >
+            <div class="w-8 h-8 rounded-full bg-accent text-white flex items-center justify-center shrink-0 font-mono text-xl group-hover:rotate-12 transition-transform shadow-sm">
+              {item.icon}
+            </div>
+            <p class="font-body text-text font-bold leading-tight">{item.text}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    <!-- The Punchline -->
+    <div class="mt-20 text-center">
+        <div class="inline-block px-8 py-4 rounded-full bg-accent/5 border border-accent/10">
+            <p class="font-body text-lg text-text leading-relaxed">
+                Prompting is a <span class="font-black">task</span>. Coverit is a <span class="font-black text-accent">system</span>.
+            </p>
+        </div>
     </div>
   </div>
 </section>

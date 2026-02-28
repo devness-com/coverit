@@ -2,8 +2,11 @@
 import PageLayout from '../layouts/PageLayout.astro';
 import Hero from '../components/Hero.astro';
 import Problem from '../components/Problem.astro';
-import ConfidenceSignal from '../components/ConfidenceSignal.astro';
+import TestingDiamond from '../components/TestingDiamond.astro';
 import Pipeline from '../components/Pipeline.astro';
+import QualityDimensions from '../components/QualityDimensions.astro';
+import TerminalMockup from '../components/TerminalMockup.astro';
+import ManifestPreview from '../components/ManifestPreview.astro';
 import WhyNotPrompt from '../components/WhyNotPrompt.astro';
 import IndustryAuthority from '../components/IndustryAuthority.astro';
 import Features from '../components/Features.astro';
@@ -13,28 +16,109 @@ import OpenSource from '../components/OpenSource.astro';
 
 <PageLayout title="AI Made Coding Easy. Make Quality Easy Too." description="You ship 10x faster with AI. Your testing should keep up. One command, one score — real quality, not just coverage numbers.">
   <Hero />
-  <Problem />
-  <ConfidenceSignal />
-  <Pipeline />
+
+  <!-- The Problem & Testing Diamond -->
+  <section class="bg-bg py-24 md:py-32 overflow-hidden">
+     <div class="mx-auto max-w-[1200px] px-6">
+        <div class="flex flex-col lg:flex-row items-center gap-20">
+           <div class="flex-1">
+              <Problem />
+           </div>
+           <div class="lg:w-[450px] shrink-0 animate-on-scroll">
+              <TestingDiamond />
+           </div>
+        </div>
+     </div>
+  </section>
+
+  <!-- Interactive Workflow -->
+  <section class="bg-bg-warm/30 border-y border-border-strong/10">
+     <div class="mx-auto max-w-[1200px] px-6 py-24 md:py-32">
+        <div class="flex flex-col lg:flex-row items-start gap-16">
+           <div class="flex-1 order-2 lg:order-1">
+              <Pipeline />
+           </div>
+           <div class="lg:w-[500px] shrink-0 order-1 lg:order-2 animate-on-scroll">
+              <div class="text-center mb-8">
+                 <h3 class="font-heading font-black text-2xl text-text mb-4">Live Simulation</h3>
+                 <p class="font-body text-sm text-text-muted max-w-sm mx-auto">Watch how AI analyzes, generates, and verifies quality in real-time.</p>
+              </div>
+              <TerminalMockup title="coverit status" initialContent="<span class='text-text-muted/40'>Waiting for command...</span>" />
+           </div>
+        </div>
+     </div>
+  </section>
+
+  <!-- Quality Dimensions (ISO 25010) -->
+  <section class="bg-bg py-24 md:py-32">
+     <div class="mx-auto max-w-[1200px] px-6 text-center">
+        <h2 class="font-heading font-black text-4xl md:text-5xl text-text mb-4 leading-tight">
+           Measure What Actually Matters.
+        </h2>
+        <p class="font-body text-lg text-text-muted max-w-2xl mx-auto mb-16">
+           No more gut feelings. Coverit maps your codebase against five core quality dimensions inspired by ISO 25010.
+        </p>
+        <QualityDimensions />
+     </div>
+  </section>
+
+  <!-- Single Source of Truth -->
+  <section class="bg-bg-warm/30 border-y border-border-strong/10 py-24 md:py-32">
+     <div class="mx-auto max-w-[1200px] px-6">
+        <div class="flex flex-col lg:flex-row items-center gap-20">
+           <div class="flex-1 order-2 lg:order-1 animate-on-scroll">
+              <ManifestPreview />
+           </div>
+           <div class="flex-1 order-1 lg:order-2">
+              <h2 class="font-heading font-black text-4xl text-text mb-6 leading-tight">
+                 One File. One Score. <br/> Total Transparency.
+              </h2>
+              <p class="font-body text-lg text-text-muted mb-8 leading-relaxed">
+                 The <code class="font-mono text-accent">coverit.json</code> manifest is your single source of truth. It's git-tracked, which means quality becomes part of your PR process.
+              </p>
+              <ul class="space-y-4">
+                 {[
+                   { title: 'Git-Tracked Quality', desc: 'Watch your score improve across commits.' },
+                   { title: 'Cross-Session Memory', desc: 'AI remembers previous runs and findings.' },
+                   { title: 'Human Readable', desc: 'Verify exactly what the AI found and fixed.' }
+                 ].map(item => (
+                    <li class="flex items-start gap-4 p-4 paper-card rounded-xl">
+                       <div class="w-6 h-6 rounded-full bg-accent/10 text-accent flex items-center justify-center shrink-0 mt-1">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                       </div>
+                       <div>
+                          <p class="font-heading font-black text-base text-text leading-none mb-1">{item.title}</p>
+                          <p class="font-body text-sm text-text-muted leading-relaxed">{item.desc}</p>
+                       </div>
+                    </li>
+                 ))}
+              </ul>
+           </div>
+        </div>
+     </div>
+  </section>
+
   <WhyNotPrompt />
   <IndustryAuthority />
   <Features />
-  <InstallSteps />
+  <InstallSteps id="install-steps" />
   <OpenSource />
 </PageLayout>
 
 <script>
-  const observer = new IntersectionObserver(
-    (entries) => {
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          entry.target.classList.add('animate-visible');
-          observer.unobserve(entry.target);
-        }
-      });
-    },
-    { threshold: 0.1 }
-  );
+  const observerOptions = {
+    threshold: 0.1,
+    rootMargin: '0px 0px -50px 0px'
+  };
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('animate-visible');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, observerOptions);
 
   document.querySelectorAll('.animate-on-scroll').forEach((el) => {
     observer.observe(el);

@@ -1,118 +1,126 @@
-<section class="bg-bg-warm animate-on-scroll">
-  <div class="mx-auto max-w-[900px] px-6 py-24 md:py-32">
+---
+const companies = [
+  {
+    name: "Microsoft",
+    description: "Eliminated the SDET role in 2014. Combined Engineering — every developer owns both code and tests.",
+    url: "https://blog.pragmaticengineer.com/how-microsoft-does-qa/",
+    impact: "Quality improved, shipping velocity increased."
+  },
+  {
+    name: "Netflix",
+    description: "Full Cycle Developers. Each engineer designs, develops, tests, deploys, and supports their own services.",
+    url: "https://netflixtechblog.com/full-cycle-developers-at-netflix-a08c31f83249",
+    impact: "Built internal 'Infrastructure for Developers'."
+  },
+  {
+    name: "Meta",
+    description: "Built autonomous testing that fuzzes one-third of their services automatically, finding 1,000+ bugs.",
+    url: "https://engineering.fb.com/2021/10/20/developer-tools/autonomous-testing/",
+    impact: "Developer-driven, zero-manual test writing."
+  },
+  {
+    name: "Spotify",
+    description: "Proposed the Testing Honeycomb — integration-first, with few unit tests. Focuses on real service health.",
+    url: "https://engineering.atspotify.com/2018/01/testing-of-microservices/",
+    impact: "Avoids 'harmful' testing pyramids."
+  }
+];
+
+const quotes = [
+  {
+    text: "Write tests. Not too many. Mostly integration.",
+    author: "Guillermo Rauch",
+    role: "CEO of Vercel"
+  },
+  {
+    text: "The more your tests resemble the way your software is used, the more confidence they can give you.",
+    author: "Kent C. Dodds",
+    role: "Creator of Testing Library"
+  }
+];
+---
+
+<section class="bg-bg py-24 md:py-32 border-t border-border-strong/10 animate-on-scroll">
+  <div class="mx-auto max-w-[1100px] px-6">
     <!-- Heading -->
-    <div class="text-center mb-14">
-      <h2 class="font-heading text-3xl md:text-4xl font-bold text-text mb-4">
-        Built on Proven Ground
+    <div class="text-center mb-20">
+      <h2 class="font-heading text-4xl md:text-5xl font-black text-text mb-6 leading-tight">
+        Built on Proven Ground.
       </h2>
-      <p class="font-body text-lg text-text-muted max-w-2xl mx-auto leading-relaxed">
-        The industry already proved developers can own quality &mdash; with the right infrastructure.
+      <p class="font-body text-xl text-text-muted max-w-2xl mx-auto leading-relaxed">
+        The industry already proved developers can own quality — <span class="text-accent italic">with the right infrastructure</span>.
       </p>
     </div>
 
-    <!-- Quotes -->
-    <div class="space-y-8 mb-16">
-      <blockquote class="border-l-2 border-accent pl-6 md:pl-8">
-        <p class="font-body text-lg md:text-xl text-text leading-relaxed italic">
-          "Write tests. Not too many. Mostly integration."
-        </p>
-        <footer class="font-body text-sm text-text-muted mt-3">
-          &mdash; <span class="font-semibold text-text">Guillermo Rauch</span>, CEO of Vercel
-        </footer>
-      </blockquote>
-
-      <blockquote class="border-l-2 border-accent pl-6 md:pl-8">
-        <p class="font-body text-lg md:text-xl text-text leading-relaxed italic">
-          "The more your tests resemble the way your software is used,
-          the more confidence they can give you."
-        </p>
-        <footer class="font-body text-sm text-text-muted mt-3">
-          &mdash; <span class="font-semibold text-text">Kent C. Dodds</span>, creator of Testing Library
-        </footer>
-      </blockquote>
-    </div>
-
-    <!-- How the industry got here -->
-    <div class="mb-6">
-      <h3 class="font-heading font-semibold text-lg text-text mb-2 text-center">
-        How the industry got here
-      </h3>
-      <p class="font-body text-sm text-text-muted text-center leading-relaxed mb-8 max-w-xl mx-auto">
-        These companies eliminated dedicated QA years ago. Their developers own quality directly
-        &mdash; backed by internal infrastructure that took years to build.
-      </p>
-
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div class="bg-bg border border-border rounded-xl p-5">
-          <p class="font-heading font-semibold text-text mb-1">Microsoft</p>
-          <p class="font-body text-sm text-text-muted leading-relaxed mb-2">
-            Eliminated the SDET role in 2014. Combined Engineering &mdash; every developer
-            owns both code and tests. Quality improved.
-          </p>
-          <a
-            href="https://blog.pragmaticengineer.com/how-microsoft-does-qa/"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="font-mono text-xs text-accent hover:text-accent-hover transition-colors"
-          >The Pragmatic Engineer &rarr;</a>
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
+      <!-- Left: Quotes & Context -->
+      <div class="lg:col-span-5 space-y-12">
+        <div class="space-y-8">
+          {quotes.map((quote) => (
+            <blockquote class="relative p-8 rounded-2xl bg-bg-warm/50 border border-border group hover:border-accent/30 transition-colors duration-500">
+              <div class="absolute -top-4 -left-4 text-accent/10 font-heading text-8xl leading-none select-none">“</div>
+              <p class="font-body text-xl text-text leading-relaxed italic relative z-10">
+                "{quote.text}"
+              </p>
+              <footer class="mt-6 flex items-center gap-3">
+                <div class="w-10 h-px bg-accent/30"></div>
+                <div>
+                  <p class="font-heading font-black text-sm text-text uppercase tracking-wider">{quote.author}</p>
+                  <p class="font-body text-xs text-text-muted">{quote.role}</p>
+                </div>
+              </footer>
+            </blockquote>
+          ))}
         </div>
 
-        <div class="bg-bg border border-border rounded-xl p-5">
-          <p class="font-heading font-semibold text-text mb-1">Netflix</p>
-          <p class="font-body text-sm text-text-muted leading-relaxed mb-2">
-            Full Cycle Developers. Each engineer designs, develops, tests, deploys,
-            and supports their own services.
-          </p>
-          <a
-            href="https://netflixtechblog.com/full-cycle-developers-at-netflix-a08c31f83249"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="font-mono text-xs text-accent hover:text-accent-hover transition-colors"
-          >Netflix Tech Blog &rarr;</a>
+        <div class="p-8 rounded-2xl border border-dashed border-border-strong/40">
+           <h3 class="font-heading font-black text-lg text-text mb-4">The Infrastructure Gap</h3>
+           <p class="font-body text-base text-text-muted leading-relaxed mb-6">
+            Elite engineering teams eliminated dedicated QA years ago. They didn't just tell developers to "test more" — they built custom internal tools to make quality <span class="font-bold text-text">automatic</span>.
+           </p>
+           <p class="font-body text-lg text-text leading-relaxed italic">
+            Most teams can't afford to build that. 
+            <span class="font-black text-accent block mt-2 not-italic">That's what coverit is.</span>
+           </p>
         </div>
+      </div>
 
-        <div class="bg-bg border border-border rounded-xl p-5">
-          <p class="font-heading font-semibold text-text mb-1">Meta</p>
-          <p class="font-body text-sm text-text-muted leading-relaxed mb-2">
-            Built autonomous testing that fuzzes one-third of their services
-            automatically, finding 1,000+ bugs without manual test writing.
-          </p>
-          <a
-            href="https://engineering.fb.com/2021/10/20/developer-tools/autonomous-testing/"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="font-mono text-xs text-accent hover:text-accent-hover transition-colors"
-          >Engineering at Meta &rarr;</a>
-        </div>
-
-        <div class="bg-bg border border-border rounded-xl p-5">
-          <p class="font-heading font-semibold text-text mb-1">Spotify</p>
-          <p class="font-body text-sm text-text-muted leading-relaxed mb-2">
-            Proposed the Testing Honeycomb &mdash; integration-first, with few unit tests.
-            For microservices, the pyramid "can be actively harmful."
-          </p>
-          <a
-            href="https://engineering.atspotify.com/2018/01/testing-of-microservices/"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="font-mono text-xs text-accent hover:text-accent-hover transition-colors"
-          >Spotify Engineering &rarr;</a>
-        </div>
+      <!-- Right: Company Grid (Interactive Cards) -->
+      <div class="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-6">
+        {companies.map((company) => (
+          <a 
+            href={company.url} 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            class="group paper-card rounded-2xl p-6 flex flex-col h-full transition-all duration-500 hover:shadow-editorial-lg hover:-translate-y-1 hover:border-accent/40"
+          >
+            <div class="flex justify-between items-start mb-6">
+              <h4 class="font-heading font-black text-2xl text-text group-hover:text-accent transition-colors">{company.name}</h4>
+              <div class="w-8 h-8 rounded-full border border-border flex items-center justify-center text-text-muted group-hover:bg-accent group-hover:text-white group-hover:border-accent transition-all duration-300">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"></line><polyline points="7 7 17 7 17 17"></polyline></svg>
+              </div>
+            </div>
+            <p class="font-body text-sm text-text-muted leading-relaxed mb-6 flex-grow">
+              {company.description}
+            </p>
+            <div class="mt-auto pt-4 border-t border-border group-hover:border-accent/20">
+               <span class="font-mono text-[10px] uppercase tracking-widest text-accent font-bold">Key Impact</span>
+               <p class="font-body text-xs text-text italic mt-1">{company.impact}</p>
+            </div>
+          </a>
+        ))}
       </div>
     </div>
 
-    <!-- The punchline -->
-    <p class="font-body text-lg text-text text-center leading-relaxed max-w-2xl mx-auto mt-10">
-      Most teams can't build that infrastructure.
-      <span class="font-semibold">That's what coverit is.</span>
-    </p>
-
-    <!-- Standards badges -->
-    <div class="flex flex-wrap items-center justify-center gap-4 mt-10">
-      <span class="font-mono text-xs text-text-muted bg-bg border border-border rounded-full px-4 py-1.5">ISO 25010</span>
-      <span class="font-mono text-xs text-text-muted bg-bg border border-border rounded-full px-4 py-1.5">OWASP Top 10</span>
-      <span class="font-mono text-xs text-text-muted bg-bg border border-border rounded-full px-4 py-1.5">Testing Diamond</span>
-      <span class="font-mono text-xs text-text-muted bg-bg border border-border rounded-full px-4 py-1.5">ISTQB</span>
+    <!-- Standards Badges -->
+    <div class="mt-24 pt-12 border-t border-border-strong/10">
+      <p class="font-heading text-center text-xs font-bold text-text-muted uppercase tracking-[0.2em] mb-8">Aligned with Industry Standards</p>
+      <div class="flex flex-wrap items-center justify-center gap-4 md:gap-8 opacity-60 grayscale hover:grayscale-0 transition-all duration-700">
+        <span class="font-mono text-xs text-text border border-border-strong/40 rounded-full px-6 py-2 bg-bg-warm/30">ISO 25010</span>
+        <span class="font-mono text-xs text-text border border-border-strong/40 rounded-full px-6 py-2 bg-bg-warm/30">OWASP Top 10</span>
+        <span class="font-mono text-xs text-text border border-border-strong/40 rounded-full px-6 py-2 bg-bg-warm/30">Testing Diamond</span>
+        <span class="font-mono text-xs text-text border border-border-strong/40 rounded-full px-6 py-2 bg-bg-warm/30">ISTQB Compliant</span>
+      </div>
     </div>
   </div>
 </section>

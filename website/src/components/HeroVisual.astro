@@ -1,0 +1,108 @@
+---
+import ScoreGauge from './ScoreGauge.astro';
+import TerminalMockup from './TerminalMockup.astro';
+---
+
+<div class="hero-visual-orchestrator relative w-full max-w-[500px] lg:max-w-none">
+  <!-- Decorative Background Glows -->
+  <div class="absolute -top-10 -right-10 w-64 h-64 bg-accent/10 rounded-full blur-[80px] animate-pulse"></div>
+  <div class="absolute -bottom-10 -left-10 w-48 h-48 bg-amber/10 rounded-full blur-[60px] animate-pulse" style="animation-delay: 1s;"></div>
+
+  <!-- Terminal (Primary Visual) -->
+  <div class="relative z-10 transition-all duration-700 ease-out hover:scale-[1.01]">
+    <TerminalMockup title="coverit interactive" initialContent="<span class='text-text-muted/40'>Waiting for command...</span>" />
+  </div>
+
+  <!-- Gauge (Floating Secondary Visual) -->
+  <div class="absolute -top-8 -right-8 lg:-right-12 z-20 scale-75 lg:scale-85 animate-float drop-shadow-editorial-lg">
+    <div class="paper-card rounded-full p-3 border-accent/20">
+       <ScoreGauge score={0} size={160} />
+    </div>
+  </div>
+
+  <!-- Status Badges -->
+  <div class="absolute -bottom-6 -left-4 lg:-left-12 z-20 flex flex-col gap-3 animate-float-delayed">
+     <div class="paper-card px-4 py-2.5 rounded-xl border-amber/20 flex items-center gap-3">
+        <div class="w-2 h-2 rounded-full bg-amber animate-pulse"></div>
+        <span class="font-mono text-[10px] text-text uppercase tracking-widest font-bold">Scanning Codebase</span>
+     </div>
+     <div class="paper-card px-4 py-2.5 rounded-xl border-accent/20 flex items-center gap-3 translate-x-4">
+        <div class="w-2 h-2 rounded-full bg-accent"></div>
+        <span class="font-mono text-[10px] text-text uppercase tracking-widest font-bold">AI Writing Tests</span>
+     </div>
+  </div>
+</div>
+
+<style>
+  @keyframes float {
+    0%, 100% { transform: translateY(0) rotate(2deg); }
+    50% { transform: translateY(-10px) rotate(1deg); }
+  }
+  @keyframes float-delayed {
+    0%, 100% { transform: translateY(0) rotate(-1deg); }
+    50% { transform: translateY(-8px) rotate(0deg); }
+  }
+  .animate-float {
+    animation: float 5s ease-in-out infinite;
+  }
+  .animate-float-delayed {
+    animation: float-delayed 6s ease-in-out infinite;
+  }
+</style>
+
+<script>
+  // Simple simulation scripts for the hero
+  const simulations = {
+    scan: {
+      command: 'scan',
+      score: 42,
+      output: [
+        '<span class="text-amber">→</span> Analyzing workspace...',
+        '<span class="text-amber">→</span> Found 24 modules, 156 files.',
+        '<span class="text-amber">→</span> Mapping user journeys...',
+        '<span class="text-text-muted">✓</span> Complexity classified',
+        '<span class="text-text-muted">✓</span> Gaps identified in <span class="text-accent">auth/service.ts</span>',
+        '',
+        '<span class="text-accent font-bold">Scan Complete.</span> Dashboard updated.',
+        '<span class="text-text-muted">Run "coverit status" for full report.</span>'
+      ]
+    },
+    cover: {
+      command: 'cover',
+      score: 82,
+      output: [
+        '<span class="text-amber">→</span> Reading gaps from coverit.json...',
+        '<span class="text-amber">→</span> Generating 12 test files...',
+        '<span class="text-text-muted">✓</span> auth/service.unit.test.ts',
+        '<span class="text-text-muted">✓</span> api/users.integration.test.ts',
+        '<span class="text-amber">→</span> Running tests...',
+        '<span class="text-text-muted">✓</span> All tests passed.',
+        '',
+        '<span class="text-accent font-bold">Tests generated and verified.</span>',
+        'Quality score increased: <span class="text-amber">42% → 82%</span>'
+      ]
+    }
+  };
+
+  function runHeroSimulation(key: 'scan' | 'cover') {
+    const sim = simulations[key];
+    window.dispatchEvent(new CustomEvent('coverit:terminal:run', { 
+      detail: { command: sim.command, output: sim.output } 
+    }));
+    
+    // Delay the gauge update to match terminal output
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('coverit:rescan', { 
+        detail: { score: sim.score } 
+      }));
+    }, sim.command === 'scan' ? 2000 : 3500);
+  }
+
+  // Initial simulation after a short delay
+  setTimeout(() => {
+    runHeroSimulation('scan');
+  }, 1500);
+
+  // Expose to window for hero buttons
+  (window as any).runHeroSimulation = runHeroSimulation;
+</script>

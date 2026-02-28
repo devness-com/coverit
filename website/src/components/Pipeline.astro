@@ -2,82 +2,184 @@
 const steps = [
   {
     command: 'scan',
-    description: 'AI explores your codebase',
-    icon: `<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <circle cx="14" cy="14" r="8" stroke="currentColor" stroke-width="2"/>
-      <line x1="20" y1="20" x2="27" y2="27" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-      <path d="M11 12h2m2 0h2M11 16h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+    title: 'Analyze',
+    description: 'AI explores your codebase to find real gaps.',
+    icon: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="2"/>
+      <line x1="21" y1="21" x2="16.65" y2="16.65" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
     </svg>`,
+    output: [
+      "<span class='text-amber/80'>[SCAN]</span> Searching filesystem...",
+      "<span class='text-amber/80'>[SCAN]</span> Found 12 typescript modules.",
+      "<span class='text-amber/80'>[SCAN]</span> Analyzing dependencies...",
+      "<span class='text-amber/80'>[SCAN]</span> Establishing quality baseline...",
+      "<span class='text-amber/80'>[SCAN]</span> Baseline established: <span class='text-accent'>42/100</span>"
+    ]
   },
   {
     command: 'cover',
-    description: 'AI writes tests for gaps',
-    icon: `<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <path d="M16 4L4 10v8c0 6.627 5.373 12 12 14 6.627-2 12-7.373 12-14v-8L16 4z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-      <polyline points="12,16 15,19 21,13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    title: 'Generate',
+    description: 'AI writes and validates tests for identified gaps.',
+    icon: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M12 2L2 7v10c0 5.5 10 7 10 7s10-1.5 10-7V7l-10-5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>`,
+    output: [
+      "<span class='text-amber/80'>[COVER]</span> Reading coverit.json...",
+      "<span class='text-amber/80'>[COVER]</span> Generating 3 integration tests for auth module...",
+      "<span class='text-amber/80'>[COVER]</span> Running generated tests...",
+      "<span class='text-[#28c840]'>[PASS]</span> auth.test.ts (100% gap coverage)",
+      "<span class='text-amber/80'>[COVER]</span> New score: <span class='text-accent'>68/100</span>"
+    ]
   },
   {
     command: 'run',
-    description: 'Runs tests, AI fixes failures',
-    icon: `<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <polygon points="11,7 26,16 11,25" stroke="currentColor" stroke-width="2" stroke-linejoin="round" fill="none"/>
+    title: 'Verify & Fix',
+    description: 'Runs tests and uses AI to fix any failures automatically.',
+    icon: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <polygon points="5 3 19 12 5 21" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
     </svg>`,
+    output: [
+      "<span class='text-amber/80'>[RUN]</span> Executing test suite...",
+      "<span class='text-[#ff5f57]'>[FAIL]</span> booking.test.ts: Failed to resolve booking ID",
+      "<span class='text-amber/80'>[FIX]</span> AI is analyzing failure...",
+      "<span class='text-amber/80'>[FIX]</span> Applying fix to booking.test.ts...",
+      "<span class='text-[#28c840]'>[PASS]</span> booking.test.ts (Fixed by AI)"
+    ]
   },
   {
     command: 'status',
-    description: 'See your quality dashboard',
-    icon: `<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <rect x="5" y="18" width="4" height="9" rx="1" stroke="currentColor" stroke-width="2"/>
-      <rect x="14" y="12" width="4" height="15" rx="1" stroke="currentColor" stroke-width="2"/>
-      <rect x="23" y="6" width="4" height="21" rx="1" stroke="currentColor" stroke-width="2"/>
+    title: 'Know',
+    description: 'Instant overview of your codebase\u2019s true quality.',
+    icon: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M12 20v-6M6 20V10M18 20V4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
     </svg>`,
+    output: [
+      "<span class='text-amber/80'>[STATUS]</span> Overall Quality: <span class='text-accent'>82/100</span>",
+      "<span class='text-amber/80'>[STATUS]</span> Security: 95% (Excellent)",
+      "<span class='text-amber/80'>[STATUS]</span> Functionality: 88% (Good)",
+      "<span class='text-amber/80'>[STATUS]</span> Stability: 74% (Needs Work)",
+      "<span class='text-amber/80'>[STATUS]</span> 24/24 modules monitored."
+    ]
   },
 ];
 ---
 
-<section class="animate-on-scroll">
-  <div class="mx-auto max-w-[1100px] px-6 py-24 md:py-32">
-    <!-- Heading -->
-    <h2 class="font-heading font-bold text-3xl md:text-4xl text-text text-center mb-16">
-      Four Commands. That's It.
-    </h2>
+<section class="animate-on-scroll py-24 md:py-32">
+  <div class="mx-auto max-w-[1100px] px-6">
+    <!-- Header -->
+    <div class="text-center mb-20">
+      <h2 class="font-heading font-black text-4xl md:text-5xl text-text mb-4 leading-[1.1]">
+        Quality is One Command Away.
+      </h2>
+      <p class="font-body text-lg text-text-muted max-w-2xl mx-auto">
+        Four commands that build your safety net. Click a step below to simulate how Coverit works.
+      </p>
+    </div>
 
-    <!-- Pipeline: desktop horizontal / mobile vertical -->
-    <div class="pipeline-grid grid grid-cols-1 md:grid-cols-4 gap-6 md:gap-0 relative">
-      {steps.map((step, i) => (
-        <div class="pipeline-step flex flex-col items-center relative">
-          {/* Connecting line: desktop horizontal */}
-          {i < steps.length - 1 && (
-            <div class="hidden md:block absolute top-[calc(50%-20px)] left-[calc(50%+48px)] right-[calc(-50%+48px)] h-px border-t-2 border-dashed border-border z-0" />
-          )}
+    <!-- Pipeline Grid -->
+    <div class="pipeline-container relative">
+      <!-- Background Connecting Line (Desktop) -->
+      <div class="hidden md:block absolute top-[60px] left-[10%] right-[10%] h-[2px] bg-gradient-to-r from-transparent via-border to-transparent z-0"></div>
 
-          {/* Connecting line: mobile vertical */}
-          {i < steps.length - 1 && (
-            <div class="md:hidden absolute left-1/2 -translate-x-1/2 top-full h-6 w-px border-l-2 border-dashed border-border z-0" />
-          )}
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-8 md:gap-4 relative z-10">
+        {steps.map((step, i) => (
+          <button
+            class="pipeline-step group flex flex-col items-center text-center cursor-pointer appearance-none transition-all duration-300"
+            data-command={step.command}
+            data-output={JSON.stringify(step.output)}
+            aria-label={`Learn more about coverit ${step.command}`}
+          >
+            <!-- Icon Hexagon Container -->
+            <div class="relative w-28 h-28 flex items-center justify-center mb-6 transition-transform duration-500 group-hover:scale-110">
+              <!-- Outer Ring -->
+              <div class="absolute inset-0 rounded-[30%] bg-bg-warm border border-border group-hover:border-accent group-hover:rotate-12 transition-all duration-500 shadow-editorial"></div>
+              
+              <!-- Icon Circle -->
+              <div class="relative z-10 w-14 h-14 rounded-full bg-bg-warm border border-border flex items-center justify-center text-amber group-hover:text-accent group-hover:shadow-[0_0_20px_rgba(196,98,58,0.2)] transition-all">
+                 <Fragment set:html={step.icon} />
+              </div>
 
-          {/* Card */}
-          <div class="relative z-10 bg-bg-warm border border-border rounded-xl shadow-sm px-6 py-8 flex flex-col items-center gap-4 w-full max-w-[220px] text-center">
-            <div class="text-amber" set:html={step.icon} />
-            <code class="font-mono text-sm text-accent font-medium">{step.command}</code>
-            <p class="font-body text-sm text-text-muted leading-relaxed">{step.description}</p>
-          </div>
-        </div>
-      ))}
+              <!-- Connector (Mobile) -->
+              {i < steps.length - 1 && (
+                <div class="md:hidden absolute -bottom-8 left-1/2 -translate-x-1/2 h-8 w-[2px] bg-dashed border-l border-dashed border-border-strong/40"></div>
+              )}
+            </div>
+
+            <!-- Command -->
+            <div class="mb-2">
+               <code class="font-mono text-[10px] text-text-muted/40 uppercase tracking-[0.2em] block mb-1">Command</code>
+               <span class="font-mono text-lg font-bold text-text group-hover:text-accent transition-colors">
+                  {step.command}
+               </span>
+            </div>
+
+            <!-- Description -->
+            <p class="font-body text-sm text-text-muted/80 leading-relaxed px-4 group-hover:text-text transition-colors">
+              {step.description}
+            </p>
+          </button>
+        ))}
+      </div>
     </div>
   </div>
 </section>
 
-<style>
-  /* Ensure cards in the horizontal layout are evenly spaced */
-  @media (min-width: 768px) {
-    .pipeline-grid {
-      align-items: start;
-    }
+<script>
+  function setupPipelineSimulator() {
+    const steps = document.querySelectorAll<HTMLElement>('.pipeline-step');
+    
+    steps.forEach((step, i) => {
+      step.addEventListener('click', () => {
+        // Deactivate others
+        steps.forEach(s => s.classList.remove('active'));
+        step.classList.add('active');
 
-    .pipeline-step {
-      padding: 0 8px;
-    }
+        const command = step.dataset.command;
+        const output = JSON.parse(step.dataset.output || '[]');
+        
+        // Dispatch event for terminal simulator
+        window.dispatchEvent(new CustomEvent('coverit:terminal:run', {
+          detail: { command, output }
+        }));
+
+        // Dispatch score change for first step (scan)
+        if (command === 'scan') {
+          window.dispatchEvent(new CustomEvent('coverit:rescan', { detail: { score: 42 } }));
+        } else if (command === 'cover') {
+           window.dispatchEvent(new CustomEvent('coverit:rescan', { detail: { score: 68 } }));
+        } else if (command === 'status') {
+           window.dispatchEvent(new CustomEvent('coverit:rescan', { detail: { score: 82 } }));
+        }
+      });
+
+      // Auto-trigger first step if visible
+      if (i === 0) {
+        const observer = new IntersectionObserver((entries) => {
+          if (entries[0].isIntersecting) {
+            step.click();
+            observer.unobserve(step);
+          }
+        }, { threshold: 0.5 });
+        observer.observe(step);
+      }
+    });
+  }
+
+  setupPipelineSimulator();
+</script>
+
+<style>
+  .pipeline-step.active .relative.w-28.h-28 > div:first-child {
+    border-color: var(--color-accent);
+    transform: rotate(12deg);
+    background-color: var(--color-accent);
+    background-opacity: 0.05;
+    box-shadow: 0 0 30px rgba(196, 98, 58, 0.15);
+  }
+
+  .pipeline-step.active .relative.z-10.w-14.h-14 {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
   }
 </style>

@@ -41,6 +41,12 @@ const ogImage = new URL('/og-image.png', Astro.site);
       rel="stylesheet"
     />
     <title>{fullTitle}</title>
+    <script is:inline>
+      if ('scrollRestoration' in history) {
+        history.scrollRestoration = 'manual';
+      }
+      window.scrollTo(0, 0);
+    </script>
   </head>
   <body>
     <slot />

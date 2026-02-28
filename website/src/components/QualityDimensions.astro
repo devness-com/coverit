@@ -1,0 +1,90 @@
+---
+const dimensions = [
+  { 
+    name: 'Functionality', 
+    score: 88, 
+    icon: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L2 7v10c0 5.5 10 7 10 7s10-1.5 10-7V7l-10-5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>`,
+    description: 'Core logic and business rule validation.'
+  },
+  { 
+    name: 'Security', 
+    score: 95, 
+    icon: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L2 7v10c0 5.5 10 7 10 7s10-1.5 10-7V7l-10-5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+    description: 'Vulnerability detection and access control.'
+  },
+  { 
+    name: 'Stability', 
+    score: 74, 
+    icon: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+    description: 'Error handling and resilience patterns.'
+  },
+  { 
+    name: 'Conformance', 
+    score: 65, 
+    icon: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+    description: 'API contract and standard compliance.'
+  },
+  { 
+    name: 'Regression', 
+    score: 92, 
+    icon: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+    description: 'Verification of existing behavioral safety.'
+  }
+];
+---
+
+<div class="quality-grid grid grid-cols-1 md:grid-cols-5 gap-4 py-12 px-6">
+  {dimensions.map((dim, i) => (
+    <div 
+      class="dimension-card group flex flex-col p-6 rounded-xl border border-border bg-bg-warm transition-all duration-300 hover:border-accent/40 hover:shadow-editorial animate-on-scroll"
+      style={`animation-delay: ${i * 0.1}s;`}
+    >
+      <!-- Icon & Name -->
+      <div class="flex items-center gap-3 mb-6">
+         <div class="w-10 h-10 rounded-lg bg-accent/5 text-accent flex items-center justify-center group-hover:scale-110 transition-transform">
+            <Fragment set:html={dim.icon} />
+         </div>
+         <span class="font-heading font-black text-sm text-text leading-tight">{dim.name}</span>
+      </div>
+
+      <!-- Score visualization -->
+      <div class="mt-auto">
+         <div class="flex items-baseline justify-between mb-2">
+            <span class="font-mono text-[10px] text-text-muted/60 font-bold uppercase tracking-widest">Confidence</span>
+            <span class="font-heading font-black text-lg text-accent">{dim.score}%</span>
+         </div>
+         <div class="h-1.5 w-full bg-border/40 rounded-full overflow-hidden">
+            <div 
+              class="dimension-progress h-full bg-accent transition-all duration-1000 ease-out" 
+              style={`width: 0%;`} 
+              data-score={dim.score}
+            ></div>
+         </div>
+      </div>
+
+      <!-- Description overlay (hover) -->
+      <div class="absolute inset-0 bg-accent/95 p-6 flex items-center justify-center text-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl pointer-events-none">
+         <p class="font-body text-xs text-white leading-relaxed font-semibold">{dim.description}</p>
+      </div>
+    </div>
+  ))}
+</div>
+
+<script>
+  function animateDimensions() {
+    const bars = document.querySelectorAll<HTMLElement>('.dimension-progress');
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const bar = entry.target as HTMLElement;
+          bar.style.width = `${bar.dataset.score}%`;
+          observer.unobserve(bar);
+        }
+      });
+    }, { threshold: 0.2 });
+
+    bars.forEach(bar => observer.observe(bar));
+  }
+
+  animateDimensions();
+</script>

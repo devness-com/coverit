@@ -1,65 +1,60 @@
 <section class="animate-on-scroll">
-  <div class="mx-auto max-w-4xl px-6 py-24 md:py-32">
-    <!-- Opening -->
-    <blockquote class="text-center mb-12">
-      <p class="font-heading text-3xl md:text-4xl text-text leading-snug italic">
-        "AI removed the bottleneck of writing code."
+  <div class="max-w-4xl mx-auto">
+    <!-- Editorial Headline -->
+    <div class="mb-16">
+      <h2 class="font-heading font-black text-4xl md:text-5xl text-text leading-[1.1] mb-6">
+        The AI Speed Trap.
+      </h2>
+      <p class="font-body text-lg text-text-muted leading-relaxed">
+        AI removed the bottleneck of writing code. You're shipping 10x faster, but your test suite is still running at human speeds.
       </p>
-      <p class="font-body text-lg text-text-muted mt-4">
-        Don't let testing become the new bottleneck.
-      </p>
-    </blockquote>
+    </div>
 
-    <!-- The real problems -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-16">
-      <!-- Problem 1 -->
-      <div class="bg-bg-warm border border-border rounded-xl p-6">
-        <p class="font-heading font-bold text-lg text-text mb-2">Speed creates risk</p>
-        <p class="font-body text-base text-text-muted leading-relaxed">
-          AI lets you ship faster than ever. More code, more changes, more surface area.
-          The faster you move, the more you need a <span class="text-text font-semibold">safety net</span>.
+    <!-- Punchy Problem Grid -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <!-- Card 1 -->
+      <div class="paper-card p-8 rounded-2xl group hover:border-accent/30 transition-colors">
+        <div class="w-10 h-10 rounded-full bg-amber/10 text-amber flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>
+        </div>
+        <h3 class="font-heading font-black text-xl text-text mb-3">Speed creates risk</h3>
+        <p class="font-body text-sm text-text-muted leading-relaxed">
+          The faster you move, the more you need a safety net. Gut-feel testing doesn't scale with AI-generated features.
         </p>
       </div>
 
-      <!-- Problem 2 -->
-      <div class="bg-bg-warm border border-border rounded-xl p-6">
-        <p class="font-heading font-bold text-lg text-text mb-2">No shared standard</p>
-        <p class="font-body text-base text-text-muted leading-relaxed">
-          Every developer prompts AI differently. One gets thorough tests, another gets superficial ones.
-          There's no consistent bar for what <span class="text-text font-semibold">"well-tested" means</span>.
+      <!-- Card 2 -->
+      <div class="paper-card p-8 rounded-2xl group hover:border-accent/30 transition-colors">
+        <div class="w-10 h-10 rounded-full bg-amber/10 text-amber flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+        </div>
+        <h3 class="font-heading font-black text-xl text-text mb-3">Coverage is a Lie</h3>
+        <p class="font-body text-sm text-text-muted leading-relaxed">
+          80% line coverage means nothing if your tests don't check security, stability, or real-world contracts.
         </p>
       </div>
 
-      <!-- Problem 3 -->
-      <div class="bg-bg-warm border border-border rounded-xl p-6">
-        <p class="font-heading font-bold text-lg text-text mb-2">Coverage isn't quality</p>
-        <p class="font-body text-base text-text-muted leading-relaxed">
-          80% line coverage looks great in a report. But are those tests checking the right things?
-          Are they catching security issues? <span class="text-text font-semibold">Edge cases? Regressions?</span>
+      <!-- Card 3 -->
+      <div class="paper-card p-8 rounded-2xl group hover:border-accent/30 transition-colors">
+        <div class="w-10 h-10 rounded-full bg-amber/10 text-amber flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+        </div>
+        <h3 class="font-heading font-black text-xl text-text mb-3">No Shared Bar</h3>
+        <p class="font-body text-sm text-text-muted leading-relaxed">
+          Every dev prompts AI differently. You need a single, objective score that defines what "safe to ship" means.
         </p>
       </div>
 
-      <!-- Problem 4 -->
-      <div class="bg-bg-warm border border-border rounded-xl p-6">
-        <p class="font-heading font-bold text-lg text-text mb-2">No confidence signal</p>
-        <p class="font-body text-base text-text-muted leading-relaxed">
-          "Is it safe to ship?" is still answered by <span class="text-text font-semibold">gut feel</span>,
-          not data. You need a single, objective score that tells you where you stand.
+      <!-- Card 4 -->
+      <div class="paper-card p-8 rounded-2xl group hover:border-accent/30 transition-colors">
+        <div class="w-10 h-10 rounded-full bg-amber/10 text-amber flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+        </div>
+        <h3 class="font-heading font-black text-xl text-text mb-3">Signal over Noise</h3>
+        <p class="font-body text-sm text-text-muted leading-relaxed">
+          Stop sifting through test logs. Get a high-fidelity confidence signal that tells you exactly where you stand.
         </p>
       </div>
     </div>
-
-    <!-- Decorative divider -->
-    <div class="flex items-center justify-center gap-4 my-12">
-      <span class="block h-px w-16 bg-border"></span>
-      <span class="block h-1.5 w-1.5 rounded-full bg-amber"></span>
-      <span class="block h-px w-16 bg-border"></span>
-    </div>
-
-    <!-- Transition -->
-    <p class="font-body text-lg text-text-muted text-center leading-relaxed max-w-2xl mx-auto">
-      AI made writing tests <span class="text-text font-medium">essentially free</span>.
-      The question isn't "should we test more?" &mdash; it's "why aren't we testing everything?"
-    </p>
   </div>
 </section>
