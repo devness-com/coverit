@@ -22,6 +22,7 @@ import { cover } from "../cover/pipeline.js";
 import { runTests } from "../run/pipeline.js";
 import { logger } from "../utils/logger.js";
 import { useaiStart, useaiEnd } from "../integrations/useai.js";
+import type { ScanScope } from "../utils/git.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -42,20 +43,34 @@ server.tool(
   "Scan and analyze the full codebase using AI and generate coverit.json quality manifest. AI explores the project with tool access to detect modules, map existing tests, classify complexity, identify journeys and contracts, and compute baseline scores.",
   {
     projectRoot: z.string().describe("Absolute path to the project root"),
+    scope: z
+      .enum(["changed", "branch"])
+      .or(z.string().regex(/^pr:\d+$/).describe("PR number as 'pr:123'"))
+      .optional()
+      .describe("Incremental scan scope: 'changed' (uncommitted), 'branch' (vs main), or 'pr:N' (GitHub PR). Omit for full scan."),
     dimensions: z
       .array(z.enum(["functionality", "security", "stability", "conformance", "regression"]))
       .optional()
       .describe("Only scan specific dimensions (default: all 5). When functionality is omitted, modules are loaded from existing coverit.json."),
     timeoutSeconds: z.number().optional().describe("Timeout per dimension in seconds (default: 1200)"),
   },
-  async ({ projectRoot, dimensions, timeoutSeconds }) => {
+  async ({ projectRoot, scope, dimensions, timeoutSeconds }) => {
     let session: Awaited<ReturnType<typeof useaiStart>> = null;
     try {
       session = await useaiStart("scan", projectRoot);
       const timeoutMs = timeoutSeconds ? timeoutSeconds * 1000 : undefined;
+
+      let scanScope: ScanScope | undefined;
+      if (scope === "changed" || scope === "branch") {
+        scanScope = scope;
+      } else if (scope?.startsWith("pr:")) {
+        scanScope = { pr: parseInt(scope.slice(3), 10) };
+      }
+
       const manifest = await scanCodebase(projectRoot, {
         timeoutMs,
         dimensions: dimensions as ScanDimension[] | undefined,
+        scope: scanScope,
       });
       await writeManifest(projectRoot, manifest);
 
