@@ -34,7 +34,7 @@ import {
   parseScaleResponse,
   type ScaleAIModule,
 } from "../ai/scale-prompts.js";
-import type { AIProvider } from "../ai/types.js";
+import type { AIProvider, AIProgressEvent } from "../ai/types.js";
 import { readManifest } from "./writer.js";
 import { logger } from "../utils/logger.js";
 
@@ -65,6 +65,7 @@ const ANALYSIS_TIMEOUT_MS = 600_000;
 export async function scanCodebase(
   projectRoot: string,
   aiProvider?: AIProvider,
+  onProgress?: (event: AIProgressEvent) => void,
 ): Promise<CoveritManifest> {
   logger.debug(`Scanning codebase at ${projectRoot} (AI-driven)`);
 
@@ -94,6 +95,7 @@ export async function scanCodebase(
     allowedTools: ALLOWED_TOOLS,
     cwd: projectRoot,
     timeoutMs: ANALYSIS_TIMEOUT_MS,
+    onProgress,
   });
 
   logger.debug(

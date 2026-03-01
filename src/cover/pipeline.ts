@@ -27,7 +27,7 @@ import {
   parseCoverResponse,
   type ModuleGap,
 } from "../ai/cover-prompts.js";
-import type { AIProvider } from "../ai/types.js";
+import type { AIProvider, AIProgressEvent } from "../ai/types.js";
 import { logger } from "../utils/logger.js";
 
 // ─── Types ───────────────────────────────────────────────────
@@ -38,6 +38,8 @@ export interface CoverOptions {
   modules?: string[];
   /** Optional AI provider (auto-detected if not provided) */
   aiProvider?: AIProvider;
+  /** Callback for streaming progress events */
+  onProgress?: (event: AIProgressEvent) => void;
 }
 
 export interface CoverResult {
@@ -132,6 +134,7 @@ export async function cover(options: CoverOptions): Promise<CoverResult> {
         allowedTools: ALLOWED_TOOLS,
         cwd: projectRoot,
         timeoutMs: PER_MODULE_TIMEOUT_MS,
+        onProgress: options.onProgress,
       });
 
       const summary = parseCoverResponse(response.content);

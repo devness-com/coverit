@@ -21,6 +21,7 @@ import type {
   AIResponse,
   AIGenerateOptions,
   AIProviderConfig,
+  AIProgressEvent,
 } from "./types.js";
 
 /** Known filesystem locations where the claude binary might live */
@@ -217,7 +218,7 @@ export class ClaudeCliProvider implements AIProvider {
       args.push("--dangerously-skip-permissions"); // safe: restricted to read-only tools
     }
 
-    const result = await this.spawnClaude(args, prompt, options?.cwd, options?.timeoutMs);
+    const result = await this.spawnClaude(args, prompt, options?.cwd, options?.timeoutMs, options?.onProgress);
 
     if (result.exitCode !== 0 && !result.stdout.trim()) {
       throw new Error(
@@ -242,6 +243,7 @@ export class ClaudeCliProvider implements AIProvider {
     stdinData?: string,
     cwd?: string,
     callTimeoutMs?: number,
+    onProgress?: (event: AIProgressEvent) => void,
   ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
     return new Promise((resolve, reject) => {
       // Strip Claude Code internal env vars to avoid blocking nested sessions
@@ -259,6 +261,7 @@ export class ClaudeCliProvider implements AIProvider {
       let stdout = "";
       let stderr = "";
       let killed = false;
+      let lineBuffer = ""; // Buffer for incomplete NDJSON lines
 
       const timeoutMs = callTimeoutMs ?? 600_000; // default 10 minutes
       const timeout = setTimeout(() => {
@@ -268,7 +271,27 @@ export class ClaudeCliProvider implements AIProvider {
       }, timeoutMs);
 
       proc.stdout.on("data", (chunk: Buffer) => {
-        stdout += chunk.toString();
+        const text = chunk.toString();
+        stdout += text;
+
+        // Stream progress events in real-time
+        if (onProgress) {
+          lineBuffer += text;
+          const lines = lineBuffer.split("\n");
+          // Keep the last incomplete line in the buffer
+          lineBuffer = lines.pop() ?? "";
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            try {
+              const obj = JSON.parse(trimmed) as Record<string, unknown>;
+              emitProgressEvent(obj, onProgress);
+            } catch {
+              // Skip malformed lines
+            }
+          }
+        }
       });
       proc.stderr.on("data", (chunk: Buffer) => {
         stderr += chunk.toString();
@@ -298,5 +321,77 @@ export class ClaudeCliProvider implements AIProvider {
         proc.stdin.end();
       }
     });
+  }
+}
+
+/**
+ * Extract progress events from a parsed streaming JSON object.
+ *
+ * Claude CLI stream-json format emits objects like:
+ *   {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Glob",...}]}}
+ *   {"type":"assistant","message":{"content":[{"type":"text","text":"..."}]}}
+ *   {"type":"content_block_delta","delta":{"type":"text_delta","text":"..."}}
+ */
+function emitProgressEvent(
+  obj: Record<string, unknown>,
+  onProgress: (event: AIProgressEvent) => void,
+): void {
+  // Handle assistant messages with content blocks (tool_use, text)
+  if (obj["type"] === "assistant") {
+    const message = obj["message"] as Record<string, unknown> | undefined;
+    const contentBlocks =
+      (message && Array.isArray(message["content"]) ? message["content"] : null) ??
+      (Array.isArray(obj["content"]) ? obj["content"] : null);
+
+    if (contentBlocks) {
+      for (const block of contentBlocks as Array<Record<string, unknown>>) {
+        if (block["type"] === "tool_use" && typeof block["name"] === "string") {
+          const input = block["input"] as Record<string, unknown> | undefined;
+          // Extract a brief description of what the tool is doing
+          const inputSummary = input
+            ? summarizeToolInput(block["name"], input)
+            : undefined;
+          onProgress({ type: "tool_use", tool: block["name"], input: inputSummary });
+        }
+        if (block["type"] === "text" && typeof block["text"] === "string") {
+          onProgress({ type: "text_delta", text: block["text"] });
+        }
+      }
+    }
+  }
+
+  // Handle streaming text deltas
+  if (obj["type"] === "content_block_delta") {
+    const delta = obj["delta"] as Record<string, unknown> | undefined;
+    if (delta && delta["type"] === "text_delta" && typeof delta["text"] === "string") {
+      onProgress({ type: "text_delta", text: delta["text"] });
+    }
+  }
+}
+
+/** Produce a short human-readable summary of a tool's input */
+function summarizeToolInput(
+  tool: string,
+  input: Record<string, unknown>,
+): string {
+  switch (tool) {
+    case "Read":
+      return typeof input["file_path"] === "string"
+        ? input["file_path"]
+        : "";
+    case "Glob":
+      return typeof input["pattern"] === "string"
+        ? input["pattern"]
+        : "";
+    case "Grep":
+      return typeof input["pattern"] === "string"
+        ? input["pattern"]
+        : "";
+    case "Bash": {
+      const cmd = typeof input["command"] === "string" ? input["command"] : "";
+      return cmd.length > 80 ? cmd.slice(0, 77) + "..." : cmd;
+    }
+    default:
+      return "";
   }
 }

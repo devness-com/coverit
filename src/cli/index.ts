@@ -15,14 +15,27 @@ import { Command } from "commander";
 import chalk from "chalk";
 import ora from "ora";
 import { resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { createInterface } from "node:readline";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { scanCodebase } from "../scale/analyzer.js";
 import { readManifest, writeManifest } from "../scale/writer.js";
 import { cover } from "../cover/pipeline.js";
 import { runTests } from "../run/pipeline.js";
 import { renderDashboard } from "../measure/dashboard.js";
+import {
+  detectAllProviders,
+  getProviderDisplayName,
+} from "../ai/provider-factory.js";
+import type { AIProvider, AIProgressEvent } from "../ai/types.js";
 import { logger } from "../utils/logger.js";
 
-const VERSION = "1.0.0";
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const VERSION = JSON.parse(
+  readFileSync(join(__dirname, "..", "..", "package.json"), "utf-8")
+).version;
 const BANNER = chalk.bold.cyan(`
   coverit v${VERSION}
   Your code, covered.
@@ -30,6 +43,126 @@ const BANNER = chalk.bold.cyan(`
 
 function resolveProjectRoot(pathArg?: string): string {
   return resolve(pathArg ?? process.cwd());
+}
+
+/**
+ * Prompt the user with a question and return their answer.
+ */
+function prompt(question: string): Promise<string> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((res) => {
+    rl.question(question, (answer) => {
+      rl.close();
+      res(answer.trim());
+    });
+  });
+}
+
+/**
+ * Detect available AI providers, show them to the user, and let them
+ * confirm or choose which one to use.
+ *
+ * - If only one is found, show it and ask for confirmation
+ * - If multiple are found, let the user pick
+ * - If none are found, show setup instructions and exit
+ * - Non-TTY (piped/CI) or -y flag: auto-select best provider
+ */
+async function resolveProvider(autoYes: boolean): Promise<AIProvider> {
+  const isInteractive = process.stdin.isTTY && !autoYes;
+
+  const spinner = ora("  Detecting AI tools...").start();
+  const providers = await detectAllProviders();
+  spinner.stop();
+
+  if (providers.length === 0) {
+    console.log(chalk.red("\n  No AI tools found.\n"));
+    console.log("  Install one of the following:\n");
+    console.log("  1. Claude Code  — https://docs.anthropic.com/en/docs/claude-code");
+    console.log("  2. Gemini CLI   — https://github.com/google-gemini/gemini-cli");
+    console.log("  3. Codex CLI    — https://github.com/openai/codex");
+    console.log("  4. Ollama       — https://ollama.com\n");
+    console.log("  Or set ANTHROPIC_API_KEY or OPENAI_API_KEY.\n");
+    process.exit(1);
+  }
+
+  // Non-interactive: auto-select first (best priority) provider
+  if (!isInteractive) {
+    const provider = providers[0]!;
+    console.log(`  Using ${chalk.green(getProviderDisplayName(provider))}\n`);
+    return provider;
+  }
+
+  // Single provider: show and confirm
+  if (providers.length === 1) {
+    const provider = providers[0]!;
+    const displayName = getProviderDisplayName(provider);
+    console.log(`\n  Found: ${chalk.green(displayName)}\n`);
+    const answer = await prompt(`  Use ${displayName}? (Y/n) `);
+    if (answer.toLowerCase() === "n") {
+      console.log("\n  Aborted.\n");
+      process.exit(0);
+    }
+    console.log();
+    return provider;
+  }
+
+  // Multiple providers: let user choose
+  console.log(`\n  Found ${providers.length} AI tools:\n`);
+  providers.forEach((p, i) => {
+    const name = getProviderDisplayName(p);
+    const marker = i === 0 ? chalk.green(" (recommended)") : "";
+    console.log(`    ${i + 1}. ${name}${marker}`);
+  });
+  console.log();
+
+  const answer = await prompt(`  Which AI tool should coverit use? [1] `);
+  const choice = answer === "" ? 0 : parseInt(answer, 10) - 1;
+
+  if (isNaN(choice) || choice < 0 || choice >= providers.length) {
+    console.log("\n  Invalid choice. Aborted.\n");
+    process.exit(1);
+  }
+
+  const selected = providers[choice]!;
+  console.log(`\n  Using ${chalk.green(getProviderDisplayName(selected))}\n`);
+  return selected;
+}
+
+/**
+ * Create a progress handler that updates an ora spinner with
+ * real-time streaming events from the AI provider.
+ */
+function createProgressHandler(spinner: ReturnType<typeof ora>) {
+  let toolCount = 0;
+
+  return (event: AIProgressEvent): void => {
+    switch (event.type) {
+      case "tool_use": {
+        toolCount++;
+        const label = event.input ? shortenPath(event.input) : "";
+        spinner.text = chalk.dim(
+          `  [${toolCount}] ${event.tool}${label ? ` ${label}` : ""}`,
+        );
+        break;
+      }
+      case "tool_result":
+        // No-op — the next tool_use will update the spinner
+        break;
+      case "text_delta":
+        // Ignore text deltas for spinner — they're too noisy
+        break;
+      case "thinking":
+        spinner.text = chalk.dim(`  Thinking...`);
+        break;
+    }
+  };
+}
+
+/** Shorten a file path or pattern for display (max ~50 chars) */
+function shortenPath(input: string): string {
+  if (input.length <= 50) return input;
+  // Show last 47 chars with ellipsis
+  return "..." + input.slice(-47);
 }
 
 // ─── CLI Program ─────────────────────────────────────────────
@@ -40,6 +173,7 @@ program
   .name("coverit")
   .version(VERSION)
   .description("AI-powered test quality platform")
+  .option("-y, --yes", "Skip confirmation prompts (auto-select best AI tool)")
   .hook("preAction", (_thisCommand, actionCommand) => {
     if (actionCommand.name() !== "mcp") {
       console.log(BANNER);
@@ -54,10 +188,14 @@ program
   .description("AI scans and analyzes codebase → creates coverit.json quality manifest")
   .action(async (pathArg: string) => {
     const projectRoot = resolveProjectRoot(pathArg);
+    const autoYes = program.opts().yes ?? false;
+
+    const provider = await resolveProvider(autoYes);
     const spinner = ora("Scanning and analyzing codebase with AI...").start();
+    const onProgress = createProgressHandler(spinner);
 
     try {
-      const manifest = await scanCodebase(projectRoot);
+      const manifest = await scanCodebase(projectRoot, provider, onProgress);
 
       spinner.text = "Writing coverit.json...";
       await writeManifest(projectRoot, manifest);
@@ -86,7 +224,11 @@ program
   .description("AI generates tests from coverit.json gaps, runs them, and updates the score")
   .action(async (pathArg: string, cmdOpts: { modules?: string }) => {
     const projectRoot = resolveProjectRoot(pathArg);
+    const autoYes = program.opts().yes ?? false;
+
+    const provider = await resolveProvider(autoYes);
     const spinner = ora("Reading coverit.json and generating tests...").start();
+    const onProgress = createProgressHandler(spinner);
 
     try {
       const modules = cmdOpts.modules
@@ -96,6 +238,8 @@ program
       const result = await cover({
         projectRoot,
         modules,
+        aiProvider: provider,
+        onProgress,
       });
 
       spinner.stop();
@@ -140,7 +284,11 @@ program
   .description("Run existing tests, fix failures via AI, and update the score")
   .action(async (pathArg: string, cmdOpts: { modules?: string }) => {
     const projectRoot = resolveProjectRoot(pathArg);
+    const autoYes = program.opts().yes ?? false;
+
+    const provider = await resolveProvider(autoYes);
     const spinner = ora("Running tests and fixing failures...").start();
+    const onProgress = createProgressHandler(spinner);
 
     try {
       const modules = cmdOpts.modules
@@ -150,6 +298,8 @@ program
       const result = await runTests({
         projectRoot,
         modules,
+        aiProvider: provider,
+        onProgress,
       });
 
       spinner.stop();

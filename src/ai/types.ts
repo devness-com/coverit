@@ -38,6 +38,13 @@ export interface AIResponse {
   truncated?: boolean;
 }
 
+/** Progress events emitted during AI generation (streaming) */
+export type AIProgressEvent =
+  | { type: "tool_use"; tool: string; input?: string }
+  | { type: "tool_result"; tool: string }
+  | { type: "text_delta"; text: string }
+  | { type: "thinking"; text: string };
+
 export interface AIGenerateOptions {
   maxTokens?: number;
   temperature?: number;
@@ -47,6 +54,8 @@ export interface AIGenerateOptions {
   cwd?: string;
   /** Timeout in milliseconds — Claude CLI only. Defaults to 600_000 (10 min). */
   timeoutMs?: number;
+  /** Callback for streaming progress events — Claude CLI only */
+  onProgress?: (event: AIProgressEvent) => void;
 }
 
 export interface AIProvider {

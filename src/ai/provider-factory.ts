@@ -107,6 +107,44 @@ export async function detectBestProvider(): Promise<AIProvider> {
   );
 }
 
+/** Human-readable display names for each provider */
+const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
+  "claude-cli": "Claude Code",
+  "gemini-cli": "Gemini CLI",
+  "codex-cli": "Codex CLI",
+  "anthropic": "Anthropic API",
+  "openai": "OpenAI API",
+  "ollama": "Ollama (local)",
+};
+
+/** Get a human-readable display name for a provider */
+export function getProviderDisplayName(provider: AIProvider): string {
+  return PROVIDER_DISPLAY_NAMES[provider.name] ?? provider.name;
+}
+
+/**
+ * Detect all available AI providers by probing each one.
+ * Returns them in priority order (best first).
+ */
+export async function detectAllProviders(): Promise<AIProvider[]> {
+  const candidates: AIProvider[] = [
+    new ClaudeCliProvider(),
+    new GeminiCliProvider(),
+    new CodexCliProvider(),
+    new AnthropicProvider(),
+    new OpenAIProvider(),
+    new OllamaProvider(),
+  ];
+
+  const available: AIProvider[] = [];
+  for (const candidate of candidates) {
+    if (await candidate.isAvailable()) {
+      available.push(candidate);
+    }
+  }
+  return available;
+}
+
 /** Instantiate a provider by type without checking availability */
 function buildProvider(
   type: AIProviderType,

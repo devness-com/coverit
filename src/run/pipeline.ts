@@ -23,7 +23,7 @@ import {
   buildRunFixPrompt,
   parseRunFixResponse,
 } from "../ai/run-prompts.js";
-import type { AIProvider } from "../ai/types.js";
+import type { AIProvider, AIProgressEvent } from "../ai/types.js";
 import { logger } from "../utils/logger.js";
 
 // ─── Types ───────────────────────────────────────────────────
@@ -34,6 +34,8 @@ export interface RunOptions {
   modules?: string[];
   /** Optional AI provider (auto-detected if not provided) */
   aiProvider?: AIProvider;
+  /** Callback for streaming progress events */
+  onProgress?: (event: AIProgressEvent) => void;
 }
 
 export interface RunResult {
@@ -117,6 +119,7 @@ export async function runTests(options: RunOptions): Promise<RunResult> {
         allowedTools: ALLOWED_TOOLS,
         cwd: projectRoot,
         timeoutMs: FIX_TIMEOUT_MS,
+        onProgress: options.onProgress,
       });
 
       const summary = parseRunFixResponse(response.content);
