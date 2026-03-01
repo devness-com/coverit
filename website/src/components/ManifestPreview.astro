@@ -14,7 +14,7 @@ const manifest = {
 };
 ---
 
-<div class="manifest-preview paper-card rounded-2xl p-8 max-w-lg mx-auto overflow-hidden animate-on-scroll">
+<div class="manifest-preview paper-card rounded-2xl p-4 sm:p-8 max-w-lg mx-auto overflow-hidden animate-on-scroll">
   <div class="flex items-center justify-between mb-8 border-b border-border-strong/10 pb-4">
      <div class="flex items-center gap-3">
         <div class="w-8 h-8 rounded-lg bg-amber/10 text-amber flex items-center justify-center">
@@ -28,7 +28,7 @@ const manifest = {
      </div>
   </div>
 
-  <div class="font-mono text-[13px] leading-relaxed relative group/manifest">
+  <div class="font-mono text-[11px] sm:text-[13px] leading-relaxed relative group/manifest">
     <div class="text-text-muted/40 absolute -left-6 h-full border-l border-dashed border-border-strong/20"></div>
     
     <div class="pl-2 space-y-1">
@@ -39,21 +39,21 @@ const manifest = {
       <div class="flex gap-2 group/score cursor-help hover:bg-accent/5 -mx-2 px-2 py-0.5 rounded transition-colors">
          <span class="text-amber/60">"score"</span>: 
          <span class="text-accent font-black">{manifest.score}</span>,
-         <div class="absolute right-0 top-0 opacity-0 group-hover/score:opacity-100 transition-opacity bg-accent text-white font-heading font-bold px-3 py-1 rounded-full text-[10px] -translate-y-full mb-2">Confidence Level: High</div>
+         <div class="hidden sm:block absolute right-0 top-0 opacity-0 group-hover/score:opacity-100 transition-opacity bg-accent text-white font-heading font-bold px-3 py-1 rounded-full text-[10px] -translate-y-full mb-2">Confidence Level: High</div>
       </div>
       
       <div class="mt-4">
          <span class="text-amber/60">"dimensions"</span>: {"{"}
-         <div class="pl-6 space-y-1 border-l border-border-strong/10 my-2 ml-2">
+         <div class="pl-3 sm:pl-6 space-y-1 border-l border-border-strong/10 my-2 ml-2">
             {Object.entries(manifest.dimensions).map(([key, value]) => (
-               <div class="flex gap-2 group/dim cursor-help hover:bg-amber/5 -mx-2 px-2 py-0.5 rounded transition-colors relative">
-                  <span class="text-text/70">"{key}"</span>: {"{"} 
-                  <span class="text-amber-dim">"score"</span>: {value.score}, 
-                  <span class="text-amber-dim">"gaps"</span>: {value.gaps} 
+               <div class="flex flex-wrap gap-x-2 group/dim cursor-help hover:bg-amber/5 -mx-2 px-2 py-0.5 rounded transition-colors relative">
+                  <span class="text-text/70">"{key}"</span>: {"{"}
+                  <span class="text-amber-dim">"score"</span>: {value.score},
+                  <span class="text-amber-dim">"gaps"</span>: {value.gaps}
                   {"}"},
                   
-                  <!-- Preview overlay -->
-                  <div class="absolute left-full ml-4 top-1/2 -translate-y-1/2 w-48 p-3 rounded-lg bg-bg-warm border border-border shadow-editorial opacity-0 translate-x-4 pointer-events-none group-hover/dim:opacity-100 group-hover/dim:translate-x-0 transition-all z-20">
+                  <!-- Preview overlay (hidden on mobile to prevent overflow) -->
+                  <div class="hidden lg:block absolute left-full ml-4 top-1/2 -translate-y-1/2 w-48 p-3 rounded-lg bg-bg-warm border border-border shadow-editorial opacity-0 translate-x-4 pointer-events-none group-hover/dim:opacity-100 group-hover/dim:translate-x-0 transition-all z-20">
                      <p class="font-heading font-black text-[10px] uppercase text-accent mb-1">{key} Analysis</p>
                      <div class="h-1 bg-border rounded-full overflow-hidden mb-2">
                         <div class="h-full bg-accent" style={`width: ${value.score}%;`}></div>

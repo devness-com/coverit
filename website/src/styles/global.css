@@ -48,6 +48,7 @@ body {
   color: var(--color-text);
   background-color: var(--color-bg);
   position: relative;
+  overflow-x: hidden;
 }
 
 /* Subtle grain texture overlay */

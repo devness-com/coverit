@@ -13,11 +13,9 @@ import TerminalMockup from './TerminalMockup.astro';
     <TerminalMockup title="coverit interactive" initialContent="<span class='text-text-muted/40'>Waiting for command...</span>" />
   </div>
 
-  <!-- Gauge (Floating Secondary Visual) -->
-  <div class="absolute -top-8 -right-8 lg:-right-12 z-20 scale-75 lg:scale-85 animate-float drop-shadow-editorial-lg">
-    <div class="paper-card rounded-full p-3 border-accent/20">
-       <ScoreGauge score={0} size={160} />
-    </div>
+  <!-- Gauge (Floating Compact Badge) -->
+  <div class="absolute -top-6 -right-4 lg:-right-6 z-20 animate-float">
+    <ScoreGauge score={0} size={110} />
   </div>
 
   <!-- Status Badges -->
