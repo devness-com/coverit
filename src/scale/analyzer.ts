@@ -49,6 +49,7 @@ import type { AIProvider, AIProgressEvent } from "../ai/types.js";
 import type { SecurityAIModule } from "../ai/security-prompts.js";
 import type { StabilityAIModule } from "../ai/stability-prompts.js";
 import type { ConformanceAIModule } from "../ai/conformance-prompts.js";
+import type { ScanScope } from "../utils/git.js";
 import { readManifest } from "./writer.js";
 import { logger } from "../utils/logger.js";
 import { ScanLogger } from "../utils/scan-logger.js";
@@ -87,6 +88,8 @@ export interface ScanOptions {
    * Requires coverit.json to exist if functionality is not included.
    */
   dimensions?: ScanDimension[];
+  /** Incremental scan scope — only re-analyze modules affected by changes */
+  scope?: ScanScope;
 }
 
 // ─── Core Logic ──────────────────────────────────────────────
@@ -129,6 +132,7 @@ export async function scanCodebase(
   let aiProvider: AIProvider | undefined;
   let onProgress: ((event: AIProgressEvent) => void) | undefined;
   let timeoutMs: number;
+  let scope: ScanScope | undefined;
 
   let dimensions: Set<ScanDimension>;
 
@@ -139,12 +143,13 @@ export async function scanCodebase(
     timeoutMs = DEFAULT_TIMEOUT_MS;
     dimensions = new Set(ALL_DIMENSIONS);
   } else if (optionsOrProvider && typeof optionsOrProvider === "object") {
-    // New: scanCodebase(root, { aiProvider, onProgress, timeoutMs, dimensions })
+    // New: scanCodebase(root, { aiProvider, onProgress, timeoutMs, dimensions, scope })
     const opts = optionsOrProvider as ScanOptions;
     aiProvider = opts.aiProvider;
     onProgress = opts.onProgress;
     timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     dimensions = new Set(opts.dimensions ?? ALL_DIMENSIONS);
+    scope = opts.scope;
   } else {
     timeoutMs = DEFAULT_TIMEOUT_MS;
     dimensions = new Set(ALL_DIMENSIONS);
@@ -164,6 +169,13 @@ export async function scanCodebase(
   if (existingManifest) {
     logger.debug(
       `Found existing coverit.json (${existingManifest.modules.length} modules, score ${existingManifest.score.overall}/100)`,
+    );
+  }
+
+  // Incremental scans require an existing manifest to merge into
+  if (scope && !existingManifest) {
+    throw new Error(
+      "Incremental scan requires an existing coverit.json. Run `coverit scan` first for initial setup.",
     );
   }
 
@@ -197,57 +209,134 @@ export async function scanCodebase(
     const dimCount = dimensions.size;
     onProgress?.({ type: "phase", name: "Functionality", step: 1, total: dimCount });
     const funcStart = Date.now();
-    const messages = buildScalePrompt(projectInfo, existingManifest ?? undefined);
 
-    logger.debug("Sending analysis prompt to AI with tool access...");
-    const response = await provider.generate(messages, {
-      allowedTools: ALLOWED_TOOLS,
-      cwd: projectRoot,
-      timeoutMs,
-      onProgress,
-    });
+    // ── Incremental scan path ──
+    if (scope && existingManifest) {
+      const { getChangedFiles, mapFilesToModules } = await import("../utils/git.js");
+      const changedFiles = await getChangedFiles(scope, projectRoot);
 
-    logger.debug(
-      `AI analysis complete (${response.content.length} chars, model: ${response.model})`,
-    );
+      if (changedFiles.length === 0) {
+        logger.info("No changes detected. Nothing to scan.");
+        return existingManifest;
+      }
 
-    aiResult = parseScaleResponse(response.content);
-    logger.debug(
-      `Parsed: ${aiResult.modules.length} modules, ${aiResult.journeys.length} journeys, ${aiResult.contracts.length} contracts`,
-    );
+      const modulePaths = existingManifest.modules.map(m => m.path);
+      const { affectedModules, unmappedFiles } = mapFilesToModules(changedFiles, modulePaths);
 
-    // Override deterministic detection with AI-detected values when available
-    if (aiResult.language && VALID_LANGUAGES.has(aiResult.language)) {
-      projectInfo = { ...projectInfo, language: aiResult.language as typeof projectInfo.language };
+      logger.debug(`Changed files: ${changedFiles.length}, affected modules: ${affectedModules.size}, unmapped: ${unmappedFiles.length}`);
+
+      // Use incremental prompt
+      const { buildIncrementalScalePrompt } = await import("../ai/scale-prompts.js");
+      const incMessages = buildIncrementalScalePrompt(
+        projectInfo,
+        changedFiles,
+        [...affectedModules],
+        unmappedFiles,
+      );
+
+      const response = await provider.generate(incMessages, {
+        allowedTools: ALLOWED_TOOLS,
+        cwd: projectRoot,
+        timeoutMs,
+        onProgress,
+      });
+
+      const incResult = parseScaleResponse(response.content);
+
+      // Merge: start with existing modules, update affected ones
+      const updatedMap = new Map(incResult.modules.map(m => [m.path, m]));
+      modules = existingManifest.modules.map(existing => {
+        const updated = updatedMap.get(existing.path);
+        if (updated) {
+          const entry = aiModuleToEntry(updated);
+          // Preserve existing dimension data (security, stability, conformance)
+          entry.security = existing.security;
+          entry.stability = existing.stability;
+          entry.conformance = existing.conformance;
+          return entry;
+        }
+        return existing;
+      });
+
+      // Add newly discovered modules
+      for (const [path, mod] of updatedMap) {
+        if (!modules.some(m => m.path === path)) {
+          modules.push(aiModuleToEntry(mod));
+        }
+      }
+
+      // Remove modules flagged as deleted (files: 0)
+      modules = modules.filter(m => m.files > 0);
+
+      // Use existing totals (incremental scan doesn't recount whole project)
+      totalSourceFiles = existingManifest.project.sourceFiles;
+      totalSourceLines = existingManifest.project.sourceLines;
+      scannedDates.functionality = now;
+
+      // Signal to use existing manifest's journeys/contracts
+      aiResult = null;
+
+      scanLog.record({
+        name: "Functionality",
+        success: true,
+        durationMs: Date.now() - funcStart,
+        detail: `${affectedModules.size} modules updated (incremental)`,
+      });
+      onProgress?.({ type: "dimension_status", name: "Functionality", status: "done", detail: `${affectedModules.size} modules updated` });
+    } else {
+      // ── Full scan path (existing code) ──
+      const messages = buildScalePrompt(projectInfo, existingManifest ?? undefined);
+
+      logger.debug("Sending analysis prompt to AI with tool access...");
+      const response = await provider.generate(messages, {
+        allowedTools: ALLOWED_TOOLS,
+        cwd: projectRoot,
+        timeoutMs,
+        onProgress,
+      });
+
+      logger.debug(
+        `AI analysis complete (${response.content.length} chars, model: ${response.model})`,
+      );
+
+      aiResult = parseScaleResponse(response.content);
+      logger.debug(
+        `Parsed: ${aiResult.modules.length} modules, ${aiResult.journeys.length} journeys, ${aiResult.contracts.length} contracts`,
+      );
+
+      // Override deterministic detection with AI-detected values when available
+      if (aiResult.language && VALID_LANGUAGES.has(aiResult.language)) {
+        projectInfo = { ...projectInfo, language: aiResult.language as typeof projectInfo.language };
+      }
+      if (aiResult.framework && VALID_FRAMEWORKS.has(aiResult.framework)) {
+        projectInfo = { ...projectInfo, framework: aiResult.framework as typeof projectInfo.framework };
+      }
+      if (aiResult.testFramework && VALID_TEST_FRAMEWORKS.has(aiResult.testFramework)) {
+        projectInfo = { ...projectInfo, testFramework: aiResult.testFramework as typeof projectInfo.testFramework };
+      }
+
+      scanLog.record({
+        name: "Functionality",
+        success: true,
+        durationMs: Date.now() - funcStart,
+        detail: `${aiResult.modules.length} modules discovered`,
+      });
+
+      // Emit completion so the CLI progress display includes Functionality
+      onProgress?.({ type: "dimension_status", name: "Functionality", status: "done", detail: `${aiResult.modules.length} modules` });
+
+      // Assemble modules from Functionality result
+      modules = aiResult.modules.map(aiModuleToEntry);
+      totalSourceFiles =
+        aiResult.sourceFiles > 0
+          ? aiResult.sourceFiles
+          : modules.reduce((sum, m) => sum + m.files, 0);
+      totalSourceLines =
+        aiResult.sourceLines > 0
+          ? aiResult.sourceLines
+          : modules.reduce((sum, m) => sum + m.lines, 0);
+      scannedDates.functionality = now;
     }
-    if (aiResult.framework && VALID_FRAMEWORKS.has(aiResult.framework)) {
-      projectInfo = { ...projectInfo, framework: aiResult.framework as typeof projectInfo.framework };
-    }
-    if (aiResult.testFramework && VALID_TEST_FRAMEWORKS.has(aiResult.testFramework)) {
-      projectInfo = { ...projectInfo, testFramework: aiResult.testFramework as typeof projectInfo.testFramework };
-    }
-
-    scanLog.record({
-      name: "Functionality",
-      success: true,
-      durationMs: Date.now() - funcStart,
-      detail: `${aiResult.modules.length} modules discovered`,
-    });
-
-    // Emit completion so the CLI progress display includes Functionality
-    onProgress?.({ type: "dimension_status", name: "Functionality", status: "done", detail: `${aiResult.modules.length} modules` });
-
-    // Assemble modules from Functionality result
-    modules = aiResult.modules.map(aiModuleToEntry);
-    totalSourceFiles =
-      aiResult.sourceFiles > 0
-        ? aiResult.sourceFiles
-        : modules.reduce((sum, m) => sum + m.files, 0);
-    totalSourceLines =
-      aiResult.sourceLines > 0
-        ? aiResult.sourceLines
-        : modules.reduce((sum, m) => sum + m.lines, 0);
-    scannedDates.functionality = now;
   } else {
     // Reuse modules from existing coverit.json
     logger.debug("Skipping Functionality scan — reusing modules from existing coverit.json");
@@ -305,9 +394,9 @@ export async function scanCodebase(
   }
 
   // ─── Step 6: Assemble final manifest with all dimensions ───
-  // When functionality was skipped, reuse journeys/contracts from existing manifest.
-  const journeys = runFunctionality
-    ? aiResult!.journeys.map((j) => ({
+  // When functionality was skipped or incremental scan was used, reuse journeys/contracts from existing manifest.
+  const journeys = (runFunctionality && aiResult)
+    ? aiResult.journeys.map((j) => ({
         id: j.id,
         name: j.name,
         steps: j.steps,
@@ -316,8 +405,8 @@ export async function scanCodebase(
       }))
     : existingManifest?.journeys ?? [];
 
-  const contracts = runFunctionality
-    ? aiResult!.contracts.map((c) => ({
+  const contracts = (runFunctionality && aiResult)
+    ? aiResult.contracts.map((c) => ({
         endpoint: c.endpoint,
         method: c.method,
         requestSchema: c.requestSchema,
@@ -376,7 +465,7 @@ export async function scanCodebase(
 
   // Preserve history from existing manifest, append new entry
   const previousHistory = existingManifest?.score.history ?? [];
-  const scope = existingManifest ? "re-analysis" : "first-time";
+  const scope_label = scope ? "incremental" : (existingManifest ? "re-analysis" : "first-time");
 
   const manifest: CoveritManifest = {
     ...preliminary,
@@ -387,7 +476,7 @@ export async function scanCodebase(
         {
           date: now,
           score: scoreResult.overall,
-          scope,
+          scope: scope_label,
         },
       ],
     },
