@@ -249,7 +249,7 @@ describe("scanCodebase", () => {
       expect.objectContaining({
         allowedTools: ["Read", "Glob", "Grep", "Bash"],
         cwd: "/tmp/test-app",
-        timeoutMs: 900_000,
+        timeoutMs: 1_200_000,
       }),
     );
   });

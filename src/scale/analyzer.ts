@@ -59,8 +59,8 @@ import { useaiHeartbeat } from "../integrations/useai.js";
 /** Tools the AI is allowed to use during codebase exploration */
 const ALLOWED_TOOLS = ["Read", "Glob", "Grep", "Bash"];
 
-/** 15 minutes — large codebases may take a while to explore */
-const DEFAULT_TIMEOUT_MS = 900_000;
+/** 20 minutes — large codebases may take a while to explore */
+const DEFAULT_TIMEOUT_MS = 1_200_000;
 
 // ─── Options ─────────────────────────────────────────────────
 
@@ -69,7 +69,7 @@ export interface ScanOptions {
   aiProvider?: AIProvider;
   /** Progress callback for streaming events */
   onProgress?: (event: AIProgressEvent) => void;
-  /** Timeout per dimension in milliseconds (default: 900_000 = 15 min) */
+  /** Timeout per dimension in milliseconds (default: 1_200_000 = 20 min) */
   timeoutMs?: number;
 }
 
@@ -203,7 +203,6 @@ export async function scanCodebase(
   // of each other (they all depend only on the modules from Functionality).
   // Running them concurrently gives ~3-4x speedup.
 
-  onProgress?.({ type: "phase", name: "Security + Stability + Conformance + Regression", step: 2, total: 2 });
   await useaiHeartbeat();
 
   const parallelContext: ParallelScanContext = {
@@ -360,9 +359,10 @@ async function runSecurityScan(
   onProgress?: (event: AIProgressEvent) => void,
 ): Promise<void> {
   const start = Date.now();
+  onProgress?.({ type: "dimension_status", name: "Security", status: "running" });
   try {
     logger.debug("Starting security scan...");
-    const secMessages = buildSecurityPrompt(ctx.projectInfo, ctx.modules);
+    const secMessages = buildSecurityPrompt(ctx.projectInfo, ctx.modules, ctx.existingManifest?.modules);
     const secResponse = await ctx.provider.generate(secMessages, {
       allowedTools: ALLOWED_TOOLS,
       cwd: ctx.projectRoot,
@@ -380,15 +380,19 @@ async function runSecurityScan(
       durationMs: Date.now() - start,
       detail: `${findings} findings across ${secResult.modules.length} modules`,
     });
+    onProgress?.({ type: "dimension_status", name: "Security", status: "done", detail: `${findings} findings` });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error("Security scan failed:", msg);
+    // Restore previous security data so a failed re-scan doesn't wipe existing findings
+    restorePreviousDimensionData(ctx, "security");
     ctx.scanLog.record({
       name: "Security",
       success: false,
       durationMs: Date.now() - start,
       error: msg,
     });
+    onProgress?.({ type: "dimension_status", name: "Security", status: "failed", detail: msg });
   }
 }
 
@@ -397,9 +401,10 @@ async function runStabilityScan(
   onProgress?: (event: AIProgressEvent) => void,
 ): Promise<void> {
   const start = Date.now();
+  onProgress?.({ type: "dimension_status", name: "Stability", status: "running" });
   try {
     logger.debug("Starting stability scan...");
-    const stabMessages = buildStabilityPrompt(ctx.projectInfo, ctx.modules);
+    const stabMessages = buildStabilityPrompt(ctx.projectInfo, ctx.modules, ctx.existingManifest?.modules);
     const stabResponse = await ctx.provider.generate(stabMessages, {
       allowedTools: ALLOWED_TOOLS,
       cwd: ctx.projectRoot,
@@ -416,15 +421,19 @@ async function runStabilityScan(
       durationMs: Date.now() - start,
       detail: `${stabResult.modules.length} modules assessed`,
     });
+    onProgress?.({ type: "dimension_status", name: "Stability", status: "done", detail: `${stabResult.modules.length} modules` });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error("Stability scan failed:", msg);
+    // Restore previous stability data so a failed re-scan doesn't wipe existing gaps
+    restorePreviousDimensionData(ctx, "stability");
     ctx.scanLog.record({
       name: "Stability",
       success: false,
       durationMs: Date.now() - start,
       error: msg,
     });
+    onProgress?.({ type: "dimension_status", name: "Stability", status: "failed", detail: msg });
   }
 }
 
@@ -433,9 +442,10 @@ async function runConformanceScan(
   onProgress?: (event: AIProgressEvent) => void,
 ): Promise<void> {
   const start = Date.now();
+  onProgress?.({ type: "dimension_status", name: "Conformance", status: "running" });
   try {
     logger.debug("Starting conformance scan...");
-    const confMessages = buildConformancePrompt(ctx.projectInfo, ctx.modules);
+    const confMessages = buildConformancePrompt(ctx.projectInfo, ctx.modules, ctx.existingManifest?.modules);
     const confResponse = await ctx.provider.generate(confMessages, {
       allowedTools: ALLOWED_TOOLS,
       cwd: ctx.projectRoot,
@@ -452,15 +462,19 @@ async function runConformanceScan(
       durationMs: Date.now() - start,
       detail: `${confResult.modules.length} modules assessed`,
     });
+    onProgress?.({ type: "dimension_status", name: "Conformance", status: "done", detail: `${confResult.modules.length} modules` });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error("Conformance scan failed:", msg);
+    // Restore previous conformance data so a failed re-scan doesn't wipe existing violations
+    restorePreviousDimensionData(ctx, "conformance");
     ctx.scanLog.record({
       name: "Conformance",
       success: false,
       durationMs: Date.now() - start,
       error: msg,
     });
+    onProgress?.({ type: "dimension_status", name: "Conformance", status: "failed", detail: msg });
   }
 }
 
@@ -468,9 +482,8 @@ async function runRegressionScan(
   ctx: ParallelScanContext,
   onProgress?: (event: AIProgressEvent) => void,
 ): Promise<void> {
-  // Suppress unused param warning — regression doesn't use AI progress events
-  void onProgress;
   const start = Date.now();
+  onProgress?.({ type: "dimension_status", name: "Regression", status: "running" });
   try {
     logger.debug("Starting regression scan (test execution)...");
     const tempManifest: CoveritManifest = {
@@ -526,6 +539,7 @@ async function runRegressionScan(
         durationMs: Date.now() - start,
         detail: `${runResult.passed}/${runResult.total} tests passed`,
       });
+      onProgress?.({ type: "dimension_status", name: "Regression", status: "done", detail: `${runResult.passed}/${runResult.total} passed` });
     } else {
       ctx.scannedDates.regression = ctx.now;
       logger.debug("Regression scan: no test files found, marking as scanned");
@@ -535,6 +549,7 @@ async function runRegressionScan(
         durationMs: Date.now() - start,
         detail: "no test files found",
       });
+      onProgress?.({ type: "dimension_status", name: "Regression", status: "done", detail: "no tests" });
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -545,6 +560,7 @@ async function runRegressionScan(
       durationMs: Date.now() - start,
       error: msg,
     });
+    onProgress?.({ type: "dimension_status", name: "Regression", status: "failed", detail: msg });
   }
 }
 
@@ -605,6 +621,47 @@ function applyConformanceResults(
         violations: conf.violations,
       };
     }
+  }
+}
+
+/**
+ * Restore previous dimension data from the existing manifest when a dimension scan fails.
+ * Matches modules by path and copies the relevant dimension data back, so a failed
+ * re-scan doesn't wipe data that was gathered in a previous successful scan.
+ */
+function restorePreviousDimensionData(
+  ctx: ParallelScanContext,
+  dimension: "security" | "stability" | "conformance",
+): void {
+  const existingModules = ctx.existingManifest?.modules;
+  if (!existingModules?.length) return;
+
+  const existingMap = new Map(existingModules.map((m) => [m.path, m]));
+  let restored = 0;
+
+  for (const mod of ctx.modules) {
+    const prev = existingMap.get(mod.path);
+    if (!prev) continue;
+
+    if (dimension === "security" && prev.security) {
+      mod.security = { ...prev.security };
+      restored++;
+    } else if (dimension === "stability" && prev.stability) {
+      mod.stability = { ...prev.stability };
+      restored++;
+    } else if (dimension === "conformance" && prev.conformance) {
+      mod.conformance = { ...prev.conformance };
+      restored++;
+    }
+  }
+
+  if (restored > 0) {
+    // Preserve the previous scanned date since we're using old data
+    const prevScanned = ctx.existingManifest?.score.scanned?.[dimension];
+    if (prevScanned) {
+      ctx.scannedDates[dimension] = prevScanned;
+    }
+    logger.debug(`Restored previous ${dimension} data for ${restored} modules`);
   }
 }
 

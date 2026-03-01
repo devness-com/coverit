@@ -40,6 +40,7 @@ export interface StabilityAIModule {
 export function buildStabilityPrompt(
   projectInfo: ProjectInfo,
   modules: ModuleEntry[],
+  existingModules?: ModuleEntry[],
 ): AIMessage[] {
   const moduleList = modules
     .map((m) => `  - ${m.path} (${m.files} files, ${m.complexity} complexity)`)
@@ -120,19 +121,59 @@ Return ONLY a valid JSON object with no surrounding markdown, no explanation, no
 Include ALL modules in the response. Modules with excellent stability should have high scores and empty gaps arrays.
 Return ONLY the JSON. No markdown code fences. No explanatory text.`;
 
+  const previousAnalysis = buildStabilityPreviousAnalysis(existingModules);
+
   const user = `Analyze the stability and reliability of this ${projectInfo.framework} project.
 
 Project: ${projectInfo.name}
 Root: ${projectInfo.root}
 Language: ${projectInfo.language}
 Framework: ${projectInfo.framework}
-
+${previousAnalysis}
 Start by exploring each module's source files to assess error handling and reliability.`;
 
   return [
     { role: "system" as const, content: system },
     { role: "user" as const, content: user },
   ];
+}
+
+/**
+ * Build the "Previous Analysis" section for incremental stability scans.
+ * Gives the AI previous scores and gaps as a starting point so it can
+ * focus on changes and verify whether old gaps are still present.
+ */
+function buildStabilityPreviousAnalysis(existingModules?: ModuleEntry[]): string {
+  if (!existingModules?.length) return "";
+
+  const modulesWithData = existingModules.filter(
+    (m) => m.stability && (m.stability.gaps.length > 0 || m.stability.score > 0),
+  );
+
+  if (modulesWithData.length === 0) return "";
+
+  const summary = modulesWithData.map((m) => ({
+    path: m.path,
+    score: m.stability!.score,
+    gaps: m.stability!.gaps,
+  }));
+
+  return `
+
+## Previous Stability Analysis
+
+A prior stability scan produced the following. Use it as your starting point — do NOT start from scratch.
+
+- **Verify** whether each previous gap still exists in the code (it may have been fixed).
+- **Add** new gaps for reliability issues introduced since the last scan.
+- **Remove** gaps that are no longer valid (code was improved or file was deleted).
+- **Update** scores to reflect the current state of error handling and reliability.
+- **Preserve** gaps that are still present — do not lose previously identified issues.
+
+Previous results (${modulesWithData.length} modules):
+
+${JSON.stringify(summary, null, 2)}
+`;
 }
 
 // ─── Response Parser ────────────────────────────────────────

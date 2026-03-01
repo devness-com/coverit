@@ -42,6 +42,7 @@ export interface SecurityAIModule {
 export function buildSecurityPrompt(
   projectInfo: ProjectInfo,
   modules: ModuleEntry[],
+  existingModules?: ModuleEntry[],
 ): AIMessage[] {
   const moduleList = modules
     .map((m) => `  - ${m.path} (${m.files} files, ${m.complexity} complexity)`)
@@ -116,19 +117,59 @@ Return ONLY a valid JSON object with no surrounding markdown, no explanation, no
 Include ALL modules in the response, even those with zero findings (empty findings array).
 Return ONLY the JSON. No markdown code fences. No explanatory text.`;
 
+  const previousAnalysis = buildSecurityPreviousAnalysis(existingModules);
+
   const user = `Scan this ${projectInfo.framework} project for security vulnerabilities.
 
 Project: ${projectInfo.name}
 Root: ${projectInfo.root}
 Language: ${projectInfo.language}
 Framework: ${projectInfo.framework}
-
+${previousAnalysis}
 Start by exploring each module's source files to find vulnerabilities.`;
 
   return [
     { role: "system" as const, content: system },
     { role: "user" as const, content: user },
   ];
+}
+
+/**
+ * Build the "Previous Analysis" section for incremental security scans.
+ * Gives the AI previous findings as a starting point so it can focus on
+ * changes and verify whether old findings are still valid.
+ */
+function buildSecurityPreviousAnalysis(existingModules?: ModuleEntry[]): string {
+  if (!existingModules?.length) return "";
+
+  const modulesWithFindings = existingModules.filter(
+    (m) => m.security && (m.security.findings.length > 0 || m.security.issues > 0),
+  );
+
+  if (modulesWithFindings.length === 0) return "";
+
+  const summary = modulesWithFindings.map((m) => ({
+    path: m.path,
+    issues: m.security!.issues,
+    resolved: m.security!.resolved,
+    findings: m.security!.findings,
+  }));
+
+  return `
+
+## Previous Security Analysis
+
+A prior security scan found the following. Use it as your starting point — do NOT start from scratch.
+
+- **Verify** whether each previous finding is still present in the code (it may have been fixed).
+- **Add** new findings for vulnerabilities introduced since the last scan.
+- **Remove** findings that are no longer valid (code was fixed or file was deleted).
+- **Preserve** findings that are still present — do not lose previously discovered issues.
+
+Previous findings (${modulesWithFindings.length} modules with issues):
+
+${JSON.stringify(summary, null, 2)}
+`;
 }
 
 // ─── Response Parser ────────────────────────────────────────

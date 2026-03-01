@@ -133,6 +133,10 @@ async function resolveProvider(autoYes: boolean): Promise<AIProvider> {
  * Create a progress handler that updates an ora spinner with
  * real-time streaming events from the AI provider.
  *
+ * Supports two modes:
+ * - Single-line: ora spinner for sequential phases (e.g. Functionality)
+ * - Multi-line: 4 parallel dimension lines when dimension_status events arrive
+ *
  * Returns { handler, cleanup } — call cleanup() when done to stop the timer.
  */
 function createProgressHandler(spinner: ReturnType<typeof ora>) {
@@ -142,8 +146,15 @@ function createProgressHandler(spinner: ReturnType<typeof ora>) {
   let lastActivity = "";
   const startTime = Date.now();
 
+  // Multi-line parallel state
+  let parallel: ParallelProgress | null = null;
+
   function updateSpinner(): void {
-    spinner.text = formatSpinnerText(phaseName, phaseStep, phaseTotal, startTime, lastActivity);
+    if (parallel) {
+      parallel.render();
+    } else {
+      spinner.text = formatSpinnerText(phaseName, phaseStep, phaseTotal, startTime, lastActivity);
+    }
   }
 
   // Tick elapsed time every second
@@ -158,10 +169,36 @@ function createProgressHandler(spinner: ReturnType<typeof ora>) {
         lastActivity = "";
         updateSpinner();
         break;
+      case "dimension_status": {
+        if (!parallel) {
+          // Switch from single-line spinner to multi-line mode
+          spinner.stop();
+          parallel = new ParallelProgress();
+        }
+        parallel.updateStatus(event.name, event.status, event.detail);
+        parallel.render();
+        break;
+      }
       case "tool_use": {
-        const label = event.input ? shortenToFilename(event.input) : "";
-        lastActivity = `${event.tool}${label ? ` ${label}` : ""}`;
-        updateSpinner();
+        if (parallel) {
+          // Route to correct dimension by parsing "DimensionName: filename" prefix
+          const label = event.input ? shortenToFilename(event.input) : "";
+          const toolStr = `${event.tool}${label ? ` ${label}` : ""}`;
+          // Parse dimension name from prefix (e.g. "Security: auth.ts" → "Security")
+          const colonIdx = event.input?.indexOf(": ") ?? -1;
+          if (colonIdx > 0) {
+            const dimName = event.input!.slice(0, colonIdx);
+            const file = shortenToFilename(event.input!.slice(colonIdx + 2));
+            parallel.updateActivity(dimName, `${event.tool} ${file}`);
+          } else {
+            parallel.updateActivity(event.input ?? "", toolStr);
+          }
+          parallel.render();
+        } else {
+          const label = event.input ? shortenToFilename(event.input) : "";
+          lastActivity = `${event.tool}${label ? ` ${label}` : ""}`;
+          updateSpinner();
+        }
         break;
       }
       case "tool_result":
@@ -169,7 +206,7 @@ function createProgressHandler(spinner: ReturnType<typeof ora>) {
       case "text_delta":
         break;
       case "thinking":
-        if (!phaseName) {
+        if (!phaseName && !parallel) {
           lastActivity = "Thinking...";
           updateSpinner();
         }
@@ -177,9 +214,107 @@ function createProgressHandler(spinner: ReturnType<typeof ora>) {
     }
   };
 
-  const cleanup = (): void => clearInterval(timer);
+  const cleanup = (): void => {
+    clearInterval(timer);
+    if (parallel) {
+      parallel.finalize();
+      parallel = null;
+    }
+  };
 
   return { handler, cleanup };
+}
+
+// ─── Multi-Line Parallel Progress ────────────────────────────
+
+/** Dimension step numbers for display */
+const DIMENSION_STEPS: Record<string, number> = {
+  Security: 2,
+  Stability: 3,
+  Conformance: 4,
+  Regression: 5,
+};
+
+const SPINNER_CHARS = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+interface DimensionLine {
+  activity: string;
+  startTime: number;
+  status: "running" | "done" | "failed";
+  detail?: string;
+}
+
+/**
+ * Renders 4 parallel dimension progress lines using ANSI escape codes.
+ * Each line independently shows its spinner, elapsed time, and current activity.
+ */
+class ParallelProgress {
+  private lines = new Map<string, DimensionLine>();
+  private linesWritten = 0;
+  private spinnerFrame = 0;
+  private lastRenderTime = 0;
+
+  constructor() {}
+
+  updateStatus(name: string, status: "running" | "done" | "failed", detail?: string): void {
+    const existing = this.lines.get(name);
+    if (status === "running" && !existing) {
+      this.lines.set(name, { activity: "", startTime: Date.now(), status, detail });
+    } else if (existing) {
+      existing.status = status;
+      if (detail) existing.detail = detail;
+    }
+  }
+
+  updateActivity(name: string, activity: string): void {
+    const line = this.lines.get(name);
+    if (line && line.status === "running") {
+      line.activity = activity;
+    }
+  }
+
+  render(): void {
+    // Throttle renders to avoid flicker (max ~15fps)
+    const now = Date.now();
+    if (now - this.lastRenderTime < 67) return;
+    this.lastRenderTime = now;
+
+    this.spinnerFrame = (this.spinnerFrame + 1) % SPINNER_CHARS.length;
+
+    // Move cursor up to overwrite previous render
+    if (this.linesWritten > 0) {
+      process.stderr.write(`\x1B[${this.linesWritten}A`);
+    }
+
+    const entries = [...this.lines.entries()];
+    const output = entries.map(([name, state]) => {
+      const step = DIMENSION_STEPS[name] ?? 0;
+      const elapsed = formatElapsed(now - state.startTime);
+      let prefix: string;
+      if (state.status === "done") {
+        prefix = chalk.green("✓");
+      } else if (state.status === "failed") {
+        prefix = chalk.red("✗");
+      } else {
+        prefix = chalk.cyan(SPINNER_CHARS[this.spinnerFrame]!);
+      }
+      const activity = state.status !== "running" && state.detail
+        ? state.detail
+        : state.activity;
+      const activityStr = activity ? ` · ${activity}` : "";
+      return `\x1B[2K  ${prefix} ${chalk.dim(`[${step}/5]`)} ${name.padEnd(12)} ${chalk.dim(`(${elapsed})`)}${chalk.dim(activityStr)}`;
+    }).join("\n");
+
+    process.stderr.write(output + "\n");
+    this.linesWritten = entries.length;
+  }
+
+  /** Clean up the multi-line display — move cursor below the last line */
+  finalize(): void {
+    // Final render with completed states
+    this.lastRenderTime = 0; // Force render
+    this.render();
+  }
 }
 
 /** Format the spinner line: [step/total] Phase (elapsed) · activity */

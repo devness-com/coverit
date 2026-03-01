@@ -42,7 +42,7 @@ server.tool(
   "Scan and analyze the full codebase using AI and generate coverit.json quality manifest. AI explores the project with tool access to detect modules, map existing tests, classify complexity, identify journeys and contracts, and compute baseline scores.",
   {
     projectRoot: z.string().describe("Absolute path to the project root"),
-    timeoutSeconds: z.number().optional().describe("Timeout per dimension in seconds (default: 900)"),
+    timeoutSeconds: z.number().optional().describe("Timeout per dimension in seconds (default: 1200)"),
   },
   async ({ projectRoot, timeoutSeconds }) => {
     let session: Awaited<ReturnType<typeof useaiStart>> = null;

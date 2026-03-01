@@ -387,7 +387,7 @@ describe("analyzer integration", () => {
         expect.objectContaining({
           allowedTools: ["Read", "Glob", "Grep", "Bash"],
           cwd: "/home/user/booking-api",
-          timeoutMs: 900_000,
+          timeoutMs: 1_200_000,
         }),
       );
     });

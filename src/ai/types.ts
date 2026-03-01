@@ -44,7 +44,8 @@ export type AIProgressEvent =
   | { type: "tool_result"; tool: string }
   | { type: "text_delta"; text: string }
   | { type: "thinking"; text: string }
-  | { type: "phase"; name: string; step: number; total: number };
+  | { type: "phase"; name: string; step: number; total: number }
+  | { type: "dimension_status"; name: string; status: "running" | "done" | "failed"; detail?: string };
 
 export interface AIGenerateOptions {
   maxTokens?: number;

@@ -41,6 +41,7 @@ export interface ConformanceAIModule {
 export function buildConformancePrompt(
   projectInfo: ProjectInfo,
   modules: ModuleEntry[],
+  existingModules?: ModuleEntry[],
 ): AIMessage[] {
   const moduleList = modules
     .map((m) => `  - ${m.path} (${m.files} files, ${m.complexity} complexity)`)
@@ -129,19 +130,59 @@ Return ONLY a valid JSON object with no surrounding markdown, no explanation, no
 Include ALL modules in the response. Modules with excellent conformance should have high scores and empty violations arrays.
 Return ONLY the JSON. No markdown code fences. No explanatory text.`;
 
+  const previousAnalysis = buildConformancePreviousAnalysis(existingModules);
+
   const user = `Analyze the coding standards and architectural conformance of this ${projectInfo.framework} project.
 
 Project: ${projectInfo.name}
 Root: ${projectInfo.root}
 Language: ${projectInfo.language}
 Framework: ${projectInfo.framework}
-
+${previousAnalysis}
 Start by exploring several modules to understand the project's conventions, then assess each module.`;
 
   return [
     { role: "system" as const, content: system },
     { role: "user" as const, content: user },
   ];
+}
+
+/**
+ * Build the "Previous Analysis" section for incremental conformance scans.
+ * Gives the AI previous scores and violations as a starting point so it can
+ * focus on changes and verify whether old violations are still present.
+ */
+function buildConformancePreviousAnalysis(existingModules?: ModuleEntry[]): string {
+  if (!existingModules?.length) return "";
+
+  const modulesWithData = existingModules.filter(
+    (m) => m.conformance && (m.conformance.violations.length > 0 || m.conformance.score > 0),
+  );
+
+  if (modulesWithData.length === 0) return "";
+
+  const summary = modulesWithData.map((m) => ({
+    path: m.path,
+    score: m.conformance!.score,
+    violations: m.conformance!.violations,
+  }));
+
+  return `
+
+## Previous Conformance Analysis
+
+A prior conformance scan produced the following. Use it as your starting point — do NOT start from scratch.
+
+- **Verify** whether each previous violation still exists in the code (it may have been fixed).
+- **Add** new violations for issues introduced since the last scan.
+- **Remove** violations that are no longer valid (code was fixed or file was deleted).
+- **Update** scores to reflect the current state of coding standards compliance.
+- **Preserve** violations that are still present — do not lose previously identified issues.
+
+Previous results (${modulesWithData.length} modules):
+
+${JSON.stringify(summary, null, 2)}
+`;
 }
 
 // ─── Response Parser ────────────────────────────────────────
