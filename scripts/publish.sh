@@ -93,9 +93,24 @@ if [ ! -f "dist/cli/index.js" ]; then
     exit 1
 fi
 
+# Verify critical plugin files are included in the package
+log_info "Verifying plugin structure..."
+PACK_OUTPUT=$(npm pack --dry-run 2>&1)
+MISSING_FILES=""
+echo "$PACK_OUTPUT" | grep -q '\.mcp\.json' || MISSING_FILES="$MISSING_FILES .mcp.json"
+echo "$PACK_OUTPUT" | grep -q 'commands/' || MISSING_FILES="$MISSING_FILES commands/"
+echo "$PACK_OUTPUT" | grep -q 'plugin\.json' || MISSING_FILES="$MISSING_FILES .claude-plugin/plugin.json"
+
+if [ -n "$MISSING_FILES" ]; then
+    log_error "Missing critical plugin files in package:$MISSING_FILES"
+    log_error "Ensure these exist at the project root and are listed in package.json 'files'"
+    exit 1
+fi
+log_success "Plugin structure verified"
+
 # Show what will be published
 log_info "Files to be published:"
-npm pack --dry-run 2>&1 | grep -E '^\d|npm notice' | head -20
+echo "$PACK_OUTPUT" | grep -E '^\d|npm notice' | head -20
 
 echo ""
 read -p "Publish $VERSION_NUMBER to npm? (y/N) " -n 1 -r
@@ -114,14 +129,20 @@ npm publish --access public
 log_success "Published @devness/coverit@$VERSION_NUMBER to npm!"
 
 # Create git tag and commit
-log_info "Creating git tag..."
-git add package.json .claude-plugin/marketplace.json
+log_info "Creating git commit and tag..."
+git add package.json package-lock.json .claude-plugin/marketplace.json
 git commit -m "chore: release v$VERSION_NUMBER"
 git tag -a "v$VERSION_NUMBER" -m "Coverit v$VERSION_NUMBER"
 
 log_success "Created tag: v$VERSION_NUMBER"
 
-log_info "Run 'git push && git push --tags' to push changes"
+# Push to GitHub (marketplace.json must be on GitHub for plugin installs)
+log_info "Pushing to GitHub..."
+git push && git push --tags
+
+log_success "Pushed to GitHub"
 
 echo ""
-log_success "Done! Users can now install with: npm install -g @devness/coverit"
+log_success "Published @devness/coverit@$VERSION_NUMBER"
+log_success "npm: https://www.npmjs.com/package/@devness/coverit"
+log_success "Users install with: /plugin marketplace add devness-com/coverit"
