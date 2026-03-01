@@ -109,7 +109,8 @@ async function callTool(
 
   try {
     const response = await httpPost("/mcp", payload, CALL_TIMEOUT_MS);
-    return JSON.parse(response) as Record<string, unknown>;
+    const json = extractJsonFromResponse(response);
+    return JSON.parse(json) as Record<string, unknown>;
   } catch (err) {
     logger.debug(
       `UseAI ${toolName} call failed:`,
@@ -260,6 +261,26 @@ function extractText(response: Record<string, unknown>): string {
   return result.content.map((c) => c.text ?? "").join(" ");
 }
 
+/**
+ * Extract JSON from a response that may be plain JSON or SSE format.
+ * MCP HTTP transport may return `event: message\ndata: {...}` (SSE)
+ * or plain JSON depending on the server version.
+ */
+function extractJsonFromResponse(response: string): string {
+  const trimmed = response.trim();
+  // Plain JSON — starts with { or [
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    return trimmed;
+  }
+  // SSE format — extract from "data: " lines
+  for (const line of trimmed.split("\n")) {
+    if (line.startsWith("data: ")) {
+      return line.slice(6);
+    }
+  }
+  return trimmed;
+}
+
 // ─── HTTP Helpers (zero dependencies) ────────────────────────
 
 function httpGet(path: string, timeoutMs: number): Promise<string> {
@@ -293,6 +314,7 @@ function httpPostWithHeaders(
   return new Promise((resolve, reject) => {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
+      "Accept": "application/json, text/event-stream",
       "Content-Length": String(Buffer.byteLength(body)),
     };
     // Only include session ID after the initialize handshake has assigned one
