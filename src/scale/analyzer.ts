@@ -62,6 +62,11 @@ const ALLOWED_TOOLS = ["Read", "Glob", "Grep", "Bash"];
 /** 20 minutes — large codebases may take a while to explore */
 const DEFAULT_TIMEOUT_MS = 1_200_000;
 
+/** Valid values for AI-detected overrides (must match union types in types/index.ts) */
+const VALID_LANGUAGES = new Set(["typescript", "javascript", "python", "go", "rust", "java"]);
+const VALID_FRAMEWORKS = new Set(["hono", "express", "nestjs", "next", "react", "react-native", "expo", "tauri", "electron", "fastify", "none"]);
+const VALID_TEST_FRAMEWORKS = new Set(["vitest", "jest", "mocha", "playwright", "cypress", "detox", "pytest", "go-test"]);
+
 // ─── Options ─────────────────────────────────────────────────
 
 export interface ScanOptions {
@@ -132,8 +137,8 @@ export async function scanCodebase(
   const scanLog = new ScanLogger(projectRoot);
   logger.debug(`Scanning codebase at ${projectRoot} (AI-driven)`);
 
-  // Step 1: Detect project metadata (fast, deterministic)
-  const projectInfo = await detectProjectInfo(projectRoot);
+  // Step 1: Detect project metadata (fast, deterministic — AI may override later)
+  let projectInfo = await detectProjectInfo(projectRoot);
   logger.debug(
     `Detected: ${projectInfo.framework} / ${projectInfo.testFramework}`,
   );
@@ -171,6 +176,17 @@ export async function scanCodebase(
   logger.debug(
     `Parsed: ${aiResult.modules.length} modules, ${aiResult.journeys.length} journeys, ${aiResult.contracts.length} contracts`,
   );
+
+  // Override deterministic detection with AI-detected values when available
+  if (aiResult.language && VALID_LANGUAGES.has(aiResult.language)) {
+    projectInfo = { ...projectInfo, language: aiResult.language as typeof projectInfo.language };
+  }
+  if (aiResult.framework && VALID_FRAMEWORKS.has(aiResult.framework)) {
+    projectInfo = { ...projectInfo, framework: aiResult.framework as typeof projectInfo.framework };
+  }
+  if (aiResult.testFramework && VALID_TEST_FRAMEWORKS.has(aiResult.testFramework)) {
+    projectInfo = { ...projectInfo, testFramework: aiResult.testFramework as typeof projectInfo.testFramework };
+  }
 
   scanLog.record({
     name: "Functionality",

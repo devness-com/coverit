@@ -22,6 +22,12 @@ import type { CoveritManifest } from "../schema/coverit-manifest.js";
 export interface ScaleAIResponse {
   sourceFiles: number;
   sourceLines: number;
+  /** AI-detected language (overrides deterministic detection if present) */
+  language?: string;
+  /** AI-detected framework (overrides deterministic detection if present) */
+  framework?: string;
+  /** AI-detected test framework (overrides deterministic detection if present) */
+  testFramework?: string;
   modules: ScaleAIModule[];
   journeys: ScaleAIJourney[];
   contracts: ScaleAIContract[];
@@ -157,6 +163,9 @@ Count actual test cases by counting \`it(\` and \`test(\` calls (excluding comme
 Return ONLY a valid JSON object with no surrounding markdown, no explanation, no commentary. The JSON must match this exact structure:
 
 {
+  "language": "<primary language: typescript, javascript, python, go, rust, java, etc.>",
+  "framework": "<primary framework: nestjs, hono, fastify, express, next, react, expo, tauri, none, etc.>",
+  "testFramework": "<primary test framework: vitest, jest, playwright, cypress, mocha, pytest, etc.>",
   "sourceFiles": <total source files across all modules>,
   "sourceLines": <total lines of source code>,
   "modules": [
@@ -312,6 +321,9 @@ export function parseScaleResponse(raw: string): ScaleAIResponse {
       typeof obj["sourceFiles"] === "number" ? obj["sourceFiles"] : 0,
     sourceLines:
       typeof obj["sourceLines"] === "number" ? obj["sourceLines"] : 0,
+    language: typeof obj["language"] === "string" ? obj["language"] : undefined,
+    framework: typeof obj["framework"] === "string" ? obj["framework"] : undefined,
+    testFramework: typeof obj["testFramework"] === "string" ? obj["testFramework"] : undefined,
     modules,
     journeys,
     contracts,

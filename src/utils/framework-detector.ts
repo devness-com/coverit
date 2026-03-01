@@ -110,7 +110,84 @@ export async function detectTestFramework(
   if ("cypress" in allDeps) return "cypress";
   if ("mocha" in allDeps) return "mocha";
 
+  // Monorepo fallback: scan sub-packages for test frameworks
+  const monoResult = await detectTestFrameworkFromSubPackages(projectRoot);
+  if (monoResult !== "unknown") return monoResult;
+
   return "unknown";
+}
+
+/**
+ * Scans monorepo sub-packages (packages/*, apps/*) for test frameworks.
+ * Returns the most common test framework found across all sub-packages.
+ */
+async function detectTestFrameworkFromSubPackages(
+  projectRoot: string,
+): Promise<TestFramework> {
+  // Find sub-package package.json files in common monorepo directories
+  const subPkgFiles = await fg(
+    [
+      "packages/*/package.json",
+      "apps/*/package.json",
+    ],
+    { cwd: projectRoot },
+  );
+
+  if (subPkgFiles.length === 0) return "unknown";
+
+  const counts = new Map<TestFramework, number>();
+
+  for (const pkgPath of subPkgFiles) {
+    const subPkg = await readJson<PackageJson>(join(projectRoot, pkgPath));
+    if (!subPkg) continue;
+
+    const subDir = dirname(join(projectRoot, pkgPath));
+    const allDeps = { ...subPkg.dependencies, ...subPkg.devDependencies };
+
+    // Check for config files in the sub-package directory
+    let found: TestFramework | null = null;
+    const configChecks: [string, TestFramework][] = [
+      ["vitest.config.*", "vitest"],
+      ["jest.config.*", "jest"],
+      ["playwright.config.*", "playwright"],
+      ["cypress.config.*", "cypress"],
+    ];
+
+    for (const [pattern, fw] of configChecks) {
+      const matches = await fg(pattern, { cwd: subDir, dot: true });
+      if (matches.length > 0) {
+        found = fw;
+        break;
+      }
+    }
+
+    // Fallback to dependency checks
+    if (!found) {
+      if ("vitest" in allDeps) found = "vitest";
+      else if ("jest" in allDeps) found = "jest";
+      else if ("@playwright/test" in allDeps) found = "playwright";
+      else if ("cypress" in allDeps) found = "cypress";
+      else if ("mocha" in allDeps) found = "mocha";
+    }
+
+    if (found) {
+      counts.set(found, (counts.get(found) ?? 0) + 1);
+    }
+  }
+
+  if (counts.size === 0) return "unknown";
+
+  // Return the most common test framework
+  let best: TestFramework = "unknown";
+  let bestCount = 0;
+  for (const [fw, count] of counts) {
+    if (count > bestCount) {
+      best = fw;
+      bestCount = count;
+    }
+  }
+
+  return best;
 }
 
 /**
