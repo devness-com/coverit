@@ -16,7 +16,7 @@ import chalk from "chalk";
 import ora from "ora";
 import { resolve } from "node:path";
 import { readFileSync } from "node:fs";
-import { createInterface } from "node:readline";
+import { select } from "@inquirer/prompts";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { scanCodebase, ALL_DIMENSIONS, type ScanDimension } from "../scale/analyzer.js";
@@ -48,24 +48,11 @@ function resolveProjectRoot(pathArg?: string): string {
 }
 
 /**
- * Prompt the user with a question and return their answer.
- */
-function prompt(question: string): Promise<string> {
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  return new Promise((res) => {
-    rl.question(question, (answer) => {
-      rl.close();
-      res(answer.trim());
-    });
-  });
-}
-
-/**
  * Detect available AI providers, show them to the user, and let them
  * confirm or choose which one to use.
  *
- * - If only one is found, show it and ask for confirmation
- * - If multiple are found, let the user pick
+ * - If only one is found, auto-select it
+ * - If multiple are found, show an interactive select prompt
  * - If none are found, show setup instructions and exit
  * - Non-TTY (piped/CI) or -y flag: auto-select best provider
  */
@@ -87,45 +74,31 @@ async function resolveProvider(autoYes: boolean): Promise<AIProvider> {
     process.exit(1);
   }
 
-  // Non-interactive: auto-select first (best priority) provider
-  if (!isInteractive) {
+  // Single provider or non-interactive: auto-select first (best priority) provider
+  if (!isInteractive || providers.length === 1) {
     const provider = providers[0]!;
     console.log(`  Using ${chalk.green(getProviderDisplayName(provider))}\n`);
     return provider;
   }
 
-  // Single provider: show and confirm
-  if (providers.length === 1) {
-    const provider = providers[0]!;
-    const displayName = getProviderDisplayName(provider);
-    console.log(`\n  Found: ${chalk.green(displayName)}\n`);
-    const answer = await prompt(`  Use ${displayName}? (Y/n) `);
-    if (answer.toLowerCase() === "n") {
-      console.log("\n  Aborted.\n");
-      process.exit(0);
-    }
-    console.log();
-    return provider;
-  }
-
-  // Multiple providers: let user choose
-  console.log(`\n  Found ${providers.length} AI tools:\n`);
-  providers.forEach((p, i) => {
-    const name = getProviderDisplayName(p);
-    const marker = i === 0 ? chalk.green(" (recommended)") : "";
-    console.log(`    ${i + 1}. ${name}${marker}`);
-  });
+  // Multiple providers: interactive select
   console.log();
-
-  const answer = await prompt(`  Which AI tool should coverit use? [1] `);
-  const choice = answer === "" ? 0 : parseInt(answer, 10) - 1;
-
-  if (isNaN(choice) || choice < 0 || choice >= providers.length) {
-    console.log("\n  Invalid choice. Aborted.\n");
-    process.exit(1);
+  let selectedName: string;
+  try {
+    selectedName = await select({
+      message: "Which AI tool should coverit use?",
+      choices: providers.map((p, i) => ({
+        name: getProviderDisplayName(p) + (i === 0 ? chalk.green(" (recommended)") : ""),
+        value: p.name,
+      })),
+    });
+  } catch {
+    // User cancelled (Ctrl+C)
+    console.log("\n  Aborted.\n");
+    process.exit(0);
   }
 
-  const selected = providers[choice]!;
+  const selected = providers.find((p) => p.name === selectedName)!;
   console.log(`\n  Using ${chalk.green(getProviderDisplayName(selected))}\n`);
   return selected;
 }
