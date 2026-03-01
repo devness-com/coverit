@@ -106,7 +106,9 @@ export class CodexCliProvider implements AIProvider {
 
     // TODO: Verify exact Codex CLI flags when stable release is available.
     // Current assumption: `codex` accepts a prompt from stdin in non-interactive mode.
-    const args = ["--print"];
+    // -c mcp.enabled=false disables all MCP servers from user config
+    //   (avoids hooks/tools from user config interfering with analysis prompts)
+    const args = ["--print", "-c", "mcp.enabled=false"];
 
     // Pass system prompt via CLI flag if available
     if (systemMessages.length > 0) {

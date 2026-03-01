@@ -131,38 +131,89 @@ async function resolveProvider(autoYes: boolean): Promise<AIProvider> {
 /**
  * Create a progress handler that updates an ora spinner with
  * real-time streaming events from the AI provider.
+ *
+ * Returns { handler, cleanup } — call cleanup() when done to stop the timer.
  */
 function createProgressHandler(spinner: ReturnType<typeof ora>) {
-  let toolCount = 0;
+  let phaseName = "";
+  let phaseStep = 0;
+  let phaseTotal = 0;
+  let lastActivity = "";
+  const startTime = Date.now();
 
-  return (event: AIProgressEvent): void => {
+  function updateSpinner(): void {
+    spinner.text = formatSpinnerText(phaseName, phaseStep, phaseTotal, startTime, lastActivity);
+  }
+
+  // Tick elapsed time every second
+  const timer = setInterval(updateSpinner, 1_000);
+
+  const handler = (event: AIProgressEvent): void => {
     switch (event.type) {
+      case "phase":
+        phaseName = event.name;
+        phaseStep = event.step;
+        phaseTotal = event.total;
+        lastActivity = "";
+        updateSpinner();
+        break;
       case "tool_use": {
-        toolCount++;
-        const label = event.input ? shortenPath(event.input) : "";
-        spinner.text = chalk.dim(
-          `  [${toolCount}] ${event.tool}${label ? ` ${label}` : ""}`,
-        );
+        const label = event.input ? shortenToFilename(event.input) : "";
+        lastActivity = `${event.tool}${label ? ` ${label}` : ""}`;
+        updateSpinner();
         break;
       }
       case "tool_result":
-        // No-op — the next tool_use will update the spinner
         break;
       case "text_delta":
-        // Ignore text deltas for spinner — they're too noisy
         break;
       case "thinking":
-        spinner.text = chalk.dim(`  Thinking...`);
+        if (!phaseName) {
+          lastActivity = "Thinking...";
+          updateSpinner();
+        }
         break;
     }
   };
+
+  const cleanup = (): void => clearInterval(timer);
+
+  return { handler, cleanup };
 }
 
-/** Shorten a file path or pattern for display (max ~50 chars) */
-function shortenPath(input: string): string {
-  if (input.length <= 50) return input;
-  // Show last 47 chars with ellipsis
-  return "..." + input.slice(-47);
+/** Format the spinner line: [step/total] Phase (elapsed) · activity */
+function formatSpinnerText(
+  phase: string,
+  step: number,
+  total: number,
+  startTime: number,
+  activity: string,
+): string {
+  const elapsed = formatElapsed(Date.now() - startTime);
+  const parts: string[] = [];
+  if (step > 0 && total > 0) parts.push(`[${step}/${total}]`);
+  if (phase) parts.push(phase);
+  parts.push(`(${elapsed})`);
+  if (activity) parts.push(`· ${activity}`);
+  return chalk.dim(`  ${parts.join(" ")}`);
+}
+
+/** Format milliseconds as "1m 23s" or "45s" */
+function formatElapsed(ms: number): string {
+  const totalSecs = Math.floor(ms / 1_000);
+  const mins = Math.floor(totalSecs / 60);
+  const secs = totalSecs % 60;
+  if (mins > 0) return `${mins}m ${secs.toString().padStart(2, "0")}s`;
+  return `${secs}s`;
+}
+
+/** Extract just the filename from a path (last segment) */
+function shortenToFilename(input: string): string {
+  // Handle glob patterns — keep as-is if short enough
+  if (input.includes("*")) return input.length <= 40 ? input : "..." + input.slice(-37);
+  // Extract last path segment
+  const parts = input.split("/");
+  return parts[parts.length - 1] ?? input;
 }
 
 // ─── CLI Program ─────────────────────────────────────────────
@@ -192,11 +243,12 @@ program
 
     const provider = await resolveProvider(autoYes);
     const spinner = ora("Scanning and analyzing codebase with AI...").start();
-    const onProgress = createProgressHandler(spinner);
+    const progress = createProgressHandler(spinner);
 
     try {
-      const manifest = await scanCodebase(projectRoot, provider, onProgress);
+      const manifest = await scanCodebase(projectRoot, provider, progress.handler);
 
+      progress.cleanup();
       spinner.text = "Writing coverit.json...";
       await writeManifest(projectRoot, manifest);
 
@@ -209,6 +261,7 @@ program
       logger.success("coverit.json written to project root");
       logger.info("Next: Run `coverit cover` to generate tests and improve your score.");
     } catch (err) {
+      progress.cleanup();
       spinner.fail("Scan failed");
       logger.error(err instanceof Error ? err.message : String(err));
       process.exit(1);
@@ -228,7 +281,7 @@ program
 
     const provider = await resolveProvider(autoYes);
     const spinner = ora("Reading coverit.json and generating tests...").start();
-    const onProgress = createProgressHandler(spinner);
+    const progress = createProgressHandler(spinner);
 
     try {
       const modules = cmdOpts.modules
@@ -239,9 +292,10 @@ program
         projectRoot,
         modules,
         aiProvider: provider,
-        onProgress,
+        onProgress: progress.handler,
       });
 
+      progress.cleanup();
       spinner.stop();
 
       console.log(chalk.bold("\n  Cover Results\n"));
@@ -269,6 +323,7 @@ program
         logger.warn("Some tests still failing. Run `coverit cover` again to retry.");
       }
     } catch (err) {
+      progress.cleanup();
       spinner.fail("Cover failed");
       logger.error(err instanceof Error ? err.message : String(err));
       process.exit(1);
@@ -288,7 +343,7 @@ program
 
     const provider = await resolveProvider(autoYes);
     const spinner = ora("Running tests and fixing failures...").start();
-    const onProgress = createProgressHandler(spinner);
+    const progress = createProgressHandler(spinner);
 
     try {
       const modules = cmdOpts.modules
@@ -299,9 +354,10 @@ program
         projectRoot,
         modules,
         aiProvider: provider,
-        onProgress,
+        onProgress: progress.handler,
       });
 
+      progress.cleanup();
       spinner.stop();
 
       console.log(chalk.bold("\n  Run Results\n"));
@@ -332,6 +388,7 @@ program
         logger.warn("Some tests still failing. Run `coverit run` again to retry.");
       }
     } catch (err) {
+      progress.cleanup();
       spinner.fail("Run failed");
       logger.error(err instanceof Error ? err.message : String(err));
       process.exit(1);

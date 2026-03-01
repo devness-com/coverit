@@ -106,7 +106,9 @@ export class GeminiCliProvider implements AIProvider {
 
     // TODO: Verify exact Gemini CLI flags when stable release is available.
     // Current assumption: `gemini` accepts a prompt from stdin in non-interactive mode.
-    const args = ["--print"];
+    // --allowed-mcp-server-names with empty list prevents loading user's MCP servers
+    //   (avoids hooks/tools from user config interfering with analysis prompts)
+    const args = ["--print", "--allowed-mcp-server-names"];
 
     // Pass system prompt via CLI flag if available
     if (systemMessages.length > 0) {

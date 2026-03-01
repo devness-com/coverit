@@ -194,11 +194,18 @@ export class ClaudeCliProvider implements AIProvider {
       .join("\n\n");
 
     // Use --print with prompt piped via stdin to avoid CLI arg length limits.
+    // --setting-sources "" prevents loading user/project CLAUDE.md files
+    //   (avoids UseAI/AutoDo hooks interfering with analysis prompts)
+    // --strict-mcp-config prevents loading any MCP servers from user config
+    //   (avoids UseAI MCP tools being available in the subprocess)
     const args = [
       "--print",
       "--output-format",
       "stream-json",
       "--verbose",
+      "--setting-sources",
+      "",
+      "--strict-mcp-config",
     ];
 
     // Pass system prompt as a proper CLI flag

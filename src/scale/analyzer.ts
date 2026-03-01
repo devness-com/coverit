@@ -101,6 +101,7 @@ export async function scanCodebase(
   logger.debug(`Using AI provider: ${provider.name}`);
 
   // Step 4: Build prompt and call AI with tool access
+  onProgress?.({ type: "phase", name: "Functionality", step: 1, total: 5 });
   const messages = buildScalePrompt(projectInfo, existingManifest ?? undefined);
 
   logger.debug("Sending analysis prompt to AI with tool access...");
@@ -143,7 +144,7 @@ export async function scanCodebase(
   };
 
   // ─── Step 7: Security scan ──────────────────────────────────
-  onProgress?.({ type: "thinking", text: "Scanning Security dimension..." });
+  onProgress?.({ type: "phase", name: "Security", step: 2, total: 5 });
   try {
     logger.debug("Starting security scan...");
     const secMessages = buildSecurityPrompt(projectInfo, modules);
@@ -167,7 +168,7 @@ export async function scanCodebase(
   }
 
   // ─── Step 8: Stability scan ─────────────────────────────────
-  onProgress?.({ type: "thinking", text: "Scanning Stability dimension..." });
+  onProgress?.({ type: "phase", name: "Stability", step: 3, total: 5 });
   try {
     logger.debug("Starting stability scan...");
     const stabMessages = buildStabilityPrompt(projectInfo, modules);
@@ -191,7 +192,7 @@ export async function scanCodebase(
   }
 
   // ─── Step 9: Conformance scan ───────────────────────────────
-  onProgress?.({ type: "thinking", text: "Scanning Conformance dimension..." });
+  onProgress?.({ type: "phase", name: "Conformance", step: 4, total: 5 });
   try {
     logger.debug("Starting conformance scan...");
     const confMessages = buildConformancePrompt(projectInfo, modules);
@@ -215,7 +216,7 @@ export async function scanCodebase(
   }
 
   // ─── Step 10: Regression scan (no AI — run tests directly) ──
-  onProgress?.({ type: "thinking", text: "Running Regression check..." });
+  onProgress?.({ type: "phase", name: "Regression", step: 5, total: 5 });
   try {
     logger.debug("Starting regression scan (test execution)...");
     // Build a temporary manifest to use collectTestFiles/detectTestRunner
