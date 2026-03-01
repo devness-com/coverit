@@ -8,7 +8,9 @@
 
 import { request } from "node:http";
 import { randomUUID } from "node:crypto";
-import { basename } from "node:path";
+import { readFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { logger } from "../utils/logger.js";
 
 const DAEMON_HOST = "127.0.0.1";
@@ -20,6 +22,7 @@ const CALL_TIMEOUT_MS = 2_000;
 const mcpSessionId = randomUUID();
 let jsonRpcId = 0;
 let daemonAvailable: boolean | null = null;
+let mcpInitialized = false;
 
 /** Check if UseAI daemon is running (cached after first check). */
 async function isDaemonRunning(): Promise<boolean> {
@@ -41,12 +44,51 @@ async function isDaemonRunning(): Promise<boolean> {
   return daemonAvailable;
 }
 
+/**
+ * Send MCP initialize handshake so UseAI knows the client/provider.
+ * The clientName should be the actual AI provider (e.g. "claude-code",
+ * "gemini-cli") — not "coverit", since coverit is just the orchestrator.
+ */
+async function ensureMcpInitialized(clientName?: string): Promise<void> {
+  if (mcpInitialized) return;
+  mcpInitialized = true;
+
+  const payload = JSON.stringify({
+    jsonrpc: "2.0",
+    method: "initialize",
+    params: {
+      protocolVersion: "2024-11-05",
+      capabilities: {},
+      clientInfo: { name: clientName ?? "coverit", version: getVersion() },
+    },
+    id: ++jsonRpcId,
+  });
+
+  try {
+    await httpPost("/mcp", payload, CALL_TIMEOUT_MS);
+  } catch {
+    // Non-fatal — tools/call may still work without initialize
+  }
+}
+
+function getVersion(): string {
+  try {
+    const dir = dirname(fileURLToPath(import.meta.url));
+    const pkg = JSON.parse(readFileSync(join(dir, "..", "..", "package.json"), "utf-8"));
+    return pkg.version ?? "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+}
+
 /** Call a UseAI MCP tool via the daemon's JSON-RPC endpoint. */
 async function callTool(
   toolName: string,
   args: Record<string, unknown>,
+  clientName?: string,
 ): Promise<Record<string, unknown> | null> {
   if (!(await isDaemonRunning())) return null;
+  await ensureMcpInitialized(clientName);
 
   const payload = JSON.stringify({
     jsonrpc: "2.0",
@@ -111,7 +153,7 @@ export async function useaiStart(
     private_title: `${privatePrefix} ${projectName}`,
     project: projectName,
     model: modelId,
-  });
+  }, options?.provider);
 
   if (!result) return null;
 
