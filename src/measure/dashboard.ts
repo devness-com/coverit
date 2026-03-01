@@ -112,9 +112,9 @@ function renderDimensions(
     const connector = i === dims.length - 1 ? "\u2514" : "\u251C";
 
     if (!isScanned) {
-      // Unscanned dimension — show "pending" instead of a score
+      // Unscanned dimension — show "pending" with appropriate guidance
       lines.push(
-        `  ${chalk.gray(connector + "\u2500\u2500")} ${label} ${chalk.dim("pending".padStart(7))}  ${chalk.dim("run /coverit:cover to scan")}`,
+        `  ${chalk.gray(connector + "\u2500\u2500")} ${label} ${chalk.dim("pending".padStart(7))}  ${chalk.dim("coming soon")}`,
       );
     } else {
       const scoreStr = `${score}/100`.padStart(7);
@@ -353,24 +353,28 @@ function renderModuleTable(modules: ModuleEntry[]): string[] {
 }
 
 /**
- * Compute a rough 0-100 score for a single module based on
- * the ratio of current to expected tests across all types.
+ * Compute a 0-100 score for a single module.
+ *
+ * Each test type is scored independently (capped at 100%), then
+ * averaged. This prevents over-delivery in one type (e.g. 500 unit
+ * tests) from masking zero coverage in another type (e.g. 0 integration).
  */
 function computeModuleScore(mod: ModuleEntry): number {
-  let totalExpected = 0;
-  let totalCurrent = 0;
+  const typeScores: number[] = [];
 
   for (const coverage of Object.values(mod.functionality.tests)) {
     if (!coverage) continue;
-    totalExpected += coverage.expected;
-    totalCurrent += coverage.current;
+    if (coverage.expected === 0) {
+      typeScores.push(coverage.current > 0 ? 100 : 100);
+    } else {
+      typeScores.push(Math.min(100, (coverage.current / coverage.expected) * 100));
+    }
   }
 
-  if (totalExpected === 0) {
-    return totalCurrent > 0 ? 100 : 0;
-  }
+  if (typeScores.length === 0) return 0;
 
-  return Math.min(100, Math.round((totalCurrent / totalExpected) * 100));
+  const avg = typeScores.reduce((sum, s) => sum + s, 0) / typeScores.length;
+  return Math.round(avg);
 }
 
 // ─── Rendering Helpers ──────────────────────────────────────
