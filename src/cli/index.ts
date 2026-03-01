@@ -30,6 +30,7 @@ import {
 } from "../ai/provider-factory.js";
 import type { AIProvider, AIProgressEvent } from "../ai/types.js";
 import { logger } from "../utils/logger.js";
+import { registerCleanupHandlers } from "../utils/process-tracker.js";
 import { useaiStart, useaiEnd, type UseAISession, type CoveritCommand } from "../integrations/useai.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -720,5 +721,8 @@ program
       process.exit(1);
     }
   });
+
+// Kill spawned AI processes (claude, gemini, codex) on Ctrl+C / SIGTERM
+registerCleanupHandlers();
 
 program.parse();

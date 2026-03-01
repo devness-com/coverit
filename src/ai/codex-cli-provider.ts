@@ -17,6 +17,7 @@ import { spawn } from "node:child_process";
 import { access, constants } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { trackProcess } from "../utils/process-tracker.js";
 
 import type {
   AIProvider,
@@ -153,6 +154,7 @@ export class CodexCliProvider implements AIProvider {
         env: { ...process.env },
         ...(cwd ? { cwd } : {}),
       });
+      trackProcess(proc);
 
       let stdout = "";
       let stderr = "";

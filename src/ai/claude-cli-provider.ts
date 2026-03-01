@@ -13,6 +13,7 @@
 import { spawn } from "node:child_process";
 import { access, constants } from "node:fs/promises";
 import { homedir } from "node:os";
+import { trackProcess } from "../utils/process-tracker.js";
 import { join } from "node:path";
 
 import type {
@@ -264,6 +265,7 @@ export class ClaudeCliProvider implements AIProvider {
         env,
         ...(cwd ? { cwd } : {}),
       });
+      trackProcess(proc);
 
       let stdout = "";
       let stderr = "";
