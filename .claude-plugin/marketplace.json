@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "AI-powered test quality platform for Claude Code",
-    "version": "0.6.11"
+    "version": "0.6.12"
   },
   "plugins": [
     {
@@ -17,7 +17,7 @@
         "version": "latest"
       },
       "description": "AI-powered test quality platform — scan, cover, run, and track your codebase quality score.",
-      "version": "0.6.11",
+      "version": "0.6.12",
       "author": {
         "name": "Devness"
       },
