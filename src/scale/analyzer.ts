@@ -69,6 +69,11 @@ const VALID_TEST_FRAMEWORKS = new Set(["vitest", "jest", "mocha", "playwright", 
 
 // ─── Options ─────────────────────────────────────────────────
 
+/** Valid dimension names for selective scanning */
+export type ScanDimension = "functionality" | "security" | "stability" | "conformance" | "regression";
+
+export const ALL_DIMENSIONS: ScanDimension[] = ["functionality", "security", "stability", "conformance", "regression"];
+
 export interface ScanOptions {
   /** AI provider to use (auto-detected if not provided) */
   aiProvider?: AIProvider;
@@ -76,6 +81,12 @@ export interface ScanOptions {
   onProgress?: (event: AIProgressEvent) => void;
   /** Timeout per dimension in milliseconds (default: 1_200_000 = 20 min) */
   timeoutMs?: number;
+  /**
+   * Only scan specific dimensions (default: all 5).
+   * When functionality is omitted, modules are loaded from existing coverit.json.
+   * Requires coverit.json to exist if functionality is not included.
+   */
+  dimensions?: ScanDimension[];
 }
 
 // ─── Core Logic ──────────────────────────────────────────────
@@ -119,19 +130,24 @@ export async function scanCodebase(
   let onProgress: ((event: AIProgressEvent) => void) | undefined;
   let timeoutMs: number;
 
+  let dimensions: Set<ScanDimension>;
+
   if (optionsOrProvider && "generate" in optionsOrProvider) {
     // Legacy: scanCodebase(root, provider, onProgress)
     aiProvider = optionsOrProvider as AIProvider;
     onProgress = legacyOnProgress;
     timeoutMs = DEFAULT_TIMEOUT_MS;
+    dimensions = new Set(ALL_DIMENSIONS);
   } else if (optionsOrProvider && typeof optionsOrProvider === "object") {
-    // New: scanCodebase(root, { aiProvider, onProgress, timeoutMs })
+    // New: scanCodebase(root, { aiProvider, onProgress, timeoutMs, dimensions })
     const opts = optionsOrProvider as ScanOptions;
     aiProvider = opts.aiProvider;
     onProgress = opts.onProgress;
     timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    dimensions = new Set(opts.dimensions ?? ALL_DIMENSIONS);
   } else {
     timeoutMs = DEFAULT_TIMEOUT_MS;
+    dimensions = new Set(ALL_DIMENSIONS);
   }
 
   const scanLog = new ScanLogger(projectRoot);
@@ -151,75 +167,111 @@ export async function scanCodebase(
     );
   }
 
-  // Step 3: Initialize AI provider
-  const provider = aiProvider ?? (await createAIProvider());
+  // If functionality is not requested, we MUST have an existing manifest to get modules from
+  const runFunctionality = dimensions.has("functionality");
+  if (!runFunctionality && !existingManifest) {
+    throw new Error(
+      "Cannot skip Functionality scan — no existing coverit.json found. " +
+      "Run a full scan first, then use --dimensions to scan individual dimensions.",
+    );
+  }
+
+  // Step 3: Initialize AI provider (only needed if any AI dimension is requested)
+  const needsAI = runFunctionality || dimensions.has("security") || dimensions.has("stability") || dimensions.has("conformance");
+  const provider = needsAI ? (aiProvider ?? (await createAIProvider())) : aiProvider ?? (await createAIProvider());
   logger.debug(`Using AI provider: ${provider.name}`);
 
-  // ─── Step 4: Functionality scan (sequential — produces modules) ──
-  onProgress?.({ type: "phase", name: "Functionality", step: 1, total: 5 });
-  const funcStart = Date.now();
-  const messages = buildScalePrompt(projectInfo, existingManifest ?? undefined);
-
-  logger.debug("Sending analysis prompt to AI with tool access...");
-  const response = await provider.generate(messages, {
-    allowedTools: ALLOWED_TOOLS,
-    cwd: projectRoot,
-    timeoutMs,
-    onProgress,
-  });
-
-  logger.debug(
-    `AI analysis complete (${response.content.length} chars, model: ${response.model})`,
-  );
-
-  const aiResult = parseScaleResponse(response.content);
-  logger.debug(
-    `Parsed: ${aiResult.modules.length} modules, ${aiResult.journeys.length} journeys, ${aiResult.contracts.length} contracts`,
-  );
-
-  // Override deterministic detection with AI-detected values when available
-  if (aiResult.language && VALID_LANGUAGES.has(aiResult.language)) {
-    projectInfo = { ...projectInfo, language: aiResult.language as typeof projectInfo.language };
-  }
-  if (aiResult.framework && VALID_FRAMEWORKS.has(aiResult.framework)) {
-    projectInfo = { ...projectInfo, framework: aiResult.framework as typeof projectInfo.framework };
-  }
-  if (aiResult.testFramework && VALID_TEST_FRAMEWORKS.has(aiResult.testFramework)) {
-    projectInfo = { ...projectInfo, testFramework: aiResult.testFramework as typeof projectInfo.testFramework };
-  }
-
-  scanLog.record({
-    name: "Functionality",
-    success: true,
-    durationMs: Date.now() - funcStart,
-    detail: `${aiResult.modules.length} modules discovered`,
-  });
-
-  // Step 5: Assemble modules from Functionality result
   const now = new Date().toISOString();
-  const modules: ModuleEntry[] = aiResult.modules.map(aiModuleToEntry);
-
-  const totalSourceFiles =
-    aiResult.sourceFiles > 0
-      ? aiResult.sourceFiles
-      : modules.reduce((sum, m) => sum + m.files, 0);
-  const totalSourceLines =
-    aiResult.sourceLines > 0
-      ? aiResult.sourceLines
-      : modules.reduce((sum, m) => sum + m.lines, 0);
+  let modules: ModuleEntry[];
+  let totalSourceFiles: number;
+  let totalSourceLines: number;
+  let aiResult: ReturnType<typeof parseScaleResponse> | null = null;
 
   // Preserve scanned dates from existing manifest
   const scannedDates: Record<string, string> = {
     ...(existingManifest?.score.scanned ?? {}),
-    functionality: now,
   };
 
-  // ─── Step 6: Parallel dimension scans ─────────────────────────
+  // ─── Step 4: Functionality scan (or reuse from existing manifest) ──
+  if (runFunctionality) {
+    const dimCount = dimensions.size;
+    onProgress?.({ type: "phase", name: "Functionality", step: 1, total: dimCount });
+    const funcStart = Date.now();
+    const messages = buildScalePrompt(projectInfo, existingManifest ?? undefined);
+
+    logger.debug("Sending analysis prompt to AI with tool access...");
+    const response = await provider.generate(messages, {
+      allowedTools: ALLOWED_TOOLS,
+      cwd: projectRoot,
+      timeoutMs,
+      onProgress,
+    });
+
+    logger.debug(
+      `AI analysis complete (${response.content.length} chars, model: ${response.model})`,
+    );
+
+    aiResult = parseScaleResponse(response.content);
+    logger.debug(
+      `Parsed: ${aiResult.modules.length} modules, ${aiResult.journeys.length} journeys, ${aiResult.contracts.length} contracts`,
+    );
+
+    // Override deterministic detection with AI-detected values when available
+    if (aiResult.language && VALID_LANGUAGES.has(aiResult.language)) {
+      projectInfo = { ...projectInfo, language: aiResult.language as typeof projectInfo.language };
+    }
+    if (aiResult.framework && VALID_FRAMEWORKS.has(aiResult.framework)) {
+      projectInfo = { ...projectInfo, framework: aiResult.framework as typeof projectInfo.framework };
+    }
+    if (aiResult.testFramework && VALID_TEST_FRAMEWORKS.has(aiResult.testFramework)) {
+      projectInfo = { ...projectInfo, testFramework: aiResult.testFramework as typeof projectInfo.testFramework };
+    }
+
+    scanLog.record({
+      name: "Functionality",
+      success: true,
+      durationMs: Date.now() - funcStart,
+      detail: `${aiResult.modules.length} modules discovered`,
+    });
+
+    // Emit completion so the CLI progress display includes Functionality
+    onProgress?.({ type: "dimension_status", name: "Functionality", status: "done", detail: `${aiResult.modules.length} modules` });
+
+    // Assemble modules from Functionality result
+    modules = aiResult.modules.map(aiModuleToEntry);
+    totalSourceFiles =
+      aiResult.sourceFiles > 0
+        ? aiResult.sourceFiles
+        : modules.reduce((sum, m) => sum + m.files, 0);
+    totalSourceLines =
+      aiResult.sourceLines > 0
+        ? aiResult.sourceLines
+        : modules.reduce((sum, m) => sum + m.lines, 0);
+    scannedDates.functionality = now;
+  } else {
+    // Reuse modules from existing coverit.json
+    logger.debug("Skipping Functionality scan — reusing modules from existing coverit.json");
+    modules = existingManifest!.modules;
+    totalSourceFiles = existingManifest!.project.sourceFiles;
+    totalSourceLines = existingManifest!.project.sourceLines;
+    // Use project info from existing manifest
+    projectInfo = {
+      ...projectInfo,
+      language: existingManifest!.project.language,
+      framework: existingManifest!.project.framework,
+      testFramework: existingManifest!.project.testFramework,
+    };
+  }
+
+  // ─── Step 5: Parallel dimension scans (only requested ones) ───
   // Security, Stability, Conformance, and Regression are independent
   // of each other (they all depend only on the modules from Functionality).
-  // Running them concurrently gives ~3-4x speedup.
 
-  await useaiHeartbeat();
+  const parallelDims: Promise<void>[] = [];
+  if (dimensions.has("security") || dimensions.has("stability") ||
+      dimensions.has("conformance") || dimensions.has("regression")) {
+    await useaiHeartbeat();
+  }
 
   const parallelContext: ParallelScanContext = {
     provider,
@@ -235,14 +287,46 @@ export async function scanCodebase(
     scanLog,
   };
 
-  await Promise.all([
-    runSecurityScan(parallelContext, wrapProgress(onProgress, "Security")),
-    runStabilityScan(parallelContext, wrapProgress(onProgress, "Stability")),
-    runConformanceScan(parallelContext, wrapProgress(onProgress, "Conformance")),
-    runRegressionScan(parallelContext, wrapProgress(onProgress, "Regression")),
-  ]);
+  if (dimensions.has("security")) {
+    parallelDims.push(runSecurityScan(parallelContext, wrapProgress(onProgress, "Security")));
+  }
+  if (dimensions.has("stability")) {
+    parallelDims.push(runStabilityScan(parallelContext, wrapProgress(onProgress, "Stability")));
+  }
+  if (dimensions.has("conformance")) {
+    parallelDims.push(runConformanceScan(parallelContext, wrapProgress(onProgress, "Conformance")));
+  }
+  if (dimensions.has("regression")) {
+    parallelDims.push(runRegressionScan(parallelContext, wrapProgress(onProgress, "Regression")));
+  }
 
-  // ─── Step 7: Assemble final manifest with all dimensions ───
+  if (parallelDims.length > 0) {
+    await Promise.all(parallelDims);
+  }
+
+  // ─── Step 6: Assemble final manifest with all dimensions ───
+  // When functionality was skipped, reuse journeys/contracts from existing manifest.
+  const journeys = runFunctionality
+    ? aiResult!.journeys.map((j) => ({
+        id: j.id,
+        name: j.name,
+        steps: j.steps,
+        covered: j.covered,
+        testFile: j.testFile,
+      }))
+    : existingManifest?.journeys ?? [];
+
+  const contracts = runFunctionality
+    ? aiResult!.contracts.map((c) => ({
+        endpoint: c.endpoint,
+        method: c.method,
+        requestSchema: c.requestSchema,
+        responseSchema: c.responseSchema,
+        covered: c.covered,
+        testFile: c.testFile,
+      }))
+    : existingManifest?.contracts ?? [];
+
   const preliminary: CoveritManifest = {
     version: 1,
     createdAt: existingManifest?.createdAt ?? now,
@@ -260,23 +344,8 @@ export async function scanCodebase(
 
     dimensions: existingManifest?.dimensions ?? DEFAULT_DIMENSIONS,
     modules,
-
-    journeys: aiResult.journeys.map((j) => ({
-      id: j.id,
-      name: j.name,
-      steps: j.steps,
-      covered: j.covered,
-      testFile: j.testFile,
-    })),
-
-    contracts: aiResult.contracts.map((c) => ({
-      endpoint: c.endpoint,
-      method: c.method,
-      requestSchema: c.requestSchema,
-      responseSchema: c.responseSchema,
-      covered: c.covered,
-      testFile: c.testFile,
-    })),
+    journeys,
+    contracts,
 
     score: {
       overall: 0,

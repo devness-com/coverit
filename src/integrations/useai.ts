@@ -7,7 +7,6 @@
  */
 
 import { request } from "node:http";
-import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,8 +17,9 @@ const DAEMON_PORT = 19200;
 const HEALTH_TIMEOUT_MS = 500;
 const CALL_TIMEOUT_MS = 2_000;
 
-// Single MCP session ID per coverit invocation
-const mcpSessionId = randomUUID();
+// MCP session ID — assigned by the UseAI daemon after initialize handshake.
+// Must NOT be sent with the initial `initialize` request (the server generates it).
+let mcpSessionId: string | null = null;
 let jsonRpcId = 0;
 let daemonAvailable: boolean | null = null;
 let mcpInitialized = false;
@@ -48,6 +48,10 @@ async function isDaemonRunning(): Promise<boolean> {
  * Send MCP initialize handshake so UseAI knows the client/provider.
  * The clientName should be the actual AI provider (e.g. "claude-code",
  * "gemini-cli") — not "coverit", since coverit is just the orchestrator.
+ *
+ * The initialize request MUST be sent without a session ID header.
+ * The server generates a session ID and returns it in the `mcp-session-id`
+ * response header. All subsequent requests must include this server-assigned ID.
  */
 async function ensureMcpInitialized(clientName?: string): Promise<void> {
   if (mcpInitialized) return;
@@ -65,7 +69,13 @@ async function ensureMcpInitialized(clientName?: string): Promise<void> {
   });
 
   try {
-    await httpPost("/mcp", payload, CALL_TIMEOUT_MS);
+    const { headers } = await httpPostWithHeaders("/mcp", payload, CALL_TIMEOUT_MS);
+    // Capture server-assigned session ID for subsequent requests
+    const sid = headers["mcp-session-id"];
+    if (sid) {
+      mcpSessionId = sid;
+      logger.debug(`UseAI MCP session: ${sid}`);
+    }
   } catch {
     // Non-fatal — tools/call may still work without initialize
   }
@@ -272,7 +282,24 @@ function httpGet(path: string, timeoutMs: number): Promise<string> {
 }
 
 function httpPost(path: string, body: string, timeoutMs: number): Promise<string> {
+  return httpPostWithHeaders(path, body, timeoutMs).then((r) => r.body);
+}
+
+function httpPostWithHeaders(
+  path: string,
+  body: string,
+  timeoutMs: number,
+): Promise<{ body: string; headers: Record<string, string> }> {
   return new Promise((resolve, reject) => {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "Content-Length": String(Buffer.byteLength(body)),
+    };
+    // Only include session ID after the initialize handshake has assigned one
+    if (mcpSessionId) {
+      headers["mcp-session-id"] = mcpSessionId;
+    }
+
     const req = request(
       {
         hostname: DAEMON_HOST,
@@ -280,16 +307,19 @@ function httpPost(path: string, body: string, timeoutMs: number): Promise<string
         path,
         method: "POST",
         timeout: timeoutMs,
-        headers: {
-          "Content-Type": "application/json",
-          "Content-Length": Buffer.byteLength(body),
-          "mcp-session-id": mcpSessionId,
-        },
+        headers,
       },
       (res) => {
         let data = "";
         res.on("data", (chunk: string) => (data += chunk));
-        res.on("end", () => resolve(data));
+        res.on("end", () => {
+          // Collect response headers (lowercased keys)
+          const resHeaders: Record<string, string> = {};
+          for (const [key, val] of Object.entries(res.headers)) {
+            if (typeof val === "string") resHeaders[key] = val;
+          }
+          resolve({ body: data, headers: resHeaders });
+        });
       },
     );
     req.on("error", reject);

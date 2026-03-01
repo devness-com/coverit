@@ -16,7 +16,7 @@ import { z } from "zod";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { scanCodebase } from "../scale/analyzer.js";
+import { scanCodebase, type ScanDimension } from "../scale/analyzer.js";
 import { readManifest, writeManifest } from "../scale/writer.js";
 import { cover } from "../cover/pipeline.js";
 import { runTests } from "../run/pipeline.js";
@@ -42,14 +42,21 @@ server.tool(
   "Scan and analyze the full codebase using AI and generate coverit.json quality manifest. AI explores the project with tool access to detect modules, map existing tests, classify complexity, identify journeys and contracts, and compute baseline scores.",
   {
     projectRoot: z.string().describe("Absolute path to the project root"),
+    dimensions: z
+      .array(z.enum(["functionality", "security", "stability", "conformance", "regression"]))
+      .optional()
+      .describe("Only scan specific dimensions (default: all 5). When functionality is omitted, modules are loaded from existing coverit.json."),
     timeoutSeconds: z.number().optional().describe("Timeout per dimension in seconds (default: 1200)"),
   },
-  async ({ projectRoot, timeoutSeconds }) => {
+  async ({ projectRoot, dimensions, timeoutSeconds }) => {
     let session: Awaited<ReturnType<typeof useaiStart>> = null;
     try {
       session = await useaiStart("scan", projectRoot);
       const timeoutMs = timeoutSeconds ? timeoutSeconds * 1000 : undefined;
-      const manifest = await scanCodebase(projectRoot, { timeoutMs });
+      const manifest = await scanCodebase(projectRoot, {
+        timeoutMs,
+        dimensions: dimensions as ScanDimension[] | undefined,
+      });
       await writeManifest(projectRoot, manifest);
 
       await useaiEnd(session, {

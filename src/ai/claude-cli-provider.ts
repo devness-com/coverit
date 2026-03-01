@@ -195,6 +195,9 @@ export class ClaudeCliProvider implements AIProvider {
       .join("\n\n");
 
     // Use --print with prompt piped via stdin to avoid CLI arg length limits.
+    // --no-session-persistence prevents the subprocess from writing to
+    //   ~/.claude/.claude.json — avoids corrupting the user's auth state
+    //   when the subprocess runs concurrently with an interactive session.
     // --setting-sources "" prevents loading user/project CLAUDE.md files
     //   (avoids UseAI/AutoDo hooks interfering with analysis prompts)
     // --strict-mcp-config prevents loading any MCP servers from user config
@@ -204,6 +207,7 @@ export class ClaudeCliProvider implements AIProvider {
       "--output-format",
       "stream-json",
       "--verbose",
+      "--no-session-persistence",
       "--setting-sources",
       "",
       "--strict-mcp-config",

@@ -19,7 +19,7 @@ import { readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { scanCodebase } from "../scale/analyzer.js";
+import { scanCodebase, ALL_DIMENSIONS, type ScanDimension } from "../scale/analyzer.js";
 import { readManifest, writeManifest } from "../scale/writer.js";
 import { cover } from "../cover/pipeline.js";
 import { runTests } from "../run/pipeline.js";
@@ -174,7 +174,7 @@ function createProgressHandler(spinner: ReturnType<typeof ora>) {
         if (!parallel) {
           // Switch from single-line spinner to multi-line mode
           spinner.stop();
-          parallel = new ParallelProgress();
+          parallel = new ParallelProgress(startTime);
         }
         parallel.updateStatus(event.name, event.status, event.detail);
         parallel.render();
@@ -233,6 +233,7 @@ function createProgressHandler(spinner: ReturnType<typeof ora>) {
 
 /** Dimension step numbers for display */
 const DIMENSION_STEPS: Record<string, number> = {
+  Functionality: 1,
   Security: 2,
   Stability: 3,
   Conformance: 4,
@@ -249,39 +250,39 @@ interface DimensionLine {
 }
 
 /**
- * Renders 4 parallel dimension progress lines using ANSI escape codes.
+ * Renders parallel dimension progress lines using ANSI escape codes.
  * Each line independently shows its spinner, elapsed time, and current activity.
+ * Lines are added dynamically as dimension_status events arrive, so only
+ * requested dimensions appear (supports selective scanning via --dimensions).
  */
 class ParallelProgress {
   private lines = new Map<string, DimensionLine>();
   private linesWritten = 0;
   private spinnerFrame = 0;
   private lastRenderTime = 0;
+  private scanStartTime: number;
 
-  constructor() {}
+  constructor(scanStartTime: number) {
+    this.scanStartTime = scanStartTime;
+  }
 
   updateStatus(name: string, status: "running" | "done" | "failed", detail?: string): void {
-    // On first call, pre-populate all 4 dimension lines so the line count
-    // is fixed from the start (prevents ghost lines from cursor math mismatch)
-    if (this.lines.size === 0) {
-      const now = Date.now();
-      for (const dimName of Object.keys(DIMENSION_STEPS)) {
-        this.lines.set(dimName, {
-          activity: "",
-          startTime: now,
-          status: "pending",
-        });
-      }
+    if (!this.lines.has(name)) {
+      this.lines.set(name, {
+        activity: "",
+        // Dimensions arriving already done (e.g. Functionality) backdate to
+        // scan start so elapsed time reflects actual duration, not 0s.
+        startTime: status === "done" || status === "failed" ? this.scanStartTime : Date.now(),
+        status: "pending",
+      });
     }
 
-    const existing = this.lines.get(name);
-    if (existing) {
-      if (existing.status === "pending" && status === "running") {
-        existing.startTime = Date.now(); // Start the timer when actually running
-      }
-      existing.status = status;
-      if (detail) existing.detail = detail;
+    const existing = this.lines.get(name)!;
+    if (existing.status === "pending" && status === "running") {
+      existing.startTime = Date.now();
     }
+    existing.status = status;
+    if (detail) existing.detail = detail;
   }
 
   updateActivity(name: string, activity: string): void {
@@ -470,12 +471,27 @@ program
 program
   .command("scan")
   .argument("[path]", "Project root path", ".")
+  .option("--dimensions <list>", "Only scan specific dimensions (comma-separated: functionality,security,stability,conformance,regression)")
   .option("--timeout <seconds>", "Timeout per dimension in seconds (default: 900)")
   .description("AI scans and analyzes codebase → creates coverit.json quality manifest")
-  .action(async (pathArg: string, cmdOpts: { timeout?: string }) => {
+  .action(async (pathArg: string, cmdOpts: { dimensions?: string; timeout?: string }) => {
     const projectRoot = resolveProjectRoot(pathArg);
     const autoYes = program.opts().yes ?? false;
     const timeoutMs = cmdOpts.timeout ? parseInt(cmdOpts.timeout, 10) * 1000 : undefined;
+
+    // Parse --dimensions flag
+    let dimensions: ScanDimension[] | undefined;
+    if (cmdOpts.dimensions) {
+      const requested = cmdOpts.dimensions.split(",").map((d) => d.trim().toLowerCase());
+      const invalid = requested.filter((d) => !ALL_DIMENSIONS.includes(d as ScanDimension));
+      if (invalid.length > 0) {
+        console.log(chalk.red(`\n  Invalid dimensions: ${invalid.join(", ")}`));
+        console.log(`  Valid options: ${ALL_DIMENSIONS.join(", ")}\n`);
+        process.exit(1);
+      }
+      dimensions = requested as ScanDimension[];
+      console.log(`  Dimensions: ${chalk.cyan(dimensions.join(", "))}\n`);
+    }
 
     const provider = await resolveProvider(autoYes);
     const spinner = ora("Scanning and analyzing codebase with AI...").start();
@@ -487,6 +503,7 @@ program
         aiProvider: provider,
         onProgress: lazySession.handler,
         timeoutMs,
+        dimensions,
       });
 
       progress.cleanup();
