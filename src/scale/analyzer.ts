@@ -50,6 +50,7 @@ import {
 import type { AIProvider, AIProgressEvent } from "../ai/types.js";
 import { readManifest } from "./writer.js";
 import { logger } from "../utils/logger.js";
+import { useaiHeartbeat } from "../integrations/useai.js";
 
 // ─── Constants ───────────────────────────────────────────────
 
@@ -145,6 +146,7 @@ export async function scanCodebase(
 
   // ─── Step 7: Security scan ──────────────────────────────────
   onProgress?.({ type: "phase", name: "Security", step: 2, total: 5 });
+  await useaiHeartbeat();
   try {
     logger.debug("Starting security scan...");
     const secMessages = buildSecurityPrompt(projectInfo, modules);
@@ -169,6 +171,7 @@ export async function scanCodebase(
 
   // ─── Step 8: Stability scan ─────────────────────────────────
   onProgress?.({ type: "phase", name: "Stability", step: 3, total: 5 });
+  await useaiHeartbeat();
   try {
     logger.debug("Starting stability scan...");
     const stabMessages = buildStabilityPrompt(projectInfo, modules);
@@ -193,6 +196,7 @@ export async function scanCodebase(
 
   // ─── Step 9: Conformance scan ───────────────────────────────
   onProgress?.({ type: "phase", name: "Conformance", step: 4, total: 5 });
+  await useaiHeartbeat();
   try {
     logger.debug("Starting conformance scan...");
     const confMessages = buildConformancePrompt(projectInfo, modules);
@@ -217,6 +221,7 @@ export async function scanCodebase(
 
   // ─── Step 10: Regression scan (no AI — run tests directly) ──
   onProgress?.({ type: "phase", name: "Regression", step: 5, total: 5 });
+  await useaiHeartbeat();
   try {
     logger.debug("Starting regression scan (test execution)...");
     // Build a temporary manifest to use collectTestFiles/detectTestRunner
