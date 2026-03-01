@@ -123,10 +123,18 @@ export async function cover(options: CoverOptions): Promise<CoverResult> {
   let totalFailed = 0;
   let modulesProcessed = 0;
 
-  for (const gap of gaps) {
+  for (let i = 0; i < gaps.length; i++) {
+    const gap = gaps[i]!;
     logger.debug(
       `Covering ${gap.path} (${gap.complexity}, ${gap.totalGap} gaps)`,
     );
+
+    options.onProgress?.({
+      type: "phase",
+      name: gap.path,
+      step: i + 1,
+      total: gaps.length,
+    });
 
     try {
       const messages = buildCoverPrompt(gap, manifest.project);
@@ -154,6 +162,12 @@ export async function cover(options: CoverOptions): Promise<CoverResult> {
   }
 
   // Step 5: Rescan and update manifest
+  options.onProgress?.({
+    type: "phase",
+    name: "Rescanning",
+    step: gaps.length + 1,
+    total: gaps.length + 1,
+  });
   logger.debug("Rescanning test files and updating manifest...");
 
   const currentManifest = (await readManifest(projectRoot)) ?? manifest;

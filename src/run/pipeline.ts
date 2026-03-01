@@ -91,6 +91,7 @@ export async function runTests(options: RunOptions): Promise<RunResult> {
   logger.debug(`Found ${testFiles.length} test files to run`);
 
   // Step 3: Run tests
+  options.onProgress?.({ type: "phase", name: "Running tests", step: 1, total: 3 });
   const testRunner = detectTestRunner(manifest);
   const runResult = await executeTests(projectRoot, testFiles, testRunner);
 
@@ -101,6 +102,7 @@ export async function runTests(options: RunOptions): Promise<RunResult> {
   // Step 4: If failures, send AI to fix
   let fixed = 0;
   if (runResult.failed > 0 && runResult.failingFiles.length > 0) {
+    options.onProgress?.({ type: "phase", name: "Fixing failures", step: 2, total: 3 });
     logger.debug(
       `Sending ${runResult.failingFiles.length} failing files to AI for fixing...`,
     );
@@ -135,6 +137,7 @@ export async function runTests(options: RunOptions): Promise<RunResult> {
   }
 
   // Step 5: Rescan and update manifest
+  options.onProgress?.({ type: "phase", name: "Rescanning", step: 3, total: 3 });
   logger.debug("Rescanning test files and updating manifest...");
 
   const currentManifest = (await readManifest(projectRoot)) ?? manifest;
