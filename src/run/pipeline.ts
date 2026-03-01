@@ -184,7 +184,7 @@ export async function runTests(options: RunOptions): Promise<RunResult> {
 
 // ─── Helpers ────────────────────────────────────────────────
 
-interface TestRunResult {
+export interface TestRunResult {
   total: number;
   passed: number;
   failed: number;
@@ -195,7 +195,7 @@ interface TestRunResult {
 /**
  * Collect all test file paths from manifest modules.
  */
-function collectTestFiles(
+export function collectTestFiles(
   manifest: CoveritManifest,
   filterModules?: string[],
 ): string[] {
@@ -218,7 +218,7 @@ function collectTestFiles(
 /**
  * Detect the test runner command from the manifest project info.
  */
-function detectTestRunner(manifest: CoveritManifest): string {
+export function detectTestRunner(manifest: CoveritManifest): string {
   const fw = manifest.project.testFramework;
   if (fw === "jest") return "npx jest";
   if (fw === "vitest") return "npx vitest run";
@@ -229,7 +229,7 @@ function detectTestRunner(manifest: CoveritManifest): string {
 /**
  * Execute tests and parse the output for pass/fail counts.
  */
-async function executeTests(
+export async function executeTests(
   projectRoot: string,
   testFiles: string[],
   testRunner: string,

@@ -114,7 +114,7 @@ function renderDimensions(
     if (!isScanned) {
       // Unscanned dimension — show "pending" with appropriate guidance
       lines.push(
-        `  ${chalk.gray(connector + "\u2500\u2500")} ${label} ${chalk.dim("pending".padStart(7))}  ${chalk.dim("coming soon")}`,
+        `  ${chalk.gray(connector + "\u2500\u2500")} ${label} ${chalk.dim("pending".padStart(7))}  ${chalk.dim("not scanned")}`,
       );
     } else {
       const scoreStr = `${score}/100`.padStart(7);

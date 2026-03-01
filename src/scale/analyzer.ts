@@ -7,16 +7,12 @@
  *
  * Pipeline:
  *  1. Detect project metadata (framework, language, test runner) — fast, deterministic
- *  2. Send AI prompt with tool access to explore the codebase
- *  3. Parse AI's structured JSON response
- *  4. Assemble the full manifest with scoring
- *
- * The AI performs what was previously done by heuristic code:
- *  - Module detection (replacing module-detector.ts)
- *  - Test mapping (replacing test-mapper.ts)
- *  - Complexity classification (replacing complexity.ts)
- *  - Expected test calculation (replacing expected-counts.ts)
- *  - Plus: journey detection, contract discovery (new AI capabilities)
+ *  2. Functionality scan — AI explores codebase, discovers modules, maps tests
+ *  3. Security scan — AI checks for OWASP-mapped vulnerabilities
+ *  4. Stability scan — AI assesses error handling and reliability
+ *  5. Conformance scan — AI evaluates coding standards and architecture
+ *  6. Regression scan — runs existing tests, computes pass/fail ratio (no AI)
+ *  7. Assemble the full manifest with scoring
  */
 
 import type {
@@ -34,6 +30,23 @@ import {
   parseScaleResponse,
   type ScaleAIModule,
 } from "../ai/scale-prompts.js";
+import {
+  buildSecurityPrompt,
+  parseSecurityResponse,
+} from "../ai/security-prompts.js";
+import {
+  buildStabilityPrompt,
+  parseStabilityResponse,
+} from "../ai/stability-prompts.js";
+import {
+  buildConformancePrompt,
+  parseConformanceResponse,
+} from "../ai/conformance-prompts.js";
+import {
+  collectTestFiles,
+  detectTestRunner,
+  executeTests,
+} from "../run/pipeline.js";
 import type { AIProvider, AIProgressEvent } from "../ai/types.js";
 import { readManifest } from "./writer.js";
 import { logger } from "../utils/logger.js";
@@ -124,8 +137,150 @@ export async function scanCodebase(
       : modules.reduce((sum, m) => sum + m.lines, 0);
 
   // Preserve scanned dates from existing manifest
-  const scannedDates = existingManifest?.score.scanned ?? {};
+  const scannedDates: Record<string, string> = {
+    ...(existingManifest?.score.scanned ?? {}),
+    functionality: now,
+  };
 
+  // ─── Step 7: Security scan ──────────────────────────────────
+  onProgress?.({ type: "thinking", text: "Scanning Security dimension..." });
+  try {
+    logger.debug("Starting security scan...");
+    const secMessages = buildSecurityPrompt(projectInfo, modules);
+    const secResponse = await provider.generate(secMessages, {
+      allowedTools: ALLOWED_TOOLS,
+      cwd: projectRoot,
+      timeoutMs: ANALYSIS_TIMEOUT_MS,
+      onProgress,
+    });
+    const secResult = parseSecurityResponse(secResponse.content);
+    applySecurityResults(modules, secResult.modules);
+    scannedDates.security = now;
+    logger.debug(
+      `Security scan complete: ${secResult.modules.reduce((s, m) => s + m.findings.length, 0)} findings`,
+    );
+  } catch (err) {
+    logger.error(
+      "Security scan failed:",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+
+  // ─── Step 8: Stability scan ─────────────────────────────────
+  onProgress?.({ type: "thinking", text: "Scanning Stability dimension..." });
+  try {
+    logger.debug("Starting stability scan...");
+    const stabMessages = buildStabilityPrompt(projectInfo, modules);
+    const stabResponse = await provider.generate(stabMessages, {
+      allowedTools: ALLOWED_TOOLS,
+      cwd: projectRoot,
+      timeoutMs: ANALYSIS_TIMEOUT_MS,
+      onProgress,
+    });
+    const stabResult = parseStabilityResponse(stabResponse.content);
+    applyStabilityResults(modules, stabResult.modules);
+    scannedDates.stability = now;
+    logger.debug(
+      `Stability scan complete: ${stabResult.modules.length} modules assessed`,
+    );
+  } catch (err) {
+    logger.error(
+      "Stability scan failed:",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+
+  // ─── Step 9: Conformance scan ───────────────────────────────
+  onProgress?.({ type: "thinking", text: "Scanning Conformance dimension..." });
+  try {
+    logger.debug("Starting conformance scan...");
+    const confMessages = buildConformancePrompt(projectInfo, modules);
+    const confResponse = await provider.generate(confMessages, {
+      allowedTools: ALLOWED_TOOLS,
+      cwd: projectRoot,
+      timeoutMs: ANALYSIS_TIMEOUT_MS,
+      onProgress,
+    });
+    const confResult = parseConformanceResponse(confResponse.content);
+    applyConformanceResults(modules, confResult.modules);
+    scannedDates.conformance = now;
+    logger.debug(
+      `Conformance scan complete: ${confResult.modules.length} modules assessed`,
+    );
+  } catch (err) {
+    logger.error(
+      "Conformance scan failed:",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+
+  // ─── Step 10: Regression scan (no AI — run tests directly) ──
+  onProgress?.({ type: "thinking", text: "Running Regression check..." });
+  try {
+    logger.debug("Starting regression scan (test execution)...");
+    // Build a temporary manifest to use collectTestFiles/detectTestRunner
+    const tempManifest: CoveritManifest = {
+      version: 1,
+      createdAt: now,
+      updatedAt: now,
+      project: {
+        name: projectInfo.name,
+        root: projectRoot,
+        language: projectInfo.language,
+        framework: projectInfo.framework,
+        testFramework: projectInfo.testFramework,
+        sourceFiles: totalSourceFiles,
+        sourceLines: totalSourceLines,
+      },
+      dimensions: existingManifest?.dimensions ?? DEFAULT_DIMENSIONS,
+      modules,
+      journeys: [],
+      contracts: [],
+      score: {
+        overall: 0,
+        breakdown: {
+          functionality: 0,
+          security: 0,
+          stability: 0,
+          conformance: 0,
+          regression: 0,
+        },
+        gaps: {
+          total: 0,
+          critical: 0,
+          byDimension: {
+            functionality: { missing: 0, priority: "none" },
+            security: { issues: 0, priority: "none" },
+            stability: { gaps: 0, priority: "none" },
+            conformance: { violations: 0, priority: "none" },
+          },
+        },
+        history: [],
+        scanned: scannedDates,
+      },
+    };
+
+    const testFiles = collectTestFiles(tempManifest);
+    if (testFiles.length > 0) {
+      const testRunner = detectTestRunner(tempManifest);
+      const runResult = await executeTests(projectRoot, testFiles, testRunner);
+      logger.debug(
+        `Regression scan: ${runResult.passed}/${runResult.total} tests passed`,
+      );
+      scannedDates.regression = now;
+    } else {
+      // No tests to run — regression is trivially 100 (nothing to regress)
+      scannedDates.regression = now;
+      logger.debug("Regression scan: no test files found, marking as scanned");
+    }
+  } catch (err) {
+    logger.error(
+      "Regression scan failed:",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+
+  // ─── Step 11: Assemble final manifest with all dimensions ───
   const preliminary: CoveritManifest = {
     version: 1,
     createdAt: existingManifest?.createdAt ?? now,
@@ -175,17 +330,17 @@ export async function scanCodebase(
         critical: 0,
         byDimension: {
           functionality: { missing: 0, priority: "none" },
-          security: { issues: 0, priority: "pending-ai-scan" },
-          stability: { gaps: 0, priority: "pending-ai-scan" },
-          conformance: { violations: 0, priority: "pending-ai-scan" },
+          security: { issues: 0, priority: "none" },
+          stability: { gaps: 0, priority: "none" },
+          conformance: { violations: 0, priority: "none" },
         },
       },
       history: [],
-      scanned: { ...scannedDates, functionality: now },
+      scanned: scannedDates,
     },
   };
 
-  // Use the scoring engine for consistent scoring
+  // Use the scoring engine for consistent scoring across all scanned dimensions
   const scoreResult = calculateScore(preliminary);
 
   // Preserve history from existing manifest, append new entry
@@ -208,6 +363,70 @@ export async function scanCodebase(
   };
 
   return manifest;
+}
+
+// ─── Dimension Result Applicators ────────────────────────────
+
+import type { SecurityAIModule } from "../ai/security-prompts.js";
+import type { StabilityAIModule } from "../ai/stability-prompts.js";
+import type { ConformanceAIModule } from "../ai/conformance-prompts.js";
+
+/**
+ * Apply security scan results to existing modules by matching on path.
+ */
+function applySecurityResults(
+  modules: ModuleEntry[],
+  securityModules: SecurityAIModule[],
+): void {
+  const secMap = new Map(securityModules.map((m) => [m.path, m]));
+  for (const mod of modules) {
+    const sec = secMap.get(mod.path);
+    if (sec) {
+      mod.security = {
+        issues: sec.issues,
+        resolved: sec.resolved,
+        findings: sec.findings,
+      };
+    }
+  }
+}
+
+/**
+ * Apply stability scan results to existing modules by matching on path.
+ */
+function applyStabilityResults(
+  modules: ModuleEntry[],
+  stabilityModules: StabilityAIModule[],
+): void {
+  const stabMap = new Map(stabilityModules.map((m) => [m.path, m]));
+  for (const mod of modules) {
+    const stab = stabMap.get(mod.path);
+    if (stab) {
+      mod.stability = {
+        score: stab.score,
+        gaps: stab.gaps,
+      };
+    }
+  }
+}
+
+/**
+ * Apply conformance scan results to existing modules by matching on path.
+ */
+function applyConformanceResults(
+  modules: ModuleEntry[],
+  conformanceModules: ConformanceAIModule[],
+): void {
+  const confMap = new Map(conformanceModules.map((m) => [m.path, m]));
+  for (const mod of modules) {
+    const conf = confMap.get(mod.path);
+    if (conf) {
+      mod.conformance = {
+        score: conf.score,
+        violations: conf.violations,
+      };
+    }
+  }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────
