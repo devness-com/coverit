@@ -307,12 +307,16 @@ class ParallelProgress {
     }
 
     const columns = process.stderr.columns || 80;
-    const entries = [...this.lines.entries()];
-    const output = entries.map(([name, state]) => {
-      const step = DIMENSION_STEPS[name] ?? 0;
+    // Sort entries by their canonical dimension order for consistent display
+    const entries = [...this.lines.entries()].sort((a, b) =>
+      (DIMENSION_STEPS[a[0]] ?? 99) - (DIMENSION_STEPS[b[0]] ?? 99),
+    );
+    const total = entries.length;
+    const output = entries.map(([name, state], idx) => {
+      const step = idx + 1;
 
       if (state.status === "pending") {
-        return `  ${chalk.dim(`○ [${step}/5] ${name.padEnd(12)} (waiting)`)}`;
+        return `  ${chalk.dim(`○ [${step}/${total}] ${name.padEnd(12)} (waiting)`)}`;
       }
 
       const elapsed = formatElapsed(now - state.startTime);
@@ -333,8 +337,8 @@ class ParallelProgress {
         : state.activity;
 
       // Measure visible width of the fixed prefix to truncate activity correctly
-      // Format: "  X [N/5] DimName       (Xm XXs)"
-      const fixedLen = `  ${prefixChar} [${step}/5] ${name.padEnd(12)} (${elapsed})`.length;
+      // Format: "  X [N/T] DimName       (Xm XXs)"
+      const fixedLen = `  ${prefixChar} [${step}/${total}] ${name.padEnd(12)} (${elapsed})`.length;
       let activityStr = "";
       if (activity) {
         const maxLen = columns - fixedLen - 4; // 4 for " · " + margin
@@ -345,7 +349,7 @@ class ParallelProgress {
           activityStr = ` · ${truncated}`;
         }
       }
-      return `  ${prefixColored} ${chalk.dim(`[${step}/5]`)} ${name.padEnd(12)} ${chalk.dim(`(${elapsed})`)}${chalk.dim(activityStr)}`;
+      return `  ${prefixColored} ${chalk.dim(`[${step}/${total}]`)} ${name.padEnd(12)} ${chalk.dim(`(${elapsed})`)}${chalk.dim(activityStr)}`;
     }).join("\n");
 
     process.stderr.write(output + "\n");
