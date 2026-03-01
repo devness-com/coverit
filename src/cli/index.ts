@@ -243,7 +243,7 @@ const SPINNER_CHARS = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "
 interface DimensionLine {
   activity: string;
   startTime: number;
-  status: "running" | "done" | "failed";
+  status: "pending" | "running" | "done" | "failed";
   detail?: string;
 }
 
@@ -260,10 +260,24 @@ class ParallelProgress {
   constructor() {}
 
   updateStatus(name: string, status: "running" | "done" | "failed", detail?: string): void {
+    // On first call, pre-populate all 4 dimension lines so the line count
+    // is fixed from the start (prevents ghost lines from cursor math mismatch)
+    if (this.lines.size === 0) {
+      const now = Date.now();
+      for (const dimName of Object.keys(DIMENSION_STEPS)) {
+        this.lines.set(dimName, {
+          activity: "",
+          startTime: now,
+          status: "pending",
+        });
+      }
+    }
+
     const existing = this.lines.get(name);
-    if (status === "running" && !existing) {
-      this.lines.set(name, { activity: "", startTime: Date.now(), status, detail });
-    } else if (existing) {
+    if (existing) {
+      if (existing.status === "pending" && status === "running") {
+        existing.startTime = Date.now(); // Start the timer when actually running
+      }
       existing.status = status;
       if (detail) existing.detail = detail;
     }
@@ -292,6 +306,11 @@ class ParallelProgress {
     const entries = [...this.lines.entries()];
     const output = entries.map(([name, state]) => {
       const step = DIMENSION_STEPS[name] ?? 0;
+
+      if (state.status === "pending") {
+        return `\x1B[2K  ${chalk.dim("○")} ${chalk.dim(`[${step}/5]`)} ${chalk.dim(name.padEnd(12))} ${chalk.dim("(waiting)")}`;
+      }
+
       const elapsed = formatElapsed(now - state.startTime);
       let prefix: string;
       if (state.status === "done") {
