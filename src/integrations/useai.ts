@@ -23,6 +23,11 @@ let daemonAvailable: boolean | null = null;
 
 /** Check if UseAI daemon is running (cached after first check). */
 async function isDaemonRunning(): Promise<boolean> {
+  // Never call UseAI during test runs
+  if (process.env["VITEST"] || process.env["JEST_WORKER_ID"] || process.env["NODE_ENV"] === "test") {
+    return false;
+  }
+
   if (daemonAvailable !== null) return daemonAvailable;
 
   try {
@@ -81,10 +86,13 @@ const COMMAND_TITLES: Record<CoveritCommand, { title: string; privatePrefix: str
 /**
  * Start a UseAI session for a coverit command.
  * Returns a session handle (or null if UseAI is unavailable).
+ *
+ * @param model — AI provider name (e.g. "claude-cli", "gemini-cli"). Shown in UseAI dashboard.
  */
 export async function useaiStart(
   command: CoveritCommand,
   projectRoot: string,
+  model?: string,
 ): Promise<UseAISession | null> {
   const { title, privatePrefix } = COMMAND_TITLES[command];
   const projectName = basename(projectRoot);
@@ -94,6 +102,7 @@ export async function useaiStart(
     title,
     private_title: `${privatePrefix} ${projectName}`,
     project: projectName,
+    model: model ?? "coverit",
   });
 
   if (!result) return null;

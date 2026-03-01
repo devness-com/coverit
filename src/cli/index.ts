@@ -240,10 +240,10 @@ program
   .description("AI scans and analyzes codebase → creates coverit.json quality manifest")
   .action(async (pathArg: string) => {
     const projectRoot = resolveProjectRoot(pathArg);
-    const session = await useaiStart("scan", projectRoot);
     const autoYes = program.opts().yes ?? false;
 
     const provider = await resolveProvider(autoYes);
+    const session = await useaiStart("scan", projectRoot, provider.name);
     const spinner = ora("Scanning and analyzing codebase with AI...").start();
     const progress = createProgressHandler(spinner);
 
@@ -286,10 +286,10 @@ program
   .description("AI generates tests from coverit.json gaps, runs them, and updates the score")
   .action(async (pathArg: string, cmdOpts: { modules?: string }) => {
     const projectRoot = resolveProjectRoot(pathArg);
-    const session = await useaiStart("cover", projectRoot);
     const autoYes = program.opts().yes ?? false;
 
     const provider = await resolveProvider(autoYes);
+    const session = await useaiStart("cover", projectRoot, provider.name);
     const spinner = ora("Reading coverit.json and generating tests...").start();
     const progress = createProgressHandler(spinner);
 
@@ -358,10 +358,10 @@ program
   .description("Run existing tests, fix failures via AI, and update the score")
   .action(async (pathArg: string, cmdOpts: { modules?: string }) => {
     const projectRoot = resolveProjectRoot(pathArg);
-    const session = await useaiStart("run", projectRoot);
     const autoYes = program.opts().yes ?? false;
 
     const provider = await resolveProvider(autoYes);
+    const session = await useaiStart("run", projectRoot, provider.name);
     const spinner = ora("Running tests and fixing failures...").start();
     const progress = createProgressHandler(spinner);
 
