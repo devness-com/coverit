@@ -47,3 +47,6 @@ export {
 } from "./utils/framework-detector.js";
 
 export { logger } from "./utils/logger.js";
+
+export type { ScanScope } from "./utils/git.js";
+export { getChangedFiles, mapFilesToModules } from "./utils/git.js";
