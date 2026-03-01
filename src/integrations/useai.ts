@@ -76,6 +76,14 @@ async function ensureMcpInitialized(clientName?: string): Promise<void> {
       mcpSessionId = sid;
       logger.debug(`UseAI MCP session: ${sid}`);
     }
+
+    // Send notifications/initialized (MCP spec requirement after initialize handshake).
+    // This tells the server the client is ready and prevents orphaned "Untitled" sessions.
+    const notifyPayload = JSON.stringify({
+      jsonrpc: "2.0",
+      method: "notifications/initialized",
+    });
+    await httpPost("/mcp", notifyPayload, CALL_TIMEOUT_MS).catch(() => {});
   } catch {
     // Non-fatal — tools/call may still work without initialize
   }

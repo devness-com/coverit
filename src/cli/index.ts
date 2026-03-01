@@ -383,12 +383,16 @@ function shortenToFilename(input: string): string {
  * the session starts immediately. For CLI providers (claude-cli, gemini-cli),
  * the model is only available after the first AI response arrives via a
  * `model_detected` progress event.
+ *
+ * When `willUseAI` is false (e.g. regression-only scan), the session starts
+ * immediately with the provider name since no model detection will occur.
  */
 function createLazyUseAISession(
   command: CoveritCommand,
   projectRoot: string,
   provider: AIProvider,
   baseHandler: (event: AIProgressEvent) => void,
+  willUseAI: boolean = true,
 ): {
   handler: (event: AIProgressEvent) => void;
   getSession: () => Promise<UseAISession | null>;
@@ -397,8 +401,11 @@ function createLazyUseAISession(
   let sessionStarted = false;
   let sessionPromise: Promise<UseAISession | null> | null = null;
 
-  // If provider already knows its model, start immediately
-  if (provider.model) {
+  // Skip UseAI entirely for non-AI operations (e.g. regression-only scans)
+  if (!willUseAI) {
+    sessionStarted = true; // Prevent lazy start and getSession fallback
+  } else if (provider.model) {
+    // Start immediately if model is already known (no need to wait for streaming detection)
     sessionPromise = useaiStart(command, projectRoot, { provider: provider.name, model: provider.model });
     sessionPromise.then((s) => { session = s; }).catch(() => {});
     sessionStarted = true;
@@ -507,7 +514,9 @@ program
     const provider = await resolveProvider(autoYes);
     const spinner = ora("Scanning and analyzing codebase with AI...").start();
     const progress = createProgressHandler(spinner);
-    const lazySession = createLazyUseAISession("scan", projectRoot, provider, progress.handler);
+    // AI is used for all dimensions except regression-only
+    const willUseAI = !dimensions || dimensions.some((d) => d !== "regression");
+    const lazySession = createLazyUseAISession("scan", projectRoot, provider, progress.handler, willUseAI);
 
     try {
       const manifest = await scanCodebase(projectRoot, {
