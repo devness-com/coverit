@@ -34,7 +34,7 @@ interface OllamaTagsResponse {
 
 export class OllamaProvider implements AIProvider {
   readonly name = "ollama";
-  private readonly model: string;
+  readonly model: string;
   private readonly baseUrl: string;
 
   constructor(config?: Partial<AIProviderConfig>) {

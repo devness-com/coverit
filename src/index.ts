@@ -6,6 +6,7 @@
 
 // Core pipeline functions
 export { scanCodebase } from "./scale/analyzer.js";
+export type { ScanOptions } from "./scale/analyzer.js";
 export { cover } from "./cover/pipeline.js";
 export type { CoverOptions, CoverResult } from "./cover/pipeline.js";
 export { runTests } from "./run/pipeline.js";

@@ -158,7 +158,7 @@ function parseStreamingOutput(raw: string): {
 
 export class ClaudeCliProvider implements AIProvider {
   readonly name = "claude-cli";
-  private readonly model: string | undefined;
+  readonly model: string | undefined;
   private binaryPath: string | null = null;
 
   constructor(config?: Partial<AIProviderConfig>) {

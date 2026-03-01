@@ -61,6 +61,8 @@ export interface AIGenerateOptions {
 
 export interface AIProvider {
   readonly name: string;
+  /** Configured model ID, if known (e.g. "claude-opus-4-6"). May be undefined for CLI providers using defaults. */
+  readonly model?: string;
   generate(
     messages: AIMessage[],
     options?: AIGenerateOptions,

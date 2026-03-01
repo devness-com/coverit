@@ -32,6 +32,8 @@ vi.mock("commander", () => ({
     name() { return this; }
     version() { return this; }
     description() { return this; }
+    option() { return this; }
+    opts() { return {}; }
     hook() { return this; }
     parse() {}
     command(cmdName: string) {
@@ -102,6 +104,22 @@ vi.mock("../../utils/logger.js", () => ({
   },
 }));
 
+const mockCliProvider = {
+  name: "mock-provider",
+  generate: vi.fn().mockResolvedValue({ content: "{}", model: "mock" }),
+  isAvailable: vi.fn().mockResolvedValue(true),
+};
+
+vi.mock("../../ai/provider-factory.js", () => ({
+  detectAllProviders: vi.fn(),
+  getProviderDisplayName: vi.fn().mockReturnValue("Mock Provider"),
+}));
+
+vi.mock("../../integrations/useai.js", () => ({
+  useaiStart: vi.fn().mockResolvedValue(null),
+  useaiEnd: vi.fn().mockResolvedValue(undefined),
+}));
+
 // ─── Setup / teardown ───────────────────────────────────────
 let mockExit: ReturnType<typeof vi.spyOn>;
 
@@ -115,12 +133,19 @@ beforeEach(async () => {
   mockSpinner.succeed.mockReturnValue(mockSpinner);
   mockSpinner.fail.mockReturnValue(mockSpinner);
 
+  // Re-set provider mock (vi.clearAllMocks resets mockResolvedValue)
+  mockCliProvider.generate.mockResolvedValue({ content: "{}", model: "mock" });
+
   mockExit = vi
     .spyOn(process, "exit")
     .mockImplementation(() => undefined as never);
   vi.spyOn(console, "log").mockImplementation(() => {});
   vi.resetModules();
   await import("../index.js");
+
+  // Set up provider detection after import (so mock is fresh)
+  const { detectAllProviders } = await import("../../ai/provider-factory.js");
+  vi.mocked(detectAllProviders).mockResolvedValue([mockCliProvider]);
 });
 
 afterEach(() => {
@@ -190,7 +215,7 @@ describe("scan handler (unit)", () => {
     mockWriteManifest.mockResolvedValue(undefined);
 
     const handler = actionHandlers.get("scan")!;
-    await handler(".");
+    await handler(".", {});
 
     expect(mockScanCodebase).toHaveBeenCalledTimes(1);
     expect(mockWriteManifest).toHaveBeenCalledTimes(1);
@@ -206,7 +231,7 @@ describe("scan handler (unit)", () => {
     );
 
     const handler = actionHandlers.get("scan")!;
-    await handler(".");
+    await handler(".", {});
 
     expect(mockSpinner.fail).toHaveBeenCalledWith("Scan failed");
     expect(mockExit).toHaveBeenCalledWith(1);
@@ -228,10 +253,12 @@ describe("cover handler (unit)", () => {
     const handler = actionHandlers.get("cover")!;
     await handler(".", {});
 
-    expect(mockCover).toHaveBeenCalledWith({
-      projectRoot: expect.any(String),
-      modules: undefined,
-    });
+    expect(mockCover).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectRoot: expect.any(String),
+        modules: undefined,
+      }),
+    );
     expect(mockSpinner.stop).toHaveBeenCalled();
   });
 
@@ -248,10 +275,12 @@ describe("cover handler (unit)", () => {
     const handler = actionHandlers.get("cover")!;
     await handler(".", { modules: "src/a, src/b, src/c" });
 
-    expect(mockCover).toHaveBeenCalledWith({
-      projectRoot: expect.any(String),
-      modules: ["src/a", "src/b", "src/c"],
-    });
+    expect(mockCover).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectRoot: expect.any(String),
+        modules: ["src/a", "src/b", "src/c"],
+      }),
+    );
   });
 
   it("handles cover errors: shows failure and exits with code 1", async () => {
@@ -279,10 +308,12 @@ describe("run handler (unit)", () => {
     const handler = actionHandlers.get("run")!;
     await handler(".", {});
 
-    expect(mockRunTests).toHaveBeenCalledWith({
-      projectRoot: expect.any(String),
-      modules: undefined,
-    });
+    expect(mockRunTests).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectRoot: expect.any(String),
+        modules: undefined,
+      }),
+    );
     expect(mockSpinner.stop).toHaveBeenCalled();
   });
 
@@ -299,10 +330,12 @@ describe("run handler (unit)", () => {
     const handler = actionHandlers.get("run")!;
     await handler(".", { modules: "src/a, src/b" });
 
-    expect(mockRunTests).toHaveBeenCalledWith({
-      projectRoot: expect.any(String),
-      modules: ["src/a", "src/b"],
-    });
+    expect(mockRunTests).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectRoot: expect.any(String),
+        modules: ["src/a", "src/b"],
+      }),
+    );
   });
 
   it("handles run errors: shows failure and exits with code 1", async () => {

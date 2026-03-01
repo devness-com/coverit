@@ -83,26 +83,34 @@ const COMMAND_TITLES: Record<CoveritCommand, { title: string; privatePrefix: str
   run: { title: "Test run and fix", privatePrefix: "Coverit run on" },
 };
 
+export interface UseAIStartOptions {
+  /** AI provider name (e.g. "claude-cli", "gemini-cli") */
+  provider?: string;
+  /** AI model ID (e.g. "claude-opus-4-6"). Shown in UseAI dashboard. */
+  model?: string;
+}
+
 /**
  * Start a UseAI session for a coverit command.
  * Returns a session handle (or null if UseAI is unavailable).
- *
- * @param model — AI provider name (e.g. "claude-cli", "gemini-cli"). Shown in UseAI dashboard.
  */
 export async function useaiStart(
   command: CoveritCommand,
   projectRoot: string,
-  model?: string,
+  options?: UseAIStartOptions,
 ): Promise<UseAISession | null> {
   const { title, privatePrefix } = COMMAND_TITLES[command];
   const projectName = basename(projectRoot);
+
+  // Prefer model ID (e.g. "claude-opus-4-6"), fall back to provider name, then "coverit"
+  const modelId = options?.model ?? options?.provider ?? "coverit";
 
   const result = await callTool("useai_start", {
     task_type: "testing",
     title,
     private_title: `${privatePrefix} ${projectName}`,
     project: projectName,
-    model: model ?? "coverit",
+    model: modelId,
   });
 
   if (!result) return null;

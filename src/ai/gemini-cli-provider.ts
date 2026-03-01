@@ -69,7 +69,7 @@ async function findGeminiBinary(): Promise<string | null> {
 
 export class GeminiCliProvider implements AIProvider {
   readonly name = "gemini-cli";
-  private readonly model: string | undefined;
+  readonly model: string | undefined;
   private binaryPath: string | null = null;
 
   constructor(config?: Partial<AIProviderConfig>) {

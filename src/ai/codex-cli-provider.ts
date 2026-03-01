@@ -69,7 +69,7 @@ async function findCodexBinary(): Promise<string | null> {
 
 export class CodexCliProvider implements AIProvider {
   readonly name = "codex-cli";
-  private readonly model: string | undefined;
+  readonly model: string | undefined;
   private binaryPath: string | null = null;
 
   constructor(config?: Partial<AIProviderConfig>) {

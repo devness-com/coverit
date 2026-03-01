@@ -31,7 +31,7 @@ interface AnthropicResponse {
 
 export class AnthropicProvider implements AIProvider {
   readonly name = "anthropic";
-  private readonly model: string;
+  readonly model: string;
   private readonly apiKey: string | undefined;
   private readonly maxTokens: number;
   private readonly temperature: number | undefined;

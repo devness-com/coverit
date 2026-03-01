@@ -24,6 +24,45 @@ vi.mock("../writer.js", () => ({
   readManifest: vi.fn(),
 }));
 
+vi.mock("../../ai/security-prompts.js", () => ({
+  buildSecurityPrompt: vi.fn().mockReturnValue([
+    { role: "user", content: "Security prompt" },
+  ]),
+  parseSecurityResponse: vi.fn().mockReturnValue({ modules: [] }),
+}));
+
+vi.mock("../../ai/stability-prompts.js", () => ({
+  buildStabilityPrompt: vi.fn().mockReturnValue([
+    { role: "user", content: "Stability prompt" },
+  ]),
+  parseStabilityResponse: vi.fn().mockReturnValue({ modules: [] }),
+}));
+
+vi.mock("../../ai/conformance-prompts.js", () => ({
+  buildConformancePrompt: vi.fn().mockReturnValue([
+    { role: "user", content: "Conformance prompt" },
+  ]),
+  parseConformanceResponse: vi.fn().mockReturnValue({ modules: [] }),
+}));
+
+vi.mock("../../run/pipeline.js", () => ({
+  collectTestFiles: vi.fn().mockReturnValue([]),
+  detectTestRunner: vi.fn().mockReturnValue("jest"),
+  executeTests: vi.fn().mockResolvedValue({ total: 0, passed: 0, failed: 0 }),
+}));
+
+vi.mock("../../utils/scan-logger.js", () => ({
+  ScanLogger: vi.fn().mockImplementation(() => ({
+    record: vi.fn(),
+    flush: vi.fn().mockResolvedValue(undefined),
+    path: "/tmp/.coverit/scan.log",
+  })),
+}));
+
+vi.mock("../../integrations/useai.js", () => ({
+  useaiHeartbeat: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { scanCodebase } from "../analyzer.js";
 import { detectProjectInfo } from "../../utils/framework-detector.js";
 import { readManifest } from "../writer.js";
@@ -348,7 +387,7 @@ describe("analyzer integration", () => {
         expect.objectContaining({
           allowedTools: ["Read", "Glob", "Grep", "Bash"],
           cwd: "/home/user/booking-api",
-          timeoutMs: 600_000,
+          timeoutMs: 900_000,
         }),
       );
     });

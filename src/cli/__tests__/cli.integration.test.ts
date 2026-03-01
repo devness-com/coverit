@@ -50,6 +50,8 @@ vi.mock("commander", () => ({
     name() { return this; }
     version() { return this; }
     description() { return this; }
+    option() { return this; }
+    opts() { return {}; }
     hook() { return this; }
     parse() {}
     command(cmdName: string) {
@@ -109,6 +111,16 @@ vi.mock("../../utils/logger.js", () => ({
     success: vi.fn(),
     table: vi.fn(),
   },
+}));
+
+vi.mock("../../ai/provider-factory.js", () => ({
+  detectAllProviders: vi.fn(),
+  getProviderDisplayName: vi.fn().mockReturnValue("Mock Provider"),
+}));
+
+vi.mock("../../integrations/useai.js", () => ({
+  useaiStart: vi.fn().mockResolvedValue(null),
+  useaiEnd: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Leave writer.js REAL for filesystem integration tests

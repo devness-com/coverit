@@ -32,7 +32,7 @@ interface OpenAIResponse {
 
 export class OpenAIProvider implements AIProvider {
   readonly name: string;
-  private readonly model: string;
+  readonly model: string;
   private readonly apiKey: string | undefined;
   private readonly baseUrl: string;
   private readonly maxTokens: number;

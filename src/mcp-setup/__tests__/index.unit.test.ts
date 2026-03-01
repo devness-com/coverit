@@ -64,6 +64,7 @@ describe("mcp-setup/index — createToolRegistry call", () => {
     expect(registryConfig).toEqual({
       serverName: "Coverit",
       legacyName: "coverit",
+      pluginId: "coverit@coverit",
       mcpEntry: { command: "npx", args: ["-y", "@devness/coverit@latest"] },
       instructions: {
         text: EXPECTED_INSTRUCTIONS_TEXT,

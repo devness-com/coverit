@@ -237,18 +237,24 @@ program
 program
   .command("scan")
   .argument("[path]", "Project root path", ".")
+  .option("--timeout <seconds>", "Timeout per dimension in seconds (default: 900)")
   .description("AI scans and analyzes codebase → creates coverit.json quality manifest")
-  .action(async (pathArg: string) => {
+  .action(async (pathArg: string, cmdOpts: { timeout?: string }) => {
     const projectRoot = resolveProjectRoot(pathArg);
     const autoYes = program.opts().yes ?? false;
+    const timeoutMs = cmdOpts.timeout ? parseInt(cmdOpts.timeout, 10) * 1000 : undefined;
 
     const provider = await resolveProvider(autoYes);
-    const session = await useaiStart("scan", projectRoot, provider.name);
+    const session = await useaiStart("scan", projectRoot, { provider: provider.name, model: provider.model });
     const spinner = ora("Scanning and analyzing codebase with AI...").start();
     const progress = createProgressHandler(spinner);
 
     try {
-      const manifest = await scanCodebase(projectRoot, provider, progress.handler);
+      const manifest = await scanCodebase(projectRoot, {
+        aiProvider: provider,
+        onProgress: progress.handler,
+        timeoutMs,
+      });
 
       progress.cleanup();
       spinner.text = "Writing coverit.json...";
@@ -267,11 +273,13 @@ program
       });
 
       logger.success("coverit.json written to project root");
+      logger.info("Log saved to .coverit/scan.log");
       logger.info("Next: Run `coverit cover` to generate tests and improve your score.");
     } catch (err) {
       progress.cleanup();
       spinner.fail("Scan failed");
       logger.error(err instanceof Error ? err.message : String(err));
+      logger.info("Check .coverit/scan.log for details.");
       await useaiEnd(session, {});
       process.exit(1);
     }
@@ -289,7 +297,7 @@ program
     const autoYes = program.opts().yes ?? false;
 
     const provider = await resolveProvider(autoYes);
-    const session = await useaiStart("cover", projectRoot, provider.name);
+    const session = await useaiStart("cover", projectRoot, { provider: provider.name, model: provider.model });
     const spinner = ora("Reading coverit.json and generating tests...").start();
     const progress = createProgressHandler(spinner);
 
@@ -361,7 +369,7 @@ program
     const autoYes = program.opts().yes ?? false;
 
     const provider = await resolveProvider(autoYes);
-    const session = await useaiStart("run", projectRoot, provider.name);
+    const session = await useaiStart("run", projectRoot, { provider: provider.name, model: provider.model });
     const spinner = ora("Running tests and fixing failures...").start();
     const progress = createProgressHandler(spinner);
 
