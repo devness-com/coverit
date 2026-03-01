@@ -5,6 +5,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildScalePrompt,
+  buildIncrementalScalePrompt,
   parseScaleResponse,
   type ScaleAIResponse,
   type ScaleAIModule,
@@ -149,6 +150,92 @@ describe("buildScalePrompt", () => {
     const messages = buildScalePrompt(mockProjectInfo);
     const userContent = messages[1]!.content;
     expect(userContent).not.toContain("Previous Analysis");
+  });
+});
+
+// ─── buildIncrementalScalePrompt ─────────────────────────────
+
+describe("buildIncrementalScalePrompt", () => {
+  it("includes changed files and affected modules in prompt", () => {
+    const messages = buildIncrementalScalePrompt(
+      mockProjectInfo,
+      ["src/services/auth.ts", "src/services/user.ts"],
+      ["src/services"],
+      ["src/new/unknown.ts"],
+    );
+    expect(messages).toHaveLength(2);
+    expect(messages[0]!.content).toContain("src/services/auth.ts");
+    expect(messages[0]!.content).toContain("src/services");
+    expect(messages[0]!.content).toContain("src/new/unknown.ts");
+    expect(messages[0]!.content).toContain("ONLY these modules");
+  });
+
+  it("returns a system and user message", () => {
+    const messages = buildIncrementalScalePrompt(
+      mockProjectInfo,
+      ["src/utils/helper.ts"],
+      ["src/utils"],
+      [],
+    );
+    expect(messages[0]!.role).toBe("system");
+    expect(messages[1]!.role).toBe("user");
+  });
+
+  it("includes INCREMENTAL in system prompt", () => {
+    const messages = buildIncrementalScalePrompt(
+      mockProjectInfo,
+      ["src/utils/helper.ts"],
+      ["src/utils"],
+      [],
+    );
+    expect(messages[0]!.content).toContain("INCREMENTAL");
+  });
+
+  it("includes shared prompt sections", () => {
+    const messages = buildIncrementalScalePrompt(
+      mockProjectInfo,
+      ["src/utils/helper.ts"],
+      ["src/utils"],
+      [],
+    );
+    const systemContent = messages[0]!.content;
+    expect(systemContent).toContain("Module Detection Rules");
+    expect(systemContent).toContain("Complexity Classification");
+    expect(systemContent).toContain("Diamond Testing Strategy");
+    expect(systemContent).toContain("Test Classification");
+    expect(systemContent).toContain("Output Format");
+  });
+
+  it("includes project language and framework in user prompt", () => {
+    const messages = buildIncrementalScalePrompt(
+      mockProjectInfo,
+      ["src/utils/helper.ts"],
+      ["src/utils"],
+      [],
+    );
+    const userContent = messages[1]!.content;
+    expect(userContent).toContain("typescript");
+    expect(userContent).toContain("nestjs");
+  });
+
+  it("omits unmapped section when no unmapped files", () => {
+    const messages = buildIncrementalScalePrompt(
+      mockProjectInfo,
+      ["src/utils/helper.ts"],
+      ["src/utils"],
+      [],
+    );
+    expect(messages[0]!.content).not.toContain("Unmapped Files");
+  });
+
+  it("includes deleted module instruction", () => {
+    const messages = buildIncrementalScalePrompt(
+      mockProjectInfo,
+      ["src/old/removed.ts"],
+      ["src/old"],
+      [],
+    );
+    expect(messages[0]!.content).toContain("files: 0");
   });
 });
 
