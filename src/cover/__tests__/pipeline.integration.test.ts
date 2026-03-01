@@ -164,15 +164,16 @@ describe("cover pipeline integration", () => {
     const result = await cover({ projectRoot: "/tmp/project", aiProvider: provider });
 
     expect(result.scoreBefore).toBe(40);
-    expect(result.scoreAfter).toBe(50); // 40 + 10 from rescoreManifest mock
+    // rescoreManifest mock adds +10 each call: incremental save (50) + final save (60)
+    expect(result.scoreAfter).toBe(60);
     expect(result.modulesProcessed).toBe(1);
     expect(result.testsGenerated).toBe(5);
     expect(result.testsPassed).toBe(4);
     expect(result.testsFailed).toBe(1);
 
-    // Verify the manifest was rescored and written
-    expect(writeManifest).toHaveBeenCalledOnce();
-    expect(rescoreManifest).toHaveBeenCalledOnce();
+    // Manifest is written incrementally after each module + final consistency save
+    expect(writeManifest).toHaveBeenCalledTimes(2);
+    expect(rescoreManifest).toHaveBeenCalledTimes(2);
   });
 
   it("sorts modules by complexity (high first) then by total gap (largest first)", async () => {
@@ -453,26 +454,33 @@ describe("cover pipeline integration", () => {
     expect(result.modulesProcessed).toBe(1);
   });
 
-  it("re-reads the manifest before rescanning to pick up concurrent changes", async () => {
-    const mod = makeModule({
+  it("saves progress incrementally after each module completes", async () => {
+    const mod1 = makeModule({
       path: "src/services",
-      functionality: {
-        tests: { unit: { expected: 6, current: 2, files: [] } },
-      },
+      complexity: "high",
+      functionality: { tests: { unit: { expected: 12, current: 3, files: [] } } },
+    });
+    const mod2 = makeModule({
+      path: "src/utils",
+      complexity: "low",
+      functionality: { tests: { unit: { expected: 3, current: 0, files: [] } } },
     });
 
-    const originalManifest = makeManifest([mod]);
-    // First call returns original, second call (after AI generation) returns updated
-    const updatedManifest = makeManifest([mod], { updatedAt: "2024-02-01" });
-    vi.mocked(readManifest)
-      .mockResolvedValueOnce(originalManifest)
-      .mockResolvedValueOnce(updatedManifest);
+    const manifest = makeManifest([mod1, mod2]);
+    vi.mocked(readManifest).mockResolvedValue(manifest);
 
-    const provider = makeProvider([aiResponse(3, 3, 0)]);
+    const provider = makeProvider([
+      aiResponse(5, 4, 1),
+      aiResponse(2, 2, 0),
+    ]);
+
     await cover({ projectRoot: "/tmp/project", aiProvider: provider });
 
-    // readManifest called twice: once at start, once before rescan
-    expect(readManifest).toHaveBeenCalledTimes(2);
+    // readManifest called only once at start (no re-read — uses live manifest)
+    expect(readManifest).toHaveBeenCalledOnce();
+
+    // writeManifest called after each module + final consistency save = 3 times
+    expect(writeManifest).toHaveBeenCalledTimes(3);
   });
 
   it("handles the case where scanner returns a new test type not in the original module", async () => {

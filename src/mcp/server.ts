@@ -105,14 +105,24 @@ server.tool(
       .array(z.string())
       .optional()
       .describe("Only cover specific modules (paths from coverit.json, e.g. ['src/services', 'src/utils'])"),
+    parallel: z
+      .number()
+      .optional()
+      .describe("Max modules to process in parallel (default: 3)"),
+    timeoutSeconds: z
+      .number()
+      .optional()
+      .describe("Timeout per module in seconds (default: 600)"),
   },
-  async ({ projectRoot, modules }) => {
+  async ({ projectRoot, modules, parallel, timeoutSeconds }) => {
     let session: Awaited<ReturnType<typeof useaiStart>> = null;
     try {
       session = await useaiStart("cover", projectRoot);
       const result = await cover({
         projectRoot,
         modules,
+        concurrency: parallel,
+        timeoutMs: timeoutSeconds ? timeoutSeconds * 1000 : undefined,
       });
 
       await useaiEnd(session, {

@@ -36,6 +36,10 @@ export interface CoverOptions {
   projectRoot: string;
   /** Only cover specific modules (paths from coverit.json) */
   modules?: string[];
+  /** Max modules to process in parallel (default: 3) */
+  concurrency?: number;
+  /** Timeout per module in milliseconds (default: 600_000 = 10 min) */
+  timeoutMs?: number;
   /** Optional AI provider (auto-detected if not provided) */
   aiProvider?: AIProvider;
   /** Callback for streaming progress events */
@@ -58,6 +62,9 @@ const ALLOWED_TOOLS = ["Read", "Glob", "Grep", "Bash", "Write", "Edit"];
 
 /** 10 minutes per module — generous for complex modules */
 const PER_MODULE_TIMEOUT_MS = 600_000;
+
+/** Default number of modules to process in parallel */
+const DEFAULT_CONCURRENCY = 3;
 
 const COMPLEXITY_ORDER: Record<Complexity, number> = {
   high: 3,
@@ -117,63 +124,116 @@ export async function cover(options: CoverOptions): Promise<CoverResult> {
   const provider = options.aiProvider ?? (await createAIProvider());
   logger.debug(`Using AI provider: ${provider.name}`);
 
-  // Step 4: Process each module
+  // Step 4: Process modules in parallel (concurrency-limited)
+  // After each module completes, coverit.json is updated incrementally
+  // so progress is preserved even if the process is killed mid-way.
+  const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY;
+  logger.debug(`Processing modules with concurrency: ${concurrency}`);
+
+  // Write lock — serializes manifest updates from parallel workers
+  let writeQueue = Promise.resolve();
+
+  const moduleResults = await processWithConcurrency(
+    gaps,
+    concurrency,
+    async (gap, index) => {
+      logger.debug(
+        `Covering ${gap.path} (${gap.complexity}, ${gap.totalGap} gaps)`,
+      );
+
+      options.onProgress?.({
+        type: "phase",
+        name: gap.path,
+        step: index + 1,
+        total: gaps.length,
+      });
+
+      let summary = { testsWritten: 0, testsPassed: 0, testsFailed: 0, files: [] as string[] };
+
+      try {
+        const messages = buildCoverPrompt(gap, manifest.project);
+        const response = await provider.generate(messages, {
+          allowedTools: ALLOWED_TOOLS,
+          cwd: projectRoot,
+          timeoutMs: options.timeoutMs ?? PER_MODULE_TIMEOUT_MS,
+          onProgress: options.onProgress,
+        });
+
+        summary = parseCoverResponse(response.content);
+        logger.debug(
+          `${gap.path}: ${summary.testsWritten} written, ${summary.testsPassed} passed, ${summary.testsFailed} failed`,
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        logger.error(`Failed to cover ${gap.path}: ${message}`);
+      }
+
+      // Save progress incrementally — even on failure the AI may have
+      // written test files before timing out, so we capture them.
+      const p = writeQueue.then(async () => {
+        try {
+          await rescanAndSaveManifest(projectRoot, manifest);
+          logger.debug(`Saved progress after ${gap.path}`);
+        } catch (err) {
+          logger.debug(`Incremental save failed: ${err instanceof Error ? err.message : err}`);
+        }
+      });
+      writeQueue = p;
+      await p;
+
+      return summary;
+    },
+  );
+
   let totalGenerated = 0;
   let totalPassed = 0;
   let totalFailed = 0;
-  let modulesProcessed = 0;
-
-  for (let i = 0; i < gaps.length; i++) {
-    const gap = gaps[i]!;
-    logger.debug(
-      `Covering ${gap.path} (${gap.complexity}, ${gap.totalGap} gaps)`,
-    );
-
-    options.onProgress?.({
-      type: "phase",
-      name: gap.path,
-      step: i + 1,
-      total: gaps.length,
-    });
-
-    try {
-      const messages = buildCoverPrompt(gap, manifest.project);
-      const response = await provider.generate(messages, {
-        allowedTools: ALLOWED_TOOLS,
-        cwd: projectRoot,
-        timeoutMs: PER_MODULE_TIMEOUT_MS,
-        onProgress: options.onProgress,
-      });
-
-      const summary = parseCoverResponse(response.content);
-      totalGenerated += summary.testsWritten;
-      totalPassed += summary.testsPassed;
-      totalFailed += summary.testsFailed;
-      modulesProcessed++;
-
-      logger.debug(
-        `${gap.path}: ${summary.testsWritten} written, ${summary.testsPassed} passed, ${summary.testsFailed} failed`,
-      );
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      logger.error(`Failed to cover ${gap.path}: ${message}`);
-      modulesProcessed++;
-    }
+  for (const result of moduleResults) {
+    totalGenerated += result.testsWritten;
+    totalPassed += result.testsPassed;
+    totalFailed += result.testsFailed;
   }
+  const modulesProcessed = gaps.length;
 
-  // Step 5: Rescan and update manifest
+  // Step 5: Final rescan (consistency check — picks up any edge cases)
   options.onProgress?.({
     type: "phase",
     name: "Rescanning",
     step: gaps.length + 1,
     total: gaps.length + 1,
   });
-  logger.debug("Rescanning test files and updating manifest...");
+  logger.debug("Final rescan for consistency...");
+  await rescanAndSaveManifest(projectRoot, manifest);
 
-  const currentManifest = (await readManifest(projectRoot)) ?? manifest;
-  const scanResult = await scanTests(projectRoot, currentManifest.modules);
+  const scoreAfter = manifest.score.overall;
+  logger.debug(`Cover complete. Score: ${scoreBefore} → ${scoreAfter}`);
 
-  for (const mod of currentManifest.modules) {
+  return {
+    scoreBefore,
+    scoreAfter,
+    modulesProcessed,
+    testsGenerated: totalGenerated,
+    testsPassed: totalPassed,
+    testsFailed: totalFailed,
+  };
+}
+
+// ─── Incremental Manifest Update ─────────────────────────────
+
+/**
+ * Rescan all test files, update module entries in the manifest, rescore,
+ * and write to disk. Mutates the manifest in-place so the live state
+ * stays in sync across parallel workers.
+ *
+ * This is fast (~1s) because scanTests is pure filesystem — no AI.
+ */
+async function rescanAndSaveManifest(
+  projectRoot: string,
+  manifest: CoveritManifest,
+): Promise<void> {
+  const scanResult = await scanTests(projectRoot, manifest.modules);
+
+  for (const mod of manifest.modules) {
     const moduleData = scanResult.byModule.get(mod.path);
     if (!moduleData) continue;
 
@@ -193,20 +253,10 @@ export async function cover(options: CoverOptions): Promise<CoverResult> {
     }
   }
 
-  const rescored = rescoreManifest(currentManifest);
+  const rescored = rescoreManifest(manifest);
+  // Sync scores back to the live manifest
+  manifest.score = rescored.score;
   await writeManifest(projectRoot, rescored);
-
-  const scoreAfter = rescored.score.overall;
-  logger.debug(`Cover complete. Score: ${scoreBefore} → ${scoreAfter}`);
-
-  return {
-    scoreBefore,
-    scoreAfter,
-    modulesProcessed,
-    testsGenerated: totalGenerated,
-    testsPassed: totalPassed,
-    testsFailed: totalFailed,
-  };
 }
 
 // ─── Gap Identification ─────────────────────────────────────
@@ -256,4 +306,34 @@ function identifyGaps(
   }
 
   return result;
+}
+
+// ─── Concurrency Helper ──────────────────────────────────────
+
+/**
+ * Process items in parallel with a concurrency limit.
+ * Workers pick items from a shared queue, so work is distributed evenly.
+ */
+async function processWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  processor: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+
+  async function worker(): Promise<void> {
+    while (nextIndex < items.length) {
+      const index = nextIndex++;
+      results[index] = await processor(items[index]!, index);
+    }
+  }
+
+  await Promise.all(
+    Array.from(
+      { length: Math.min(concurrency, items.length) },
+      () => worker(),
+    ),
+  );
+  return results;
 }

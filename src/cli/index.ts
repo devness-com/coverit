@@ -506,8 +506,10 @@ program
   .command("cover")
   .argument("[path]", "Project root path", ".")
   .option("--modules <paths>", "Only cover specific modules (comma-separated)")
+  .option("--parallel <count>", "Max modules to process in parallel (default: 3)")
+  .option("--timeout <seconds>", "Timeout per module in seconds (default: 600)")
   .description("AI generates tests from coverit.json gaps, runs them, and updates the score")
-  .action(async (pathArg: string, cmdOpts: { modules?: string }) => {
+  .action(async (pathArg: string, cmdOpts: { modules?: string; parallel?: string; timeout?: string }) => {
     const projectRoot = resolveProjectRoot(pathArg);
     const autoYes = program.opts().yes ?? false;
 
@@ -520,10 +522,14 @@ program
       const modules = cmdOpts.modules
         ? cmdOpts.modules.split(",").map((m) => m.trim())
         : undefined;
+      const concurrency = cmdOpts.parallel ? parseInt(cmdOpts.parallel, 10) : undefined;
+      const timeoutMs = cmdOpts.timeout ? parseInt(cmdOpts.timeout, 10) * 1000 : undefined;
 
       const result = await cover({
         projectRoot,
         modules,
+        concurrency,
+        timeoutMs,
         aiProvider: provider,
         onProgress: lazySession.handler,
       });
