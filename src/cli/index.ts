@@ -30,7 +30,7 @@ import {
 } from "../ai/provider-factory.js";
 import type { AIProvider, AIProgressEvent } from "../ai/types.js";
 import { logger } from "../utils/logger.js";
-import { useaiStart, useaiEnd } from "../integrations/useai.js";
+import { useaiStart, useaiEnd, type UseAISession, type CoveritCommand } from "../integrations/useai.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -211,6 +211,9 @@ function createProgressHandler(spinner: ReturnType<typeof ora>) {
           updateSpinner();
         }
         break;
+      case "model_detected":
+        // Handled by createLazyUseAISession wrapper, not here
+        break;
     }
   };
 
@@ -352,6 +355,62 @@ function shortenToFilename(input: string): string {
   return parts[parts.length - 1] ?? input;
 }
 
+// ─── Lazy UseAI Session ──────────────────────────────────────
+
+/**
+ * Wraps a progress handler to detect the AI model from streaming events
+ * and start a UseAI session as soon as the model is known.
+ *
+ * For providers with a known model (SDK-based like anthropic/openai/ollama),
+ * the session starts immediately. For CLI providers (claude-cli, gemini-cli),
+ * the model is only available after the first AI response arrives via a
+ * `model_detected` progress event.
+ */
+function createLazyUseAISession(
+  command: CoveritCommand,
+  projectRoot: string,
+  provider: AIProvider,
+  baseHandler: (event: AIProgressEvent) => void,
+): {
+  handler: (event: AIProgressEvent) => void;
+  getSession: () => Promise<UseAISession | null>;
+} {
+  let session: UseAISession | null = null;
+  let sessionStarted = false;
+  let sessionPromise: Promise<UseAISession | null> | null = null;
+
+  // If provider already knows its model, start immediately
+  if (provider.model) {
+    sessionPromise = useaiStart(command, projectRoot, { provider: provider.name, model: provider.model });
+    sessionPromise.then((s) => { session = s; }).catch(() => {});
+    sessionStarted = true;
+  }
+
+  const handler = (event: AIProgressEvent): void => {
+    // Detect model from streaming and start UseAI lazily
+    if (event.type === "model_detected" && !sessionStarted) {
+      sessionStarted = true;
+      sessionPromise = useaiStart(command, projectRoot, { provider: provider.name, model: event.model });
+      sessionPromise.then((s) => { session = s; }).catch(() => {});
+    }
+    baseHandler(event);
+  };
+
+  const getSession = async (): Promise<UseAISession | null> => {
+    // Wait for any pending session start
+    if (sessionPromise) {
+      session = await sessionPromise;
+    }
+    // Fallback: if no model was detected, start with provider name
+    if (!sessionStarted) {
+      session = await useaiStart(command, projectRoot, { provider: provider.name });
+    }
+    return session;
+  };
+
+  return { handler, getSession };
+}
+
 // ─── CLI Program ─────────────────────────────────────────────
 
 const program = new Command();
@@ -380,14 +439,14 @@ program
     const timeoutMs = cmdOpts.timeout ? parseInt(cmdOpts.timeout, 10) * 1000 : undefined;
 
     const provider = await resolveProvider(autoYes);
-    const session = await useaiStart("scan", projectRoot, { provider: provider.name, model: provider.model });
     const spinner = ora("Scanning and analyzing codebase with AI...").start();
     const progress = createProgressHandler(spinner);
+    const lazySession = createLazyUseAISession("scan", projectRoot, provider, progress.handler);
 
     try {
       const manifest = await scanCodebase(projectRoot, {
         aiProvider: provider,
-        onProgress: progress.handler,
+        onProgress: lazySession.handler,
         timeoutMs,
       });
 
@@ -401,6 +460,7 @@ program
 
       renderDashboard(manifest);
 
+      const session = await lazySession.getSession();
       await useaiEnd(session, {
         modules: manifest.modules.length,
         score: manifest.score.overall,
@@ -415,6 +475,7 @@ program
       spinner.fail("Scan failed");
       logger.error(err instanceof Error ? err.message : String(err));
       logger.info("Check .coverit/scan.log for details.");
+      const session = await lazySession.getSession();
       await useaiEnd(session, {});
       process.exit(1);
     }
@@ -432,9 +493,9 @@ program
     const autoYes = program.opts().yes ?? false;
 
     const provider = await resolveProvider(autoYes);
-    const session = await useaiStart("cover", projectRoot, { provider: provider.name, model: provider.model });
     const spinner = ora("Reading coverit.json and generating tests...").start();
     const progress = createProgressHandler(spinner);
+    const lazySession = createLazyUseAISession("cover", projectRoot, provider, progress.handler);
 
     try {
       const modules = cmdOpts.modules
@@ -445,7 +506,7 @@ program
         projectRoot,
         modules,
         aiProvider: provider,
-        onProgress: progress.handler,
+        onProgress: lazySession.handler,
       });
 
       progress.cleanup();
@@ -469,6 +530,7 @@ program
         "Failed": result.testsFailed > 0 ? chalk.red(String(result.testsFailed)) : String(result.testsFailed),
       });
 
+      const session = await lazySession.getSession();
       await useaiEnd(session, {
         scoreBefore: result.scoreBefore,
         scoreAfter: result.scoreAfter,
@@ -487,6 +549,7 @@ program
       progress.cleanup();
       spinner.fail("Cover failed");
       logger.error(err instanceof Error ? err.message : String(err));
+      const session = await lazySession.getSession();
       await useaiEnd(session, {});
       process.exit(1);
     }
@@ -504,9 +567,9 @@ program
     const autoYes = program.opts().yes ?? false;
 
     const provider = await resolveProvider(autoYes);
-    const session = await useaiStart("run", projectRoot, { provider: provider.name, model: provider.model });
     const spinner = ora("Running tests and fixing failures...").start();
     const progress = createProgressHandler(spinner);
+    const lazySession = createLazyUseAISession("run", projectRoot, provider, progress.handler);
 
     try {
       const modules = cmdOpts.modules
@@ -517,7 +580,7 @@ program
         projectRoot,
         modules,
         aiProvider: provider,
-        onProgress: progress.handler,
+        onProgress: lazySession.handler,
       });
 
       progress.cleanup();
@@ -541,6 +604,7 @@ program
         "Fixed by AI": result.fixed > 0 ? chalk.green(String(result.fixed)) : String(result.fixed),
       });
 
+      const session = await lazySession.getSession();
       await useaiEnd(session, {
         scoreBefore: result.scoreBefore,
         scoreAfter: result.scoreAfter,
@@ -563,6 +627,7 @@ program
       progress.cleanup();
       spinner.fail("Run failed");
       logger.error(err instanceof Error ? err.message : String(err));
+      const session = await lazySession.getSession();
       await useaiEnd(session, {});
       process.exit(1);
     }

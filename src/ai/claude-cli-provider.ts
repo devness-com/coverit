@@ -343,6 +343,11 @@ function emitProgressEvent(
   obj: Record<string, unknown>,
   onProgress: (event: AIProgressEvent) => void,
 ): void {
+  // Emit model_detected when we see the model in the stream
+  if (typeof obj["model"] === "string") {
+    onProgress({ type: "model_detected", model: obj["model"] });
+  }
+
   // Handle assistant messages with content blocks (tool_use, text)
   if (obj["type"] === "assistant") {
     const message = obj["message"] as Record<string, unknown> | undefined;
