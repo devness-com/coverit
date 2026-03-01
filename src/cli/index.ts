@@ -30,6 +30,7 @@ import {
 } from "../ai/provider-factory.js";
 import type { AIProvider, AIProgressEvent } from "../ai/types.js";
 import { logger } from "../utils/logger.js";
+import { useaiStart, useaiEnd } from "../integrations/useai.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -239,6 +240,7 @@ program
   .description("AI scans and analyzes codebase → creates coverit.json quality manifest")
   .action(async (pathArg: string) => {
     const projectRoot = resolveProjectRoot(pathArg);
+    const session = await useaiStart("scan", projectRoot);
     const autoYes = program.opts().yes ?? false;
 
     const provider = await resolveProvider(autoYes);
@@ -258,12 +260,19 @@ program
 
       renderDashboard(manifest);
 
+      await useaiEnd(session, {
+        modules: manifest.modules.length,
+        score: manifest.score.overall,
+        language: manifest.project.language,
+      });
+
       logger.success("coverit.json written to project root");
       logger.info("Next: Run `coverit cover` to generate tests and improve your score.");
     } catch (err) {
       progress.cleanup();
       spinner.fail("Scan failed");
       logger.error(err instanceof Error ? err.message : String(err));
+      await useaiEnd(session, {});
       process.exit(1);
     }
   });
@@ -277,6 +286,7 @@ program
   .description("AI generates tests from coverit.json gaps, runs them, and updates the score")
   .action(async (pathArg: string, cmdOpts: { modules?: string }) => {
     const projectRoot = resolveProjectRoot(pathArg);
+    const session = await useaiStart("cover", projectRoot);
     const autoYes = program.opts().yes ?? false;
 
     const provider = await resolveProvider(autoYes);
@@ -316,6 +326,14 @@ program
         "Failed": result.testsFailed > 0 ? chalk.red(String(result.testsFailed)) : String(result.testsFailed),
       });
 
+      await useaiEnd(session, {
+        scoreBefore: result.scoreBefore,
+        scoreAfter: result.scoreAfter,
+        testsGenerated: result.testsGenerated,
+        testsPassed: result.testsPassed,
+        testsFailed: result.testsFailed,
+      });
+
       if (delta > 0) {
         logger.success(`Score improved by ${delta} points.`);
       }
@@ -326,6 +344,7 @@ program
       progress.cleanup();
       spinner.fail("Cover failed");
       logger.error(err instanceof Error ? err.message : String(err));
+      await useaiEnd(session, {});
       process.exit(1);
     }
   });
@@ -339,6 +358,7 @@ program
   .description("Run existing tests, fix failures via AI, and update the score")
   .action(async (pathArg: string, cmdOpts: { modules?: string }) => {
     const projectRoot = resolveProjectRoot(pathArg);
+    const session = await useaiStart("run", projectRoot);
     const autoYes = program.opts().yes ?? false;
 
     const provider = await resolveProvider(autoYes);
@@ -378,6 +398,15 @@ program
         "Fixed by AI": result.fixed > 0 ? chalk.green(String(result.fixed)) : String(result.fixed),
       });
 
+      await useaiEnd(session, {
+        scoreBefore: result.scoreBefore,
+        scoreAfter: result.scoreAfter,
+        totalTests: result.totalTests,
+        passed: result.passed,
+        failed: result.failed,
+        fixed: result.fixed,
+      });
+
       if (delta > 0) {
         logger.success(`Score improved by ${delta} points.`);
       }
@@ -391,6 +420,7 @@ program
       progress.cleanup();
       spinner.fail("Run failed");
       logger.error(err instanceof Error ? err.message : String(err));
+      await useaiEnd(session, {});
       process.exit(1);
     }
   });
