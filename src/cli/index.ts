@@ -299,33 +299,52 @@ class ParallelProgress {
 
     this.spinnerFrame = (this.spinnerFrame + 1) % SPINNER_CHARS.length;
 
-    // Move cursor up to overwrite previous render
+    // Move cursor up to overwrite previous render, then clear to end of screen.
+    // \x1B[0J handles residual content from lines that previously wrapped.
     if (this.linesWritten > 0) {
-      process.stderr.write(`\x1B[${this.linesWritten}A`);
+      process.stderr.write(`\x1B[${this.linesWritten}A\x1B[0J`);
     }
 
+    const columns = process.stderr.columns || 80;
     const entries = [...this.lines.entries()];
     const output = entries.map(([name, state]) => {
       const step = DIMENSION_STEPS[name] ?? 0;
 
       if (state.status === "pending") {
-        return `\x1B[2K  ${chalk.dim("○")} ${chalk.dim(`[${step}/5]`)} ${chalk.dim(name.padEnd(12))} ${chalk.dim("(waiting)")}`;
+        return `  ${chalk.dim(`○ [${step}/5] ${name.padEnd(12)} (waiting)`)}`;
       }
 
       const elapsed = formatElapsed(now - state.startTime);
-      let prefix: string;
+      let prefixChar: string;
+      let prefixColored: string;
       if (state.status === "done") {
-        prefix = chalk.green("✓");
+        prefixChar = "✓";
+        prefixColored = chalk.green("✓");
       } else if (state.status === "failed") {
-        prefix = chalk.red("✗");
+        prefixChar = "✗";
+        prefixColored = chalk.red("✗");
       } else {
-        prefix = chalk.cyan(SPINNER_CHARS[this.spinnerFrame]!);
+        prefixChar = SPINNER_CHARS[this.spinnerFrame]!;
+        prefixColored = chalk.cyan(prefixChar);
       }
       const activity = state.status !== "running" && state.detail
         ? state.detail
         : state.activity;
-      const activityStr = activity ? ` · ${activity}` : "";
-      return `\x1B[2K  ${prefix} ${chalk.dim(`[${step}/5]`)} ${name.padEnd(12)} ${chalk.dim(`(${elapsed})`)}${chalk.dim(activityStr)}`;
+
+      // Measure visible width of the fixed prefix to truncate activity correctly
+      // Format: "  X [N/5] DimName       (Xm XXs)"
+      const fixedLen = `  ${prefixChar} [${step}/5] ${name.padEnd(12)} (${elapsed})`.length;
+      let activityStr = "";
+      if (activity) {
+        const maxLen = columns - fixedLen - 4; // 4 for " · " + margin
+        if (maxLen > 5) {
+          const truncated = activity.length > maxLen
+            ? activity.slice(0, maxLen - 1) + "…"
+            : activity;
+          activityStr = ` · ${truncated}`;
+        }
+      }
+      return `  ${prefixColored} ${chalk.dim(`[${step}/5]`)} ${name.padEnd(12)} ${chalk.dim(`(${elapsed})`)}${chalk.dim(activityStr)}`;
     }).join("\n");
 
     process.stderr.write(output + "\n");
