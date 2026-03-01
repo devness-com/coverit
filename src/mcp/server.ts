@@ -21,6 +21,7 @@ import { readManifest, writeManifest } from "../scale/writer.js";
 import { cover } from "../cover/pipeline.js";
 import { runTests } from "../run/pipeline.js";
 import { logger } from "../utils/logger.js";
+import { useaiStart, useaiEnd } from "../integrations/useai.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -43,9 +44,17 @@ server.tool(
     projectRoot: z.string().describe("Absolute path to the project root"),
   },
   async ({ projectRoot }) => {
+    let session: Awaited<ReturnType<typeof useaiStart>> = null;
     try {
+      session = await useaiStart("scan", projectRoot);
       const manifest = await scanCodebase(projectRoot);
       await writeManifest(projectRoot, manifest);
+
+      await useaiEnd(session, {
+        modules: manifest.modules.length,
+        score: manifest.score.overall,
+        language: manifest.project.language,
+      });
 
       return {
         content: [
@@ -71,6 +80,7 @@ server.tool(
         ],
       };
     } catch (err) {
+      await useaiEnd(session, {});
       const message = err instanceof Error ? err.message : String(err);
       logger.error("coverit_scan failed:", message);
       return {
@@ -95,10 +105,20 @@ server.tool(
       .describe("Only cover specific modules (paths from coverit.json, e.g. ['src/services', 'src/utils'])"),
   },
   async ({ projectRoot, modules }) => {
+    let session: Awaited<ReturnType<typeof useaiStart>> = null;
     try {
+      session = await useaiStart("cover", projectRoot);
       const result = await cover({
         projectRoot,
         modules,
+      });
+
+      await useaiEnd(session, {
+        scoreBefore: result.scoreBefore,
+        scoreAfter: result.scoreAfter,
+        testsGenerated: result.testsGenerated,
+        testsPassed: result.testsPassed,
+        testsFailed: result.testsFailed,
       });
 
       return {
@@ -110,6 +130,7 @@ server.tool(
         ],
       };
     } catch (err) {
+      await useaiEnd(session, {});
       const message = err instanceof Error ? err.message : String(err);
       logger.error("coverit_cover failed:", message);
       return {
@@ -134,10 +155,21 @@ server.tool(
       .describe("Only run tests for specific modules (paths from coverit.json, e.g. ['src/services', 'src/utils'])"),
   },
   async ({ projectRoot, modules }) => {
+    let session: Awaited<ReturnType<typeof useaiStart>> = null;
     try {
+      session = await useaiStart("run", projectRoot);
       const result = await runTests({
         projectRoot,
         modules,
+      });
+
+      await useaiEnd(session, {
+        scoreBefore: result.scoreBefore,
+        scoreAfter: result.scoreAfter,
+        totalTests: result.totalTests,
+        passed: result.passed,
+        failed: result.failed,
+        fixed: result.fixed,
       });
 
       return {
@@ -149,6 +181,7 @@ server.tool(
         ],
       };
     } catch (err) {
+      await useaiEnd(session, {});
       const message = err instanceof Error ? err.message : String(err);
       logger.error("coverit_run failed:", message);
       return {
