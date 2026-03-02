@@ -48,5 +48,4 @@ export {
 
 export { logger } from "./utils/logger.js";
 
-export type { ScanScope } from "./utils/git.js";
-export { getChangedFiles, mapFilesToModules } from "./utils/git.js";
+export { mapFilesToModules, getHeadCommit, getFilesSinceCommit } from "./utils/git.js";

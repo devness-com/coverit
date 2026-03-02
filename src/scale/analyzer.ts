@@ -49,7 +49,7 @@ import type { AIProvider, AIProgressEvent } from "../ai/types.js";
 import type { SecurityAIModule } from "../ai/security-prompts.js";
 import type { StabilityAIModule } from "../ai/stability-prompts.js";
 import type { ConformanceAIModule } from "../ai/conformance-prompts.js";
-import type { ScanScope } from "../utils/git.js";
+import { mapFilesToModules } from "../utils/git.js";
 import { readManifest } from "./writer.js";
 import { logger } from "../utils/logger.js";
 import { ScanLogger } from "../utils/scan-logger.js";
@@ -88,8 +88,6 @@ export interface ScanOptions {
    * Requires coverit.json to exist if functionality is not included.
    */
   dimensions?: ScanDimension[];
-  /** Incremental scan scope — only re-analyze modules affected by changes */
-  scope?: ScanScope;
 }
 
 // ─── Core Logic ──────────────────────────────────────────────
@@ -132,7 +130,6 @@ export async function scanCodebase(
   let aiProvider: AIProvider | undefined;
   let onProgress: ((event: AIProgressEvent) => void) | undefined;
   let timeoutMs: number;
-  let scope: ScanScope | undefined;
 
   let dimensions: Set<ScanDimension>;
 
@@ -143,13 +140,12 @@ export async function scanCodebase(
     timeoutMs = DEFAULT_TIMEOUT_MS;
     dimensions = new Set(ALL_DIMENSIONS);
   } else if (optionsOrProvider && typeof optionsOrProvider === "object") {
-    // New: scanCodebase(root, { aiProvider, onProgress, timeoutMs, dimensions, scope })
+    // New: scanCodebase(root, { aiProvider, onProgress, timeoutMs, dimensions })
     const opts = optionsOrProvider as ScanOptions;
     aiProvider = opts.aiProvider;
     onProgress = opts.onProgress;
     timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     dimensions = new Set(opts.dimensions ?? ALL_DIMENSIONS);
-    scope = opts.scope;
   } else {
     timeoutMs = DEFAULT_TIMEOUT_MS;
     dimensions = new Set(ALL_DIMENSIONS);
@@ -169,13 +165,6 @@ export async function scanCodebase(
   if (existingManifest) {
     logger.debug(
       `Found existing coverit.json (${existingManifest.modules.length} modules, score ${existingManifest.score.overall}/100)`,
-    );
-  }
-
-  // Incremental scans require an existing manifest to merge into
-  if (scope && !existingManifest) {
-    throw new Error(
-      "Incremental scan requires an existing coverit.json. Run `coverit scan` first for initial setup.",
     );
   }
 
@@ -204,6 +193,9 @@ export async function scanCodebase(
     ...(existingManifest?.score.scanned ?? {}),
   };
 
+  // Placeholder for auto-incremental (Task 4 will replace this)
+  const autoIncremental = false;
+
   // ─── Step 4: Functionality scan (or reuse from existing manifest) ──
   if (runFunctionality) {
     const dimCount = dimensions.size;
@@ -211,9 +203,8 @@ export async function scanCodebase(
     const funcStart = Date.now();
 
     // ── Incremental scan path ──
-    if (scope && existingManifest) {
-      const { getChangedFiles, mapFilesToModules } = await import("../utils/git.js");
-      const changedFiles = await getChangedFiles(scope, projectRoot);
+    if (autoIncremental && existingManifest) {
+      const changedFiles: string[] = []; // Will be populated by auto-incremental in Task 4
 
       if (changedFiles.length === 0) {
         logger.info("No changes detected. Nothing to scan.");
@@ -465,7 +456,7 @@ export async function scanCodebase(
 
   // Preserve history from existing manifest, append new entry
   const previousHistory = existingManifest?.score.history ?? [];
-  const scope_label = scope ? "incremental" : (existingManifest ? "re-analysis" : "first-time");
+  const scope_label = autoIncremental ? "incremental" : (existingManifest ? "re-analysis" : "first-time");
 
   const manifest: CoveritManifest = {
     ...preliminary,

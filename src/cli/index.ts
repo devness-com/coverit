@@ -29,7 +29,6 @@ import {
   getProviderDisplayName,
 } from "../ai/provider-factory.js";
 import type { AIProvider, AIProgressEvent } from "../ai/types.js";
-import type { ScanScope } from "../utils/git.js";
 import { logger } from "../utils/logger.js";
 import { registerCleanupHandlers } from "../utils/process-tracker.js";
 import { useaiStart, useaiEnd, type UseAISession, type CoveritCommand } from "../integrations/useai.js";
@@ -456,16 +455,10 @@ program
 program
   .command("scan")
   .argument("[path]", "Project root path", ".")
-  .option("--changed", "Only scan modules with uncommitted changes")
-  .option("--branch", "Only scan modules changed in current branch vs main/master")
-  .option("--pr <number>", "Only scan modules changed in a GitHub PR")
   .option("--dimensions <list>", "Only scan specific dimensions (comma-separated: functionality,security,stability,conformance,regression)")
   .option("--timeout <seconds>", "Timeout per dimension in seconds (default: 900)")
   .description("AI scans and analyzes codebase → creates coverit.json quality manifest")
   .action(async (pathArg: string, cmdOpts: {
-    changed?: boolean;
-    branch?: boolean;
-    pr?: string;
     dimensions?: string;
     timeout?: string;
   }) => {
@@ -487,30 +480,6 @@ program
       console.log(`  Dimensions: ${chalk.cyan(dimensions.join(", "))}\n`);
     }
 
-    // Parse incremental scope
-    let scope: ScanScope | undefined;
-    if (cmdOpts.changed) {
-      scope = "changed";
-      console.log(`  Scope: ${chalk.cyan("uncommitted changes")}\n`);
-    } else if (cmdOpts.branch) {
-      scope = "branch";
-      console.log(`  Scope: ${chalk.cyan("current branch")}\n`);
-    } else if (cmdOpts.pr) {
-      const prNum = parseInt(cmdOpts.pr, 10);
-      if (isNaN(prNum) || prNum <= 0) {
-        console.log(chalk.red(`\n  Invalid PR number: ${cmdOpts.pr}`));
-        process.exit(1);
-      }
-      scope = { pr: prNum };
-      console.log(`  Scope: ${chalk.cyan(`PR #${cmdOpts.pr}`)}\n`);
-    }
-
-    // Default to functionality-only for incremental scans
-    if (scope && !cmdOpts.dimensions) {
-      dimensions = ["functionality"] as ScanDimension[];
-      console.log(`  Dimensions: ${chalk.cyan("functionality")} (default for incremental)\n`);
-    }
-
     const provider = await resolveProvider(autoYes);
     const spinner = ora("Scanning and analyzing codebase with AI...").start();
     const progress = createProgressHandler(spinner);
@@ -524,7 +493,6 @@ program
         onProgress: lazySession.handler,
         timeoutMs,
         dimensions,
-        scope,
       });
 
       progress.cleanup();

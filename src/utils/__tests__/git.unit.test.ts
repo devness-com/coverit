@@ -11,51 +11,11 @@ vi.mock("simple-git", () => {
 });
 
 import {
-  getChangedFiles,
   mapFilesToModules,
-  detectDefaultBranch,
   getHeadCommit,
   getFilesSinceCommit,
 } from "../git.js";
 import type { ModuleEntry } from "../../schema/coverit-manifest.js";
-
-describe("detectDefaultBranch", () => {
-  it("returns main when main exists", async () => {
-    const { simpleGit } = await import("simple-git");
-    const git = simpleGit() as any;
-    git.branch.mockResolvedValue({ all: ["main", "develop"] });
-    const result = await detectDefaultBranch("/project");
-    expect(result).toBe("main");
-  });
-
-  it("falls back to master", async () => {
-    const { simpleGit } = await import("simple-git");
-    const git = simpleGit() as any;
-    git.branch.mockResolvedValue({ all: ["master", "develop"] });
-    const result = await detectDefaultBranch("/project");
-    expect(result).toBe("master");
-  });
-});
-
-describe("getChangedFiles", () => {
-  it("returns uncommitted files for 'changed' mode", async () => {
-    const { simpleGit } = await import("simple-git");
-    const git = simpleGit() as any;
-    git.diff
-      .mockResolvedValueOnce("src/a.ts\nsrc/b.ts\n") // unstaged
-      .mockResolvedValueOnce("src/c.ts\n"); // staged
-    const files = await getChangedFiles("changed", "/project");
-    expect(files).toEqual(["src/a.ts", "src/b.ts", "src/c.ts"]);
-  });
-
-  it("deduplicates files", async () => {
-    const { simpleGit } = await import("simple-git");
-    const git = simpleGit() as any;
-    git.diff.mockResolvedValueOnce("src/a.ts\n").mockResolvedValueOnce("src/a.ts\n");
-    const files = await getChangedFiles("changed", "/project");
-    expect(files).toEqual(["src/a.ts"]);
-  });
-});
 
 describe("mapFilesToModules", () => {
   const modules: Pick<ModuleEntry, "path">[] = [
