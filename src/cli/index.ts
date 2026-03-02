@@ -32,6 +32,7 @@ import type { AIProvider, AIProgressEvent } from "../ai/types.js";
 import { logger } from "../utils/logger.js";
 import { registerCleanupHandlers } from "../utils/process-tracker.js";
 import { useaiStart, useaiEnd, type UseAISession, type CoveritCommand } from "../integrations/useai.js";
+import { UsageTracker } from "../utils/usage-tracker.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -435,6 +436,14 @@ function createLazyUseAISession(
   return { handler, getSession };
 }
 
+// ─── Usage Summary ───────────────────────────────────────────
+
+/** Print a token usage summary line if any usage data was collected */
+function printUsageSummary(tracker: UsageTracker): void {
+  if (!tracker.hasUsage) return;
+  console.log(chalk.dim(`\n  Token usage: ${tracker.formatSummary()}`));
+}
+
 // ─── CLI Program ─────────────────────────────────────────────
 
 const program = new Command();
@@ -505,6 +514,7 @@ program
     // AI is used for all dimensions except regression-only
     const willUseAI = !dimensions || dimensions.some((d) => d !== "regression");
     const lazySession = createLazyUseAISession("scan", projectRoot, provider, progress.handler, willUseAI);
+    const usageTracker = new UsageTracker();
 
     try {
       const manifest = await scanCodebase(projectRoot, {
@@ -513,6 +523,7 @@ program
         timeoutMs,
         dimensions,
         forceFullScan: cmdOpts.full,
+        usageTracker,
       });
 
       progress.cleanup();
@@ -524,6 +535,7 @@ program
       );
 
       renderDashboard(manifest);
+      printUsageSummary(usageTracker);
 
       const session = await lazySession.getSession();
       await useaiEnd(session, {
@@ -540,6 +552,7 @@ program
       spinner.fail("Scan failed");
       logger.error(err instanceof Error ? err.message : String(err));
       logger.info("Check .coverit/scan.log for details.");
+      printUsageSummary(usageTracker);
       const session = await lazySession.getSession();
       await useaiEnd(session, {});
       process.exit(1);
@@ -563,6 +576,7 @@ program
     const spinner = ora("Reading coverit.json and generating tests...").start();
     const progress = createProgressHandler(spinner);
     const lazySession = createLazyUseAISession("cover", projectRoot, provider, progress.handler);
+    const usageTracker = new UsageTracker();
 
     try {
       const modules = cmdOpts.modules
@@ -578,6 +592,7 @@ program
         timeoutMs,
         aiProvider: provider,
         onProgress: lazySession.handler,
+        usageTracker,
       });
 
       progress.cleanup();
@@ -601,6 +616,8 @@ program
         "Failed": result.testsFailed > 0 ? chalk.red(String(result.testsFailed)) : String(result.testsFailed),
       });
 
+      printUsageSummary(usageTracker);
+
       const session = await lazySession.getSession();
       await useaiEnd(session, {
         scoreBefore: result.scoreBefore,
@@ -620,6 +637,7 @@ program
       progress.cleanup();
       spinner.fail("Cover failed");
       logger.error(err instanceof Error ? err.message : String(err));
+      printUsageSummary(usageTracker);
       const session = await lazySession.getSession();
       await useaiEnd(session, {});
       process.exit(1);
@@ -641,6 +659,7 @@ program
     const spinner = ora("Running tests and fixing failures...").start();
     const progress = createProgressHandler(spinner);
     const lazySession = createLazyUseAISession("run", projectRoot, provider, progress.handler);
+    const usageTracker = new UsageTracker();
 
     try {
       const modules = cmdOpts.modules
@@ -652,6 +671,7 @@ program
         modules,
         aiProvider: provider,
         onProgress: lazySession.handler,
+        usageTracker,
       });
 
       progress.cleanup();
@@ -674,6 +694,8 @@ program
         "Failed": result.failed > 0 ? chalk.red(String(result.failed)) : String(result.failed),
         "Fixed by AI": result.fixed > 0 ? chalk.green(String(result.fixed)) : String(result.fixed),
       });
+
+      printUsageSummary(usageTracker);
 
       const session = await lazySession.getSession();
       await useaiEnd(session, {
@@ -698,6 +720,7 @@ program
       progress.cleanup();
       spinner.fail("Run failed");
       logger.error(err instanceof Error ? err.message : String(err));
+      printUsageSummary(usageTracker);
       const session = await lazySession.getSession();
       await useaiEnd(session, {});
       process.exit(1);

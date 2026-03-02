@@ -241,7 +241,7 @@ describe("OpenAIProvider integration", () => {
 
     const provider = new OpenAIProvider({ apiKey: "sk-test" });
     const result = await provider.generate(simpleMessages);
-    expect(result.tokensUsed).toBeUndefined();
+    expect(result.usage).toBeUndefined();
   });
 
   it("uses constructor temperature when options don't override", async () => {
@@ -317,7 +317,7 @@ describe("OllamaProvider integration", () => {
     expect(body.options.temperature).toBe(0.1);
   });
 
-  it("returns eval_count as tokensUsed", async () => {
+  it("returns eval_count as usage.outputTokens", async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: () =>
@@ -331,7 +331,7 @@ describe("OllamaProvider integration", () => {
 
     const provider = new OllamaProvider();
     const result = await provider.generate(simpleMessages);
-    expect(result.tokensUsed).toBe(150);
+    expect(result.usage?.outputTokens).toBe(150);
   });
 
   it("handles missing eval_count gracefully", async () => {
@@ -347,7 +347,7 @@ describe("OllamaProvider integration", () => {
 
     const provider = new OllamaProvider();
     const result = await provider.generate(simpleMessages);
-    expect(result.tokensUsed).toBeUndefined();
+    expect(result.usage).toBeUndefined();
   });
 
   it("isAvailable returns true for empty models array (Ollama running, no models)", async () => {

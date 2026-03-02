@@ -20,6 +20,7 @@ import type {
   AIProvider,
   AIMessage,
   AIResponse,
+  AIUsage,
   AIGenerateOptions,
   AIProviderConfig,
   AIProgressEvent,
@@ -76,11 +77,13 @@ async function findClaudeBinary(): Promise<string | null> {
 function parseStreamingOutput(raw: string): {
   content: string;
   model: string;
+  usage?: AIUsage;
 } {
   const lines = raw.split("\n").filter((line) => line.trim().length > 0);
   const assistantParts: string[] = [];
   let resultContent: string | null = null;
   let model = "claude-cli";
+  let usage: AIUsage | undefined;
 
   for (const line of lines) {
     try {
@@ -144,6 +147,9 @@ function parseStreamingOutput(raw: string): {
             }
           }
         }
+
+        // Extract usage data from result event
+        usage = extractUsageFromResult(obj);
       }
     } catch {
       // Skip malformed JSON lines (progress indicators, etc.)
@@ -154,7 +160,36 @@ function parseStreamingOutput(raw: string): {
   // Fall back to concatenated assistant text parts if no result event
   const content = resultContent ?? assistantParts.join("");
 
-  return { content, model };
+  return { content, model, usage };
+}
+
+/**
+ * Extract token usage statistics from a Claude CLI result event.
+ *
+ * The result event (SDKResultMessage) contains:
+ *   usage: { input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens }
+ *   total_cost_usd, duration_ms, duration_api_ms, num_turns
+ */
+function extractUsageFromResult(obj: Record<string, unknown>): AIUsage | undefined {
+  const usageObj = obj["usage"] as Record<string, unknown> | undefined;
+  if (!usageObj || typeof usageObj !== "object") return undefined;
+
+  const inputTokens = typeof usageObj["input_tokens"] === "number" ? usageObj["input_tokens"] : 0;
+  const outputTokens = typeof usageObj["output_tokens"] === "number" ? usageObj["output_tokens"] : 0;
+
+  // If both are 0, the result event likely doesn't have usage data
+  if (inputTokens === 0 && outputTokens === 0) return undefined;
+
+  return {
+    inputTokens,
+    outputTokens,
+    cacheReadInputTokens: typeof usageObj["cache_read_input_tokens"] === "number" ? usageObj["cache_read_input_tokens"] : 0,
+    cacheCreationInputTokens: typeof usageObj["cache_creation_input_tokens"] === "number" ? usageObj["cache_creation_input_tokens"] : 0,
+    totalCostUsd: typeof obj["total_cost_usd"] === "number" ? obj["total_cost_usd"] : 0,
+    durationMs: typeof obj["duration_ms"] === "number" ? obj["duration_ms"] : 0,
+    durationApiMs: typeof obj["duration_api_ms"] === "number" ? obj["duration_api_ms"] : 0,
+    numTurns: typeof obj["num_turns"] === "number" ? obj["num_turns"] : 0,
+  };
 }
 
 export class ClaudeCliProvider implements AIProvider {
@@ -238,7 +273,7 @@ export class ClaudeCliProvider implements AIProvider {
       );
     }
 
-    const { content, model } = parseStreamingOutput(result.stdout);
+    const { content, model, usage } = parseStreamingOutput(result.stdout);
 
     if (!content) {
       throw new Error(
@@ -247,7 +282,7 @@ export class ClaudeCliProvider implements AIProvider {
       );
     }
 
-    return { content, model };
+    return { content, model, usage };
   }
 
   private spawnClaude(

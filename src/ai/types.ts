@@ -31,11 +31,22 @@ export interface AIMessage {
   content: string;
 }
 
+/** Token usage statistics from a single AI generation call */
+export interface AIUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadInputTokens: number;
+  cacheCreationInputTokens: number;
+  totalCostUsd: number;
+  durationMs: number;
+  durationApiMs: number;
+  numTurns: number;
+}
+
 export interface AIResponse {
   content: string;
   model: string;
-  tokensUsed?: number;
-  truncated?: boolean;
+  usage?: AIUsage;
 }
 
 /** Progress events emitted during AI generation (streaming) */

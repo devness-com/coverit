@@ -127,16 +127,19 @@ export class AnthropicProvider implements AIProvider {
       throw new Error("Anthropic API returned no text content blocks.");
     }
 
-    const tokensUsed =
-      data.usage
-        ? data.usage.input_tokens + data.usage.output_tokens
-        : undefined;
-
     return {
       content: textBlocks.join(""),
       model: data.model,
-      tokensUsed,
-      truncated: data.stop_reason === "max_tokens",
+      usage: data.usage ? {
+        inputTokens: data.usage.input_tokens,
+        outputTokens: data.usage.output_tokens,
+        cacheReadInputTokens: 0,
+        cacheCreationInputTokens: 0,
+        totalCostUsd: 0,
+        durationMs: 0,
+        durationApiMs: 0,
+        numTurns: 1,
+      } : undefined,
     };
   }
 }

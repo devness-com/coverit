@@ -28,6 +28,7 @@ import {
   type ModuleGap,
 } from "../ai/cover-prompts.js";
 import type { AIProvider, AIProgressEvent } from "../ai/types.js";
+import { UsageTracker } from "../utils/usage-tracker.js";
 import { logger } from "../utils/logger.js";
 
 // ─── Types ───────────────────────────────────────────────────
@@ -44,6 +45,8 @@ export interface CoverOptions {
   aiProvider?: AIProvider;
   /** Callback for streaming progress events */
   onProgress?: (event: AIProgressEvent) => void;
+  /** Optional usage tracker — populated with token usage from each AI call */
+  usageTracker?: UsageTracker;
 }
 
 export interface CoverResult {
@@ -127,6 +130,7 @@ export async function cover(options: CoverOptions): Promise<CoverResult> {
   // Step 4: Process modules in parallel (concurrency-limited)
   // After each module completes, coverit.json is updated incrementally
   // so progress is preserved even if the process is killed mid-way.
+  const usageTracker = options.usageTracker ?? new UsageTracker();
   const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY;
   logger.debug(`Processing modules with concurrency: ${concurrency}`);
 
@@ -158,6 +162,7 @@ export async function cover(options: CoverOptions): Promise<CoverResult> {
           timeoutMs: options.timeoutMs ?? PER_MODULE_TIMEOUT_MS,
           onProgress: options.onProgress,
         });
+        usageTracker.add(response.usage);
 
         summary = parseCoverResponse(response.content);
         logger.debug(

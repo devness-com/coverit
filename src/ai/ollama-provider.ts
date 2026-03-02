@@ -133,7 +133,16 @@ export class OllamaProvider implements AIProvider {
     return {
       content: data.message.content,
       model: data.model,
-      tokensUsed: data.eval_count,
+      usage: typeof data.eval_count === "number" ? {
+        inputTokens: 0,
+        outputTokens: data.eval_count,
+        cacheReadInputTokens: 0,
+        cacheCreationInputTokens: 0,
+        totalCostUsd: 0,
+        durationMs: 0,
+        durationApiMs: 0,
+        numTurns: 1,
+      } : undefined,
     };
   }
 }

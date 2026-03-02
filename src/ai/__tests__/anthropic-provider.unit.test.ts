@@ -125,23 +125,8 @@ describe("AnthropicProvider", () => {
 
       expect(result.content).toBe("Hello! How can I help?");
       expect(result.model).toBe("claude-sonnet-4-5-20250929");
-      expect(result.tokensUsed).toBe(30);
-      expect(result.truncated).toBe(false);
-    });
-
-    it("sets truncated to true when stop_reason is max_tokens", async () => {
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            ...mockAnthropicResponse,
-            stop_reason: "max_tokens",
-          }),
-      });
-
-      const provider = new AnthropicProvider({ apiKey: "sk-ant-test" });
-      const result = await provider.generate(mockMessages);
-      expect(result.truncated).toBe(true);
+      expect(result.usage?.inputTokens).toBe(10);
+      expect(result.usage?.outputTokens).toBe(20);
     });
 
     it("throws on non-ok HTTP response", async () => {
@@ -268,7 +253,7 @@ describe("AnthropicProvider", () => {
 
       const provider = new AnthropicProvider({ apiKey: "sk-ant-test" });
       const result = await provider.generate(mockMessages);
-      expect(result.tokensUsed).toBeUndefined();
+      expect(result.usage).toBeUndefined();
     });
   });
 });

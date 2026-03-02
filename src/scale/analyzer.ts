@@ -46,6 +46,7 @@ import {
   executeTests,
 } from "../run/pipeline.js";
 import type { AIProvider, AIProgressEvent } from "../ai/types.js";
+import { UsageTracker } from "../utils/usage-tracker.js";
 import type { SecurityAIModule } from "../ai/security-prompts.js";
 import type { StabilityAIModule } from "../ai/stability-prompts.js";
 import type { ConformanceAIModule } from "../ai/conformance-prompts.js";
@@ -90,6 +91,8 @@ export interface ScanOptions {
   dimensions?: ScanDimension[];
   /** Force a full scan even if lastScanCommit exists (--full flag) */
   forceFullScan?: boolean;
+  /** Optional usage tracker — populated with token usage from each AI call */
+  usageTracker?: UsageTracker;
 }
 
 // ─── Core Logic ──────────────────────────────────────────────
@@ -133,6 +136,7 @@ export async function scanCodebase(
   let onProgress: ((event: AIProgressEvent) => void) | undefined;
   let timeoutMs: number;
   let forceFullScan = false;
+  let usageTracker: UsageTracker;
 
   let dimensions: Set<ScanDimension>;
 
@@ -142,6 +146,7 @@ export async function scanCodebase(
     onProgress = legacyOnProgress;
     timeoutMs = DEFAULT_TIMEOUT_MS;
     dimensions = new Set(ALL_DIMENSIONS);
+    usageTracker = new UsageTracker();
   } else if (optionsOrProvider && typeof optionsOrProvider === "object") {
     // New: scanCodebase(root, { aiProvider, onProgress, timeoutMs, dimensions })
     const opts = optionsOrProvider as ScanOptions;
@@ -150,9 +155,11 @@ export async function scanCodebase(
     timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     dimensions = new Set(opts.dimensions ?? ALL_DIMENSIONS);
     forceFullScan = opts.forceFullScan ?? false;
+    usageTracker = opts.usageTracker ?? new UsageTracker();
   } else {
     timeoutMs = DEFAULT_TIMEOUT_MS;
     dimensions = new Set(ALL_DIMENSIONS);
+    usageTracker = new UsageTracker();
   }
 
   const scanLog = new ScanLogger(projectRoot);
@@ -270,6 +277,7 @@ export async function scanCodebase(
         timeoutMs,
         onProgress,
       });
+      usageTracker.add(response.usage);
 
       const incResult = parseScaleResponse(response.content);
 
@@ -324,6 +332,7 @@ export async function scanCodebase(
         timeoutMs,
         onProgress,
       });
+      usageTracker.add(response.usage);
 
       logger.debug(
         `AI analysis complete (${response.content.length} chars, model: ${response.model})`,
@@ -404,6 +413,7 @@ export async function scanCodebase(
     totalSourceLines,
     existingManifest,
     scanLog,
+    usageTracker,
   };
 
   if (dimensions.has("security")) {
@@ -538,6 +548,7 @@ interface ParallelScanContext {
   totalSourceLines: number;
   existingManifest: CoveritManifest | null;
   scanLog: ScanLogger;
+  usageTracker: UsageTracker;
 }
 
 /**
@@ -579,6 +590,7 @@ async function runSecurityScan(
       timeoutMs: ctx.timeoutMs,
       onProgress,
     });
+    ctx.usageTracker.add(secResponse.usage);
     const secResult = parseSecurityResponse(secResponse.content);
     applySecurityResults(ctx.modules, secResult.modules);
     ctx.scannedDates.security = ctx.now;
@@ -621,6 +633,7 @@ async function runStabilityScan(
       timeoutMs: ctx.timeoutMs,
       onProgress,
     });
+    ctx.usageTracker.add(stabResponse.usage);
     const stabResult = parseStabilityResponse(stabResponse.content);
     applyStabilityResults(ctx.modules, stabResult.modules);
     ctx.scannedDates.stability = ctx.now;
@@ -662,6 +675,7 @@ async function runConformanceScan(
       timeoutMs: ctx.timeoutMs,
       onProgress,
     });
+    ctx.usageTracker.add(confResponse.usage);
     const confResult = parseConformanceResponse(confResponse.content);
     applyConformanceResults(ctx.modules, confResult.modules);
     ctx.scannedDates.conformance = ctx.now;

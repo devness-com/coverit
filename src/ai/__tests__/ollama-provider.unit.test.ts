@@ -143,7 +143,7 @@ describe("OllamaProvider", () => {
 
       expect(result.content).toBe("Hello from Ollama!");
       expect(result.model).toBe("llama3.1");
-      expect(result.tokensUsed).toBe(42);
+      expect(result.usage?.outputTokens).toBe(42);
     });
 
     it("passes maxTokens as num_predict in options", async () => {

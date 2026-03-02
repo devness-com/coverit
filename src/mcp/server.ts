@@ -22,6 +22,7 @@ import { cover } from "../cover/pipeline.js";
 import { runTests } from "../run/pipeline.js";
 import { logger } from "../utils/logger.js";
 import { useaiStart, useaiEnd } from "../integrations/useai.js";
+import { UsageTracker } from "../utils/usage-tracker.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -54,11 +55,13 @@ server.tool(
     try {
       session = await useaiStart("scan", projectRoot);
       const timeoutMs = timeoutSeconds ? timeoutSeconds * 1000 : undefined;
+      const usageTracker = new UsageTracker();
 
       const manifest = await scanCodebase(projectRoot, {
         timeoutMs,
         dimensions: dimensions as ScanDimension[] | undefined,
         forceFullScan: full,
+        usageTracker,
       });
       await writeManifest(projectRoot, manifest);
 
@@ -87,6 +90,7 @@ server.tool(
               })),
               journeys: manifest.journeys,
               contracts: manifest.contracts,
+              ...(usageTracker.hasUsage ? { usage: usageTracker.toJSON() } : {}),
             }, null, 2),
           },
         ],
@@ -128,11 +132,13 @@ server.tool(
     let session: Awaited<ReturnType<typeof useaiStart>> = null;
     try {
       session = await useaiStart("cover", projectRoot);
+      const usageTracker = new UsageTracker();
       const result = await cover({
         projectRoot,
         modules,
         concurrency: parallel,
         timeoutMs: timeoutSeconds ? timeoutSeconds * 1000 : undefined,
+        usageTracker,
       });
 
       await useaiEnd(session, {
@@ -147,7 +153,10 @@ server.tool(
         content: [
           {
             type: "text" as const,
-            text: JSON.stringify(result, null, 2),
+            text: JSON.stringify({
+              ...result,
+              ...(usageTracker.hasUsage ? { usage: usageTracker.toJSON() } : {}),
+            }, null, 2),
           },
         ],
       };
@@ -180,9 +189,11 @@ server.tool(
     let session: Awaited<ReturnType<typeof useaiStart>> = null;
     try {
       session = await useaiStart("run", projectRoot);
+      const usageTracker = new UsageTracker();
       const result = await runTests({
         projectRoot,
         modules,
+        usageTracker,
       });
 
       await useaiEnd(session, {
@@ -198,7 +209,10 @@ server.tool(
         content: [
           {
             type: "text" as const,
-            text: JSON.stringify(result, null, 2),
+            text: JSON.stringify({
+              ...result,
+              ...(usageTracker.hasUsage ? { usage: usageTracker.toJSON() } : {}),
+            }, null, 2),
           },
         ],
       };

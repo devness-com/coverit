@@ -36,7 +36,7 @@ export type {
 
 // AI provider
 export { createAIProvider } from "./ai/provider-factory.js";
-export type { AIProvider, AIMessage, AIResponse } from "./ai/types.js";
+export type { AIProvider, AIMessage, AIResponse, AIUsage } from "./ai/types.js";
 
 // Utilities
 export {
@@ -46,6 +46,7 @@ export {
   detectProjectInfo,
 } from "./utils/framework-detector.js";
 
+export { UsageTracker } from "./utils/usage-tracker.js";
 export { logger } from "./utils/logger.js";
 
 export { mapFilesToModules, getHeadCommit, getFilesSinceCommit } from "./utils/git.js";

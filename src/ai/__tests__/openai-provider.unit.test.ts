@@ -149,28 +149,8 @@ describe("OpenAIProvider", () => {
 
       expect(result.content).toBe("Hello! How can I help?");
       expect(result.model).toBe("gpt-4o");
-      expect(result.tokensUsed).toBe(30);
-      expect(result.truncated).toBe(false);
-    });
-
-    it("sets truncated to true when finish_reason is length", async () => {
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            ...mockOpenAIResponse,
-            choices: [
-              {
-                message: { role: "assistant", content: "Truncated..." },
-                finish_reason: "length",
-              },
-            ],
-          }),
-      });
-
-      const provider = new OpenAIProvider({ apiKey: "sk-test" });
-      const result = await provider.generate(mockMessages);
-      expect(result.truncated).toBe(true);
+      expect(result.usage?.inputTokens).toBe(10);
+      expect(result.usage?.outputTokens).toBe(20);
     });
 
     it("throws on non-ok HTTP response", async () => {
@@ -288,7 +268,7 @@ describe("OpenAIProvider", () => {
 
       const provider = new OpenAIProvider({ apiKey: "sk-test" });
       const result = await provider.generate(mockMessages);
-      expect(result.tokensUsed).toBeUndefined();
+      expect(result.usage).toBeUndefined();
     });
   });
 });

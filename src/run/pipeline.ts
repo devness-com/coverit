@@ -24,6 +24,7 @@ import {
   parseRunFixResponse,
 } from "../ai/run-prompts.js";
 import type { AIProvider, AIProgressEvent } from "../ai/types.js";
+import { UsageTracker } from "../utils/usage-tracker.js";
 import { logger } from "../utils/logger.js";
 
 // ─── Types ───────────────────────────────────────────────────
@@ -36,6 +37,8 @@ export interface RunOptions {
   aiProvider?: AIProvider;
   /** Callback for streaming progress events */
   onProgress?: (event: AIProgressEvent) => void;
+  /** Optional usage tracker — populated with token usage from each AI call */
+  usageTracker?: UsageTracker;
 }
 
 export interface RunResult {
@@ -108,6 +111,7 @@ export async function runTests(options: RunOptions): Promise<RunResult> {
     );
 
     const provider = options.aiProvider ?? (await createAIProvider());
+    const usageTracker = options.usageTracker ?? new UsageTracker();
     logger.debug(`Using AI provider: ${provider.name}`);
 
     const messages = buildRunFixPrompt(
@@ -123,6 +127,7 @@ export async function runTests(options: RunOptions): Promise<RunResult> {
         timeoutMs: FIX_TIMEOUT_MS,
         onProgress: options.onProgress,
       });
+      usageTracker.add(response.usage);
 
       const summary = parseRunFixResponse(response.content);
       fixed = summary.fixed;

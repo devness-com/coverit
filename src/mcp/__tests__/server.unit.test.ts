@@ -265,10 +265,12 @@ describe("coverit_run handler", () => {
     const handler = toolHandlers.get("coverit_run")!;
     await handler({ projectRoot: "/tmp/test", modules: ["src/services"] });
 
-    expect(mockRunTests).toHaveBeenCalledWith({
-      projectRoot: "/tmp/test",
-      modules: ["src/services"],
-    });
+    expect(mockRunTests).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectRoot: "/tmp/test",
+        modules: ["src/services"],
+      }),
+    );
   });
 
   it("returns error response when runTests throws", async () => {

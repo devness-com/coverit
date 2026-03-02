@@ -125,8 +125,16 @@ export class OpenAIProvider implements AIProvider {
     return {
       content: firstChoice.message.content,
       model: data.model,
-      tokensUsed: data.usage?.total_tokens,
-      truncated: firstChoice.finish_reason === "length",
+      usage: data.usage ? {
+        inputTokens: data.usage.prompt_tokens ?? 0,
+        outputTokens: data.usage.completion_tokens ?? 0,
+        cacheReadInputTokens: 0,
+        cacheCreationInputTokens: 0,
+        totalCostUsd: 0,
+        durationMs: 0,
+        durationApiMs: 0,
+        numTurns: 1,
+      } : undefined,
     };
   }
 }
