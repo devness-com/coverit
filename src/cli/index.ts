@@ -457,8 +457,10 @@ program
   .argument("[path]", "Project root path", ".")
   .option("--dimensions <list>", "Only scan specific dimensions (comma-separated: functionality,security,stability,conformance,regression)")
   .option("--timeout <seconds>", "Timeout per dimension in seconds (default: 900)")
+  .option("--full", "Force a full codebase scan (ignore incremental cache)")
   .description("AI scans and analyzes codebase → creates coverit.json quality manifest")
   .action(async (pathArg: string, cmdOpts: {
+    full?: boolean;
     dimensions?: string;
     timeout?: string;
   }) => {
@@ -481,6 +483,23 @@ program
     }
 
     const provider = await resolveProvider(autoYes);
+
+    // Display scan scope info
+    const existingManifest = await readManifest(projectRoot);
+    if (cmdOpts.full) {
+      console.log(`  Scope: ${chalk.cyan("full scan (forced)")}\n`);
+    } else if (existingManifest?.project.lastScanCommit) {
+      console.log(`  Scope: ${chalk.cyan("auto-incremental (since last scan)")}\n`);
+    } else {
+      console.log(`  Scope: ${chalk.cyan("full scan (first time)")}\n`);
+    }
+
+    // Default to functionality-only for auto-incremental scans
+    if (!cmdOpts.full && !cmdOpts.dimensions && existingManifest?.project.lastScanCommit) {
+      dimensions = ["functionality"] as ScanDimension[];
+      console.log(`  Dimensions: ${chalk.cyan("functionality")} (default for incremental)\n`);
+    }
+
     const spinner = ora("Scanning and analyzing codebase with AI...").start();
     const progress = createProgressHandler(spinner);
     // AI is used for all dimensions except regression-only
@@ -493,6 +512,7 @@ program
         onProgress: lazySession.handler,
         timeoutMs,
         dimensions,
+        forceFullScan: cmdOpts.full,
       });
 
       progress.cleanup();
