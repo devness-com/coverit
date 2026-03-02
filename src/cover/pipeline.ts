@@ -29,6 +29,13 @@ import {
 } from "../ai/cover-prompts.js";
 import type { AIProvider, AIProgressEvent } from "../ai/types.js";
 import { UsageTracker } from "../utils/usage-tracker.js";
+import {
+  readCoverSession,
+  writeCoverSession,
+  deleteCoverSession,
+  type CoverSession,
+} from "../utils/session.js";
+import { useaiHeartbeat } from "../integrations/useai.js";
 import { logger } from "../utils/logger.js";
 
 // ─── Types ───────────────────────────────────────────────────
@@ -47,6 +54,8 @@ export interface CoverOptions {
   onProgress?: (event: AIProgressEvent) => void;
   /** Optional usage tracker — populated with token usage from each AI call */
   usageTracker?: UsageTracker;
+  /** Resume from a previous interrupted session (default: true) */
+  resume?: boolean;
 }
 
 export interface CoverResult {
@@ -123,11 +132,56 @@ export async function cover(options: CoverOptions): Promise<CoverResult> {
     `Found ${gaps.length} modules with gaps (${gaps.reduce((s, g) => s + g.totalGap, 0)} total missing tests)`,
   );
 
-  // Step 3: Initialize AI provider
+  // Step 3: Resume support — skip modules completed in a previous session
+  const resumeEnabled = options.resume !== false;
+  let session: CoverSession | null = resumeEnabled
+    ? await readCoverSession(projectRoot)
+    : null;
+
+  let skippedCount = 0;
+  if (session && resumeEnabled) {
+    const originalCount = gaps.length;
+    const remaining = gaps.filter((g) => {
+      const moduleSession = session!.modules[g.path];
+      return !moduleSession || moduleSession.status !== "completed";
+    });
+    skippedCount = originalCount - remaining.length;
+    if (skippedCount > 0) {
+      logger.debug(`Resuming: skipping ${skippedCount} completed modules`);
+      gaps.length = 0;
+      gaps.push(...remaining);
+    }
+  }
+
+  if (gaps.length === 0) {
+    logger.debug("All modules already completed — nothing to cover");
+    await deleteCoverSession(projectRoot);
+    return {
+      scoreBefore,
+      scoreAfter: scoreBefore,
+      modulesProcessed: skippedCount,
+      testsGenerated: 0,
+      testsPassed: 0,
+      testsFailed: 0,
+    };
+  }
+
+  // Initialize session for tracking
+  if (!session) {
+    session = { startedAt: new Date().toISOString(), modules: {} };
+  }
+  for (const gap of gaps) {
+    if (!session.modules[gap.path]) {
+      session.modules[gap.path] = { status: "pending", attempts: 0 };
+    }
+  }
+  await writeCoverSession(projectRoot, session);
+
+  // Step 4: Initialize AI provider
   const provider = options.aiProvider ?? (await createAIProvider());
   logger.debug(`Using AI provider: ${provider.name}`);
 
-  // Step 4: Process modules in parallel (concurrency-limited)
+  // Step 5: Process modules in parallel (concurrency-limited)
   // After each module completes, coverit.json is updated incrementally
   // so progress is preserved even if the process is killed mid-way.
   const usageTracker = options.usageTracker ?? new UsageTracker();
@@ -148,9 +202,16 @@ export async function cover(options: CoverOptions): Promise<CoverResult> {
       options.onProgress?.({
         type: "phase",
         name: gap.path,
-        step: index + 1,
-        total: gaps.length,
+        step: index + 1 + skippedCount,
+        total: gaps.length + skippedCount,
       });
+
+      // Track module as in_progress
+      const moduleSession = session!.modules[gap.path]!;
+      moduleSession.status = "in_progress";
+      moduleSession.attempts++;
+      moduleSession.lastAttemptAt = new Date().toISOString();
+      await writeCoverSession(projectRoot, session!);
 
       let summary = { testsWritten: 0, testsPassed: 0, testsFailed: 0, files: [] as string[] };
 
@@ -168,15 +229,19 @@ export async function cover(options: CoverOptions): Promise<CoverResult> {
         logger.debug(
           `${gap.path}: ${summary.testsWritten} written, ${summary.testsPassed} passed, ${summary.testsFailed} failed`,
         );
+
+        moduleSession.status = "completed";
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         logger.error(`Failed to cover ${gap.path}: ${message}`);
+        moduleSession.status = message.includes("timed out") ? "timed_out" : "failed";
       }
 
-      // Save progress incrementally — even on failure the AI may have
+      // Save session + progress incrementally — even on failure the AI may have
       // written test files before timing out, so we capture them.
       const p = writeQueue.then(async () => {
         try {
+          await writeCoverSession(projectRoot, session!);
           await rescanAndSaveManifest(projectRoot, manifest);
           logger.debug(`Saved progress after ${gap.path}`);
         } catch (err) {
@@ -185,6 +250,9 @@ export async function cover(options: CoverOptions): Promise<CoverResult> {
       });
       writeQueue = p;
       await p;
+
+      // Keep UseAI session alive during long cover runs
+      await useaiHeartbeat();
 
       return summary;
     },
@@ -198,17 +266,20 @@ export async function cover(options: CoverOptions): Promise<CoverResult> {
     totalPassed += result.testsPassed;
     totalFailed += result.testsFailed;
   }
-  const modulesProcessed = gaps.length;
+  const modulesProcessed = gaps.length + skippedCount;
 
-  // Step 5: Final rescan (consistency check — picks up any edge cases)
+  // Step 6: Final rescan (consistency check — picks up any edge cases)
   options.onProgress?.({
     type: "phase",
     name: "Rescanning",
-    step: gaps.length + 1,
-    total: gaps.length + 1,
+    step: gaps.length + skippedCount + 1,
+    total: gaps.length + skippedCount + 1,
   });
   logger.debug("Final rescan for consistency...");
   await rescanAndSaveManifest(projectRoot, manifest);
+
+  // Clean up session file on successful completion
+  await deleteCoverSession(projectRoot);
 
   const scoreAfter = manifest.score.overall;
   logger.debug(`Cover complete. Score: ${scoreBefore} → ${scoreAfter}`);

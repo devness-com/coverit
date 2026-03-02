@@ -33,6 +33,12 @@ import { logger } from "../utils/logger.js";
 import { registerCleanupHandlers } from "../utils/process-tracker.js";
 import { useaiStart, useaiEnd, type UseAISession, type CoveritCommand } from "../integrations/useai.js";
 import { UsageTracker } from "../utils/usage-tracker.js";
+import {
+  readCoverSession,
+  deleteCoverSession,
+  readScanSession,
+  deleteScanSession,
+} from "../utils/session.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -467,15 +473,57 @@ program
   .option("--dimensions <list>", "Only scan specific dimensions (comma-separated: functionality,security,stability,conformance,regression)")
   .option("--timeout <seconds>", "Timeout per dimension in seconds (default: 900)")
   .option("--full", "Force a full codebase scan (ignore incremental cache)")
+  .option("--fresh", "Ignore previous session and start fresh")
   .description("AI scans and analyzes codebase → creates coverit.json quality manifest")
   .action(async (pathArg: string, cmdOpts: {
     full?: boolean;
+    fresh?: boolean;
     dimensions?: string;
     timeout?: string;
   }) => {
     const projectRoot = resolveProjectRoot(pathArg);
     const autoYes = program.opts().yes ?? false;
     const timeoutMs = cmdOpts.timeout ? parseInt(cmdOpts.timeout, 10) * 1000 : undefined;
+
+    // Handle resume from previous session
+    let resumeScan = true;
+    if (cmdOpts.fresh) {
+      await deleteScanSession(projectRoot);
+      resumeScan = false;
+    } else {
+      const prevSession = await readScanSession(projectRoot);
+      if (prevSession) {
+        const completed = Object.entries(prevSession.dimensions)
+          .filter(([, s]) => s.status === "completed")
+          .map(([d]) => d);
+        const remaining = Object.entries(prevSession.dimensions)
+          .filter(([, s]) => s.status !== "completed")
+          .map(([d]) => d);
+        const isInteractive = process.stdin.isTTY && !autoYes;
+
+        if (isInteractive) {
+          try {
+            const choice = await select({
+              message: `Previous scan session found (${completed.length} dimensions completed${remaining.length > 0 ? `, ${remaining.length} remaining` : ""}). Resume?`,
+              choices: [
+                { name: "Yes, resume from where I left off", value: "resume" },
+                { name: "No, start fresh", value: "fresh" },
+              ],
+            });
+            if (choice === "fresh") {
+              await deleteScanSession(projectRoot);
+              resumeScan = false;
+            }
+          } catch {
+            console.log("\n  Aborted.\n");
+            process.exit(0);
+          }
+        } else {
+          // Non-interactive: auto-resume
+          console.log(`  Resuming scan (${completed.length} dimensions already completed)\n`);
+        }
+      }
+    }
 
     // Parse --dimensions flag
     let dimensions: ScanDimension[] | undefined;
@@ -524,6 +572,7 @@ program
         dimensions,
         forceFullScan: cmdOpts.full,
         usageTracker,
+        resume: resumeScan,
       });
 
       progress.cleanup();
@@ -567,10 +616,53 @@ program
   .option("--modules <paths>", "Only cover specific modules (comma-separated)")
   .option("--parallel <count>", "Max modules to process in parallel (default: 3)")
   .option("--timeout <seconds>", "Timeout per module in seconds (default: 600)")
+  .option("--fresh", "Ignore previous session and start fresh")
   .description("AI generates tests from coverit.json gaps, runs them, and updates the score")
-  .action(async (pathArg: string, cmdOpts: { modules?: string; parallel?: string; timeout?: string }) => {
+  .action(async (pathArg: string, cmdOpts: { modules?: string; parallel?: string; timeout?: string; fresh?: boolean }) => {
     const projectRoot = resolveProjectRoot(pathArg);
     const autoYes = program.opts().yes ?? false;
+
+    // Handle resume from previous session
+    let resumeCover = true;
+    if (cmdOpts.fresh) {
+      await deleteCoverSession(projectRoot);
+      resumeCover = false;
+    } else {
+      const prevSession = await readCoverSession(projectRoot);
+      if (prevSession) {
+        const entries = Object.entries(prevSession.modules);
+        const completed = entries.filter(([, s]) => s.status === "completed").length;
+        const timedOut = entries.filter(([, s]) => s.status === "timed_out").length;
+        const failed = entries.filter(([, s]) => s.status === "failed").length;
+        const total = entries.length;
+        const isInteractive = process.stdin.isTTY && !autoYes;
+
+        if (isInteractive) {
+          const parts = [`${completed}/${total} modules completed`];
+          if (timedOut > 0) parts.push(`${timedOut} timed out`);
+          if (failed > 0) parts.push(`${failed} failed`);
+          try {
+            const choice = await select({
+              message: `Previous cover session found (${parts.join(", ")}). Resume?`,
+              choices: [
+                { name: "Yes, resume from where I left off", value: "resume" },
+                { name: "No, start fresh", value: "fresh" },
+              ],
+            });
+            if (choice === "fresh") {
+              await deleteCoverSession(projectRoot);
+              resumeCover = false;
+            }
+          } catch {
+            console.log("\n  Aborted.\n");
+            process.exit(0);
+          }
+        } else {
+          // Non-interactive: auto-resume
+          console.log(`  Resuming cover (${completed}/${total} modules already completed)\n`);
+        }
+      }
+    }
 
     const provider = await resolveProvider(autoYes);
     const spinner = ora("Reading coverit.json and generating tests...").start();
@@ -593,6 +685,7 @@ program
         aiProvider: provider,
         onProgress: lazySession.handler,
         usageTracker,
+        resume: resumeCover,
       });
 
       progress.cleanup();
@@ -600,7 +693,7 @@ program
 
       console.log(chalk.bold("\n  Cover Results\n"));
 
-      const delta = result.scoreAfter - result.scoreBefore;
+      const delta = Math.round((result.scoreAfter - result.scoreBefore) * 10) / 10;
       const deltaStr =
         delta > 0
           ? chalk.green(`+${delta}`)
@@ -679,7 +772,7 @@ program
 
       console.log(chalk.bold("\n  Run Results\n"));
 
-      const delta = result.scoreAfter - result.scoreBefore;
+      const delta = Math.round((result.scoreAfter - result.scoreBefore) * 10) / 10;
       const deltaStr =
         delta > 0
           ? chalk.green(`+${delta}`)

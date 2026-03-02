@@ -311,16 +311,24 @@ export class ClaudeCliProvider implements AIProvider {
       let killed = false;
       let lineBuffer = ""; // Buffer for incomplete NDJSON lines
 
+      // Activity-based timeout: resets on every stdout chunk so productive
+      // AI sessions that keep generating output are never killed prematurely.
       const timeoutMs = callTimeoutMs ?? 600_000; // default 10 minutes
-      const timeout = setTimeout(() => {
-        killed = true;
-        proc.kill("SIGTERM");
-        reject(new Error(`Claude CLI timed out after ${timeoutMs / 1000}s`));
-      }, timeoutMs);
+      let timeout: ReturnType<typeof setTimeout>;
+      const resetTimeout = () => {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => {
+          killed = true;
+          proc.kill("SIGTERM");
+          reject(new Error(`Claude CLI timed out after ${timeoutMs / 1000}s of inactivity`));
+        }, timeoutMs);
+      };
+      resetTimeout();
 
       proc.stdout.on("data", (chunk: Buffer) => {
         const text = chunk.toString();
         stdout += text;
+        resetTimeout(); // Reset inactivity timer on output
 
         // Stream progress events in real-time
         if (onProgress) {

@@ -44,13 +44,14 @@ server.tool(
   {
     projectRoot: z.string().describe("Absolute path to the project root"),
     full: z.boolean().optional().describe("Force a full codebase scan, ignoring incremental cache (default: false)"),
+    fresh: z.boolean().optional().describe("Start fresh, ignoring any previous session (default: false)"),
     dimensions: z
       .array(z.enum(["functionality", "security", "stability", "conformance", "regression"]))
       .optional()
       .describe("Only scan specific dimensions (default: all 5). When functionality is omitted, modules are loaded from existing coverit.json."),
     timeoutSeconds: z.number().optional().describe("Timeout per dimension in seconds (default: 1200)"),
   },
-  async ({ projectRoot, full, dimensions, timeoutSeconds }) => {
+  async ({ projectRoot, full, fresh, dimensions, timeoutSeconds }) => {
     let session: Awaited<ReturnType<typeof useaiStart>> = null;
     try {
       session = await useaiStart("scan", projectRoot);
@@ -62,6 +63,7 @@ server.tool(
         dimensions: dimensions as ScanDimension[] | undefined,
         forceFullScan: full,
         usageTracker,
+        resume: !fresh,
       });
       await writeManifest(projectRoot, manifest);
 
@@ -127,8 +129,9 @@ server.tool(
       .number()
       .optional()
       .describe("Timeout per module in seconds (default: 600)"),
+    fresh: z.boolean().optional().describe("Start fresh, ignoring any previous session (default: false)"),
   },
-  async ({ projectRoot, modules, parallel, timeoutSeconds }) => {
+  async ({ projectRoot, modules, parallel, timeoutSeconds, fresh }) => {
     let session: Awaited<ReturnType<typeof useaiStart>> = null;
     try {
       session = await useaiStart("cover", projectRoot);
@@ -139,6 +142,7 @@ server.tool(
         concurrency: parallel,
         timeoutMs: timeoutSeconds ? timeoutSeconds * 1000 : undefined,
         usageTracker,
+        resume: !fresh,
       });
 
       await useaiEnd(session, {

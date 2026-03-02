@@ -116,9 +116,35 @@ async function callTool(
   });
 
   try {
-    const response = await httpPost("/mcp", payload, CALL_TIMEOUT_MS);
-    const json = extractJsonFromResponse(response);
-    return JSON.parse(json) as Record<string, unknown>;
+    const { body, headers } = await httpPostWithHeaders("/mcp", payload, CALL_TIMEOUT_MS);
+    const json = extractJsonFromResponse(body);
+    const parsed = JSON.parse(json) as Record<string, unknown>;
+
+    // Check for JSON-RPC error indicating stale/expired MCP session
+    if (parsed.error && mcpSessionId) {
+      logger.debug(`UseAI ${toolName}: MCP session may be stale, re-initializing...`);
+      mcpInitialized = false;
+      mcpSessionId = null;
+      await ensureMcpInitialized(clientName);
+
+      // Retry with fresh session
+      const retryPayload = JSON.stringify({
+        jsonrpc: "2.0",
+        method: "tools/call",
+        params: { name: toolName, arguments: args },
+        id: ++jsonRpcId,
+      });
+      const retryResponse = await httpPost("/mcp", retryPayload, CALL_TIMEOUT_MS);
+      const retryJson = extractJsonFromResponse(retryResponse);
+      return JSON.parse(retryJson) as Record<string, unknown>;
+    }
+
+    // Track refreshed session ID from response headers
+    if (headers["mcp-session-id"] && headers["mcp-session-id"] !== mcpSessionId) {
+      mcpSessionId = headers["mcp-session-id"];
+    }
+
+    return parsed;
   } catch (err) {
     logger.debug(
       `UseAI ${toolName} call failed:`,

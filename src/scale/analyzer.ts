@@ -54,6 +54,12 @@ import { mapFilesToModules, getHeadCommit, getFilesSinceCommit } from "../utils/
 import { readManifest } from "./writer.js";
 import { logger } from "../utils/logger.js";
 import { ScanLogger } from "../utils/scan-logger.js";
+import {
+  readScanSession,
+  writeScanSession,
+  deleteScanSession,
+  type ScanSession,
+} from "../utils/session.js";
 import { useaiHeartbeat } from "../integrations/useai.js";
 
 // ─── Constants ───────────────────────────────────────────────
@@ -93,6 +99,8 @@ export interface ScanOptions {
   forceFullScan?: boolean;
   /** Optional usage tracker — populated with token usage from each AI call */
   usageTracker?: UsageTracker;
+  /** Resume from a previous interrupted scan (default: true) */
+  resume?: boolean;
 }
 
 // ─── Core Logic ──────────────────────────────────────────────
@@ -139,6 +147,7 @@ export async function scanCodebase(
   let usageTracker: UsageTracker;
 
   let dimensions: Set<ScanDimension>;
+  let resumeEnabled = true;
 
   if (optionsOrProvider && "generate" in optionsOrProvider) {
     // Legacy: scanCodebase(root, provider, onProgress)
@@ -156,6 +165,7 @@ export async function scanCodebase(
     dimensions = new Set(opts.dimensions ?? ALL_DIMENSIONS);
     forceFullScan = opts.forceFullScan ?? false;
     usageTracker = opts.usageTracker ?? new UsageTracker();
+    resumeEnabled = opts.resume !== false;
   } else {
     timeoutMs = DEFAULT_TIMEOUT_MS;
     dimensions = new Set(ALL_DIMENSIONS);
@@ -177,6 +187,29 @@ export async function scanCodebase(
     logger.debug(
       `Found existing coverit.json (${existingManifest.modules.length} modules, score ${existingManifest.score.overall}/100)`,
     );
+  }
+
+  // Resume support: skip dimensions already completed in a previous session
+  let scanSession: ScanSession | null = resumeEnabled
+    ? await readScanSession(projectRoot)
+    : null;
+  const skippedDimensions: string[] = [];
+
+  if (scanSession && resumeEnabled) {
+    for (const [dim, state] of Object.entries(scanSession.dimensions)) {
+      if (state.status === "completed" && dimensions.has(dim as ScanDimension)) {
+        dimensions.delete(dim as ScanDimension);
+        skippedDimensions.push(dim);
+      }
+    }
+    if (skippedDimensions.length > 0) {
+      logger.debug(`Resuming scan: skipping completed dimensions (${skippedDimensions.join(", ")})`);
+    }
+  }
+
+  // Initialize scan session for tracking
+  if (!scanSession) {
+    scanSession = { startedAt: new Date().toISOString(), dimensions: {} };
   }
 
   // If functionality is not requested, we MUST have an existing manifest to get modules from
@@ -321,6 +354,11 @@ export async function scanCodebase(
         detail: `${affectedModules.size} modules updated (incremental)`,
       });
       onProgress?.({ type: "dimension_status", name: "Functionality", status: "done", detail: `${affectedModules.size} modules updated` });
+
+      // Track dimension completion and save manifest incrementally
+      scanSession!.dimensions.functionality = { status: "completed", durationMs: Date.now() - funcStart };
+      await writeScanSession(projectRoot, scanSession!);
+      await savePartialManifest(projectRoot, existingManifest, modules, projectInfo, totalSourceFiles, totalSourceLines, scannedDates, now, aiResult);
     } else {
       // ── Full scan path (existing code) ──
       const messages = buildScalePrompt(projectInfo, existingManifest ?? undefined);
@@ -364,6 +402,10 @@ export async function scanCodebase(
       // Emit completion so the CLI progress display includes Functionality
       onProgress?.({ type: "dimension_status", name: "Functionality", status: "done", detail: `${aiResult.modules.length} modules` });
 
+      // Track dimension completion
+      scanSession!.dimensions.functionality = { status: "completed", durationMs: Date.now() - funcStart };
+      await writeScanSession(projectRoot, scanSession!);
+
       // Assemble modules from Functionality result
       modules = aiResult.modules.map(aiModuleToEntry);
       totalSourceFiles =
@@ -375,6 +417,9 @@ export async function scanCodebase(
           ? aiResult.sourceLines
           : modules.reduce((sum, m) => sum + m.lines, 0);
       scannedDates.functionality = now;
+
+      // Save manifest incrementally so Functionality results survive a kill
+      await savePartialManifest(projectRoot, existingManifest, modules, projectInfo, totalSourceFiles, totalSourceLines, scannedDates, now, aiResult);
     }
   } else {
     // Reuse modules from existing coverit.json
@@ -414,6 +459,7 @@ export async function scanCodebase(
     existingManifest,
     scanLog,
     usageTracker,
+    scanSession: scanSession!,
   };
 
   if (dimensions.has("security")) {
@@ -528,8 +574,9 @@ export async function scanCodebase(
     },
   };
 
-  // Flush scan log
+  // Flush scan log and clean up session file
   await scanLog.flush(manifest.score.overall);
+  await deleteScanSession(projectRoot);
 
   return manifest;
 }
@@ -549,6 +596,7 @@ interface ParallelScanContext {
   existingManifest: CoveritManifest | null;
   scanLog: ScanLogger;
   usageTracker: UsageTracker;
+  scanSession: ScanSession;
 }
 
 /**
@@ -596,6 +644,9 @@ async function runSecurityScan(
     ctx.scannedDates.security = ctx.now;
     const findings = secResult.modules.reduce((s, m) => s + m.findings.length, 0);
     logger.debug(`Security scan complete: ${findings} findings`);
+    ctx.scanSession.dimensions.security = { status: "completed", durationMs: Date.now() - start };
+    await writeScanSession(ctx.projectRoot, ctx.scanSession);
+    await savePartialManifest(ctx.projectRoot, ctx.existingManifest, ctx.modules, ctx.projectInfo, ctx.totalSourceFiles, ctx.totalSourceLines, ctx.scannedDates, ctx.now, null);
     ctx.scanLog.record({
       name: "Security",
       success: true,
@@ -608,6 +659,8 @@ async function runSecurityScan(
     logger.error("Security scan failed:", msg);
     // Restore previous security data so a failed re-scan doesn't wipe existing findings
     restorePreviousDimensionData(ctx, "security");
+    ctx.scanSession.dimensions.security = { status: "failed", durationMs: Date.now() - start };
+    await writeScanSession(ctx.projectRoot, ctx.scanSession).catch(() => {});
     ctx.scanLog.record({
       name: "Security",
       success: false,
@@ -638,6 +691,9 @@ async function runStabilityScan(
     applyStabilityResults(ctx.modules, stabResult.modules);
     ctx.scannedDates.stability = ctx.now;
     logger.debug(`Stability scan complete: ${stabResult.modules.length} modules assessed`);
+    ctx.scanSession.dimensions.stability = { status: "completed", durationMs: Date.now() - start };
+    await writeScanSession(ctx.projectRoot, ctx.scanSession);
+    await savePartialManifest(ctx.projectRoot, ctx.existingManifest, ctx.modules, ctx.projectInfo, ctx.totalSourceFiles, ctx.totalSourceLines, ctx.scannedDates, ctx.now, null);
     ctx.scanLog.record({
       name: "Stability",
       success: true,
@@ -650,6 +706,8 @@ async function runStabilityScan(
     logger.error("Stability scan failed:", msg);
     // Restore previous stability data so a failed re-scan doesn't wipe existing gaps
     restorePreviousDimensionData(ctx, "stability");
+    ctx.scanSession.dimensions.stability = { status: "failed", durationMs: Date.now() - start };
+    await writeScanSession(ctx.projectRoot, ctx.scanSession).catch(() => {});
     ctx.scanLog.record({
       name: "Stability",
       success: false,
@@ -680,6 +738,9 @@ async function runConformanceScan(
     applyConformanceResults(ctx.modules, confResult.modules);
     ctx.scannedDates.conformance = ctx.now;
     logger.debug(`Conformance scan complete: ${confResult.modules.length} modules assessed`);
+    ctx.scanSession.dimensions.conformance = { status: "completed", durationMs: Date.now() - start };
+    await writeScanSession(ctx.projectRoot, ctx.scanSession);
+    await savePartialManifest(ctx.projectRoot, ctx.existingManifest, ctx.modules, ctx.projectInfo, ctx.totalSourceFiles, ctx.totalSourceLines, ctx.scannedDates, ctx.now, null);
     ctx.scanLog.record({
       name: "Conformance",
       success: true,
@@ -692,6 +753,8 @@ async function runConformanceScan(
     logger.error("Conformance scan failed:", msg);
     // Restore previous conformance data so a failed re-scan doesn't wipe existing violations
     restorePreviousDimensionData(ctx, "conformance");
+    ctx.scanSession.dimensions.conformance = { status: "failed", durationMs: Date.now() - start };
+    await writeScanSession(ctx.projectRoot, ctx.scanSession).catch(() => {});
     ctx.scanLog.record({
       name: "Conformance",
       success: false,
@@ -757,6 +820,8 @@ async function runRegressionScan(
       const runResult = await executeTests(ctx.projectRoot, testFiles, testRunner);
       logger.debug(`Regression scan: ${runResult.passed}/${runResult.total} tests passed`);
       ctx.scannedDates.regression = ctx.now;
+      ctx.scanSession.dimensions.regression = { status: "completed", durationMs: Date.now() - start };
+      await writeScanSession(ctx.projectRoot, ctx.scanSession);
       ctx.scanLog.record({
         name: "Regression",
         success: true,
@@ -766,6 +831,8 @@ async function runRegressionScan(
       onProgress?.({ type: "dimension_status", name: "Regression", status: "done", detail: `${runResult.passed}/${runResult.total} passed` });
     } else {
       ctx.scannedDates.regression = ctx.now;
+      ctx.scanSession.dimensions.regression = { status: "completed", durationMs: Date.now() - start };
+      await writeScanSession(ctx.projectRoot, ctx.scanSession);
       logger.debug("Regression scan: no test files found, marking as scanned");
       ctx.scanLog.record({
         name: "Regression",
@@ -778,6 +845,8 @@ async function runRegressionScan(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error("Regression scan failed:", msg);
+    ctx.scanSession.dimensions.regression = { status: "failed", durationMs: Date.now() - start };
+    await writeScanSession(ctx.projectRoot, ctx.scanSession).catch(() => {});
     ctx.scanLog.record({
       name: "Regression",
       success: false,
@@ -886,6 +955,97 @@ function restorePreviousDimensionData(
       ctx.scannedDates[dimension] = prevScanned;
     }
     logger.debug(`Restored previous ${dimension} data for ${restored} modules`);
+  }
+}
+
+// ─── Incremental Save ────────────────────────────────────────
+
+/**
+ * Write a partial manifest to disk so progress survives a kill.
+ * Assembles a minimal manifest from whatever dimensions have completed so far.
+ */
+async function savePartialManifest(
+  projectRoot: string,
+  existingManifest: CoveritManifest | null,
+  modules: ModuleEntry[],
+  projectInfo: ProjectInfo,
+  totalSourceFiles: number,
+  totalSourceLines: number,
+  scannedDates: Record<string, string>,
+  now: string,
+  aiResult: ReturnType<typeof parseScaleResponse> | null,
+): Promise<void> {
+  try {
+    const journeys = aiResult
+      ? aiResult.journeys.map((j) => ({
+          id: j.id,
+          name: j.name,
+          steps: j.steps,
+          covered: j.covered,
+          testFile: j.testFile,
+        }))
+      : existingManifest?.journeys ?? [];
+
+    const contracts = aiResult
+      ? aiResult.contracts.map((c) => ({
+          endpoint: c.endpoint,
+          method: c.method,
+          requestSchema: c.requestSchema,
+          responseSchema: c.responseSchema,
+          covered: c.covered,
+          testFile: c.testFile,
+        }))
+      : existingManifest?.contracts ?? [];
+
+    const partial: CoveritManifest = {
+      version: 1,
+      createdAt: existingManifest?.createdAt ?? now,
+      updatedAt: now,
+      project: {
+        name: projectInfo.name,
+        root: projectRoot,
+        language: projectInfo.language,
+        framework: projectInfo.framework,
+        testFramework: projectInfo.testFramework,
+        sourceFiles: totalSourceFiles,
+        sourceLines: totalSourceLines,
+      },
+      dimensions: existingManifest?.dimensions ?? DEFAULT_DIMENSIONS,
+      modules,
+      journeys,
+      contracts,
+      score: {
+        overall: 0,
+        breakdown: {
+          functionality: 0,
+          security: 0,
+          stability: 0,
+          conformance: 0,
+          regression: 0,
+        },
+        gaps: {
+          total: 0,
+          critical: 0,
+          byDimension: {
+            functionality: { missing: 0, priority: "none" },
+            security: { issues: 0, priority: "none" },
+            stability: { gaps: 0, priority: "none" },
+            conformance: { violations: 0, priority: "none" },
+          },
+        },
+        history: existingManifest?.score.history ?? [],
+        scanned: scannedDates,
+      },
+    };
+
+    const scored = calculateScore(partial);
+    const manifest: CoveritManifest = { ...partial, score: { ...scored, history: partial.score.history, scanned: scannedDates } };
+
+    const { writeManifest: writeM } = await import("./writer.js");
+    await writeM(projectRoot, manifest);
+    logger.debug(`Partial manifest saved (score: ${manifest.score.overall}/100)`);
+  } catch (err) {
+    logger.debug(`Partial manifest save failed: ${err instanceof Error ? err.message : err}`);
   }
 }
 

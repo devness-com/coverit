@@ -85,8 +85,12 @@ export class UsageTracker {
       parts.push(`${t.numTurns} turns`);
     }
 
-    if (t.cacheReadInputTokens > 0) {
-      const cachePercent = Math.round((t.cacheReadInputTokens / t.inputTokens) * 100);
+    if (t.cacheReadInputTokens > 0 && t.inputTokens > 0) {
+      // inputTokens from the SDK = net new (non-cached) tokens sent to the API.
+      // cacheReadInputTokens = tokens served from cache (not included in inputTokens).
+      // Total tokens processed = inputTokens + cacheReadInputTokens.
+      const totalInput = t.inputTokens + t.cacheReadInputTokens;
+      const cachePercent = Math.round((t.cacheReadInputTokens / totalInput) * 100);
       parts.push(`${cachePercent}% cached`);
     }
 
