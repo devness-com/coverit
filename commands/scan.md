@@ -6,7 +6,12 @@ description: "AI-driven codebase scan and analysis — creates coverit.json qual
 
 AI scans and analyzes the project with tool access (Glob, Grep, Read, Bash) to create the `coverit.json` quality manifest. Discovers modules, maps existing tests, classifies complexity, identifies user journeys and API contracts.
 
-This is a heavy operation — the AI thoroughly explores and analyzes the entire codebase. It may take several minutes for large projects.
+**Auto-incremental behavior:**
+- **First scan**: Performs a full codebase scan and records the current git commit in `coverit.json` (`lastScanCommit`).
+- **Subsequent scans**: Automatically detects changes since the last scan (via git commit tracking) and only re-analyzes affected modules. This makes repeated scans much faster.
+- **Force full rescan**: Use the `--full` flag (CLI) or `full: true` (MCP) to force a complete rescan of the entire codebase, ignoring the last scan commit.
+
+Full scans are heavy operations — the AI thoroughly explores and analyzes the entire codebase. They may take several minutes for large projects. Incremental scans are significantly faster.
 
 ## IMPORTANT: Run via sub-agent to protect context
 
@@ -16,6 +21,7 @@ The scan produces a large manifest. **You MUST delegate this to a sub-agent** us
 
 Parse from user input:
 - `[path]` - Project root path (defaults to current working directory)
+- `--full` - Force a full rescan (optional, defaults to incremental if a previous scan exists)
 
 ## Execution
 
@@ -32,6 +38,8 @@ Call the `mcp__plugin_coverit_coverit__coverit_scan` MCP tool with:
 {
   "projectRoot": "<absolute path>"
 }
+
+If the user passed --full, also include "full": true in the parameters.
 
 The response JSON includes:
 - "project": { name, framework, testFramework, language, sourceFiles, sourceLines }
