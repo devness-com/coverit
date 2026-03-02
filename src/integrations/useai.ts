@@ -210,6 +210,16 @@ export async function useaiStart(
   return { sessionId, command, projectRoot };
 }
 
+export interface UseAIEndUsage {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  totalCostUsd: number;
+  durationApiMs: number;
+  numTurns: number;
+  models?: string[];
+}
+
 export interface UseAIEndData {
   score?: number;
   modules?: number;
@@ -223,6 +233,7 @@ export interface UseAIEndData {
   failed?: number;
   fixed?: number;
   language?: string;
+  usage?: UseAIEndUsage;
 }
 
 /**
@@ -261,32 +272,63 @@ function buildMilestone(
   command: CoveritCommand,
   data: UseAIEndData,
 ): { title: string; private_title: string; category: string } {
+  const usageSuffix = data.usage ? ` | ${formatUsageForMilestone(data.usage)}` : "";
+
   switch (command) {
     case "scan":
       return {
         title: `Scanned ${data.modules ?? 0} modules, score ${data.score ?? 0}/100`,
-        private_title: `Coverit scanned ${data.modules ?? 0} modules, score ${data.score ?? 0}/100`,
+        private_title: `Coverit scanned ${data.modules ?? 0} modules, score ${data.score ?? 0}/100${usageSuffix}`,
         category: "analysis",
       };
     case "cover": {
-      const delta = (data.scoreAfter ?? 0) - (data.scoreBefore ?? 0);
+      const delta = Math.round(((data.scoreAfter ?? 0) - (data.scoreBefore ?? 0)) * 10) / 10;
       const deltaStr = delta > 0 ? `+${delta}` : String(delta);
       return {
         title: `Generated ${data.testsGenerated ?? 0} tests, score ${data.scoreBefore ?? 0} -> ${data.scoreAfter ?? 0} (${deltaStr})`,
-        private_title: `Coverit generated ${data.testsGenerated ?? 0} tests, ${data.testsPassed ?? 0} passed, ${data.testsFailed ?? 0} failed`,
+        private_title: `Coverit generated ${data.testsGenerated ?? 0} tests, ${data.testsPassed ?? 0} passed, ${data.testsFailed ?? 0} failed${usageSuffix}`,
         category: "test",
       };
     }
     case "run": {
-      const delta = (data.scoreAfter ?? 0) - (data.scoreBefore ?? 0);
+      const delta = Math.round(((data.scoreAfter ?? 0) - (data.scoreBefore ?? 0)) * 10) / 10;
       const deltaStr = delta > 0 ? `+${delta}` : String(delta);
       return {
         title: `Ran ${data.totalTests ?? 0} tests, fixed ${data.fixed ?? 0}, score ${data.scoreBefore ?? 0} -> ${data.scoreAfter ?? 0} (${deltaStr})`,
-        private_title: `Coverit ran ${data.totalTests ?? 0} tests: ${data.passed ?? 0} passed, ${data.failed ?? 0} failed, ${data.fixed ?? 0} AI-fixed`,
+        private_title: `Coverit ran ${data.totalTests ?? 0} tests: ${data.passed ?? 0} passed, ${data.failed ?? 0} failed, ${data.fixed ?? 0} AI-fixed${usageSuffix}`,
         category: "test",
       };
     }
   }
+}
+
+/** Format usage data as a compact string for milestone private_title */
+function formatUsageForMilestone(usage: UseAIEndUsage): string {
+  const parts: string[] = [];
+
+  parts.push(`${usage.totalTokens.toLocaleString("en-US")} tokens`);
+
+  if (usage.totalCostUsd > 0) {
+    parts.push(`$${usage.totalCostUsd.toFixed(4)}`);
+  }
+
+  if (usage.models && usage.models.length > 0) {
+    parts.push(usage.models.join(", "));
+  }
+
+  if (usage.durationApiMs > 0) {
+    const totalSecs = Math.round(usage.durationApiMs / 1_000);
+    const mins = Math.floor(totalSecs / 60);
+    const secs = totalSecs % 60;
+    const dur = mins > 0 ? `${mins}m ${secs.toString().padStart(2, "0")}s` : `${secs}s`;
+    parts.push(`API ${dur}`);
+  }
+
+  if (usage.numTurns > 0) {
+    parts.push(`${usage.numTurns} turns`);
+  }
+
+  return parts.join(", ");
 }
 
 function extractText(response: Record<string, unknown>): string {

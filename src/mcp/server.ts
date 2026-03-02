@@ -21,8 +21,24 @@ import { readManifest, writeManifest } from "../scale/writer.js";
 import { cover } from "../cover/pipeline.js";
 import { runTests } from "../run/pipeline.js";
 import { logger } from "../utils/logger.js";
-import { useaiStart, useaiEnd } from "../integrations/useai.js";
+import { useaiStart, useaiEnd, type UseAIEndUsage } from "../integrations/useai.js";
 import { UsageTracker } from "../utils/usage-tracker.js";
+
+/** Extract UseAI-compatible usage data from a tracker */
+function extractUsageForUseAI(tracker: UsageTracker): UseAIEndUsage | undefined {
+  if (!tracker.hasUsage) return undefined;
+  const json = tracker.toJSON();
+  if (!json) return undefined;
+  return {
+    inputTokens: json.inputTokens as number,
+    outputTokens: json.outputTokens as number,
+    totalTokens: json.totalTokens as number,
+    totalCostUsd: json.totalCostUsd as number,
+    durationApiMs: json.durationApiMs as number,
+    numTurns: json.numTurns as number,
+    models: json.models as string[] | undefined,
+  };
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -53,10 +69,10 @@ server.tool(
   },
   async ({ projectRoot, full, fresh, dimensions, timeoutSeconds }) => {
     let session: Awaited<ReturnType<typeof useaiStart>> = null;
+    const usageTracker = new UsageTracker();
     try {
       session = await useaiStart("scan", projectRoot);
       const timeoutMs = timeoutSeconds ? timeoutSeconds * 1000 : undefined;
-      const usageTracker = new UsageTracker();
 
       const manifest = await scanCodebase(projectRoot, {
         timeoutMs,
@@ -71,6 +87,7 @@ server.tool(
         modules: manifest.modules.length,
         score: manifest.score.overall,
         language: manifest.project.language,
+        usage: extractUsageForUseAI(usageTracker),
       });
 
       return {
@@ -98,7 +115,7 @@ server.tool(
         ],
       };
     } catch (err) {
-      await useaiEnd(session, {});
+      await useaiEnd(session, { usage: extractUsageForUseAI(usageTracker) });
       const message = err instanceof Error ? err.message : String(err);
       logger.error("coverit_scan failed:", message);
       return {
@@ -133,9 +150,9 @@ server.tool(
   },
   async ({ projectRoot, modules, parallel, timeoutSeconds, fresh }) => {
     let session: Awaited<ReturnType<typeof useaiStart>> = null;
+    const usageTracker = new UsageTracker();
     try {
       session = await useaiStart("cover", projectRoot);
-      const usageTracker = new UsageTracker();
       const result = await cover({
         projectRoot,
         modules,
@@ -151,6 +168,7 @@ server.tool(
         testsGenerated: result.testsGenerated,
         testsPassed: result.testsPassed,
         testsFailed: result.testsFailed,
+        usage: extractUsageForUseAI(usageTracker),
       });
 
       return {
@@ -165,7 +183,7 @@ server.tool(
         ],
       };
     } catch (err) {
-      await useaiEnd(session, {});
+      await useaiEnd(session, { usage: extractUsageForUseAI(usageTracker) });
       const message = err instanceof Error ? err.message : String(err);
       logger.error("coverit_cover failed:", message);
       return {
@@ -191,9 +209,9 @@ server.tool(
   },
   async ({ projectRoot, modules }) => {
     let session: Awaited<ReturnType<typeof useaiStart>> = null;
+    const usageTracker = new UsageTracker();
     try {
       session = await useaiStart("run", projectRoot);
-      const usageTracker = new UsageTracker();
       const result = await runTests({
         projectRoot,
         modules,
@@ -207,6 +225,7 @@ server.tool(
         passed: result.passed,
         failed: result.failed,
         fixed: result.fixed,
+        usage: extractUsageForUseAI(usageTracker),
       });
 
       return {
@@ -221,7 +240,7 @@ server.tool(
         ],
       };
     } catch (err) {
-      await useaiEnd(session, {});
+      await useaiEnd(session, { usage: extractUsageForUseAI(usageTracker) });
       const message = err instanceof Error ? err.message : String(err);
       logger.error("coverit_run failed:", message);
       return {

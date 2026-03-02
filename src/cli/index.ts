@@ -31,7 +31,7 @@ import {
 import type { AIProvider, AIProgressEvent } from "../ai/types.js";
 import { logger } from "../utils/logger.js";
 import { registerCleanupHandlers } from "../utils/process-tracker.js";
-import { useaiStart, useaiEnd, type UseAISession, type CoveritCommand } from "../integrations/useai.js";
+import { useaiStart, useaiEnd, type UseAISession, type CoveritCommand, type UseAIEndUsage } from "../integrations/useai.js";
 import { UsageTracker } from "../utils/usage-tracker.js";
 import {
   readCoverSession,
@@ -450,6 +450,22 @@ function printUsageSummary(tracker: UsageTracker): void {
   console.log(chalk.dim(`\n  Token usage: ${tracker.formatSummary()}`));
 }
 
+/** Extract UseAI-compatible usage data from a tracker (returns undefined if no usage) */
+function extractUsageForUseAI(tracker: UsageTracker): UseAIEndUsage | undefined {
+  if (!tracker.hasUsage) return undefined;
+  const json = tracker.toJSON();
+  if (!json) return undefined;
+  return {
+    inputTokens: json.inputTokens as number,
+    outputTokens: json.outputTokens as number,
+    totalTokens: json.totalTokens as number,
+    totalCostUsd: json.totalCostUsd as number,
+    durationApiMs: json.durationApiMs as number,
+    numTurns: json.numTurns as number,
+    models: json.models as string[] | undefined,
+  };
+}
+
 // ─── CLI Program ─────────────────────────────────────────────
 
 const program = new Command();
@@ -591,6 +607,7 @@ program
         modules: manifest.modules.length,
         score: manifest.score.overall,
         language: manifest.project.language,
+        usage: extractUsageForUseAI(usageTracker),
       });
 
       logger.success("coverit.json written to project root");
@@ -603,7 +620,7 @@ program
       logger.info("Check .coverit/scan.log for details.");
       printUsageSummary(usageTracker);
       const session = await lazySession.getSession();
-      await useaiEnd(session, {});
+      await useaiEnd(session, { usage: extractUsageForUseAI(usageTracker) });
       process.exit(1);
     }
   });
@@ -718,6 +735,7 @@ program
         testsGenerated: result.testsGenerated,
         testsPassed: result.testsPassed,
         testsFailed: result.testsFailed,
+        usage: extractUsageForUseAI(usageTracker),
       });
 
       if (delta > 0) {
@@ -732,7 +750,7 @@ program
       logger.error(err instanceof Error ? err.message : String(err));
       printUsageSummary(usageTracker);
       const session = await lazySession.getSession();
-      await useaiEnd(session, {});
+      await useaiEnd(session, { usage: extractUsageForUseAI(usageTracker) });
       process.exit(1);
     }
   });
@@ -798,6 +816,7 @@ program
         passed: result.passed,
         failed: result.failed,
         fixed: result.fixed,
+        usage: extractUsageForUseAI(usageTracker),
       });
 
       if (delta > 0) {
@@ -815,7 +834,7 @@ program
       logger.error(err instanceof Error ? err.message : String(err));
       printUsageSummary(usageTracker);
       const session = await lazySession.getSession();
-      await useaiEnd(session, {});
+      await useaiEnd(session, { usage: extractUsageForUseAI(usageTracker) });
       process.exit(1);
     }
   });
