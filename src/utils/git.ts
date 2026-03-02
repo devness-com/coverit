@@ -121,6 +121,38 @@ function dedup(files: string[]): string[] {
 }
 
 /**
+ * Get the current HEAD commit SHA.
+ * Returns null if not in a git repo or git fails.
+ */
+export async function getHeadCommit(projectRoot: string): Promise<string | null> {
+  try {
+    const git = simpleGit(projectRoot);
+    const sha = await git.revparse(["HEAD"]);
+    return sha.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get files changed between a specific commit and HEAD.
+ * Returns empty array if the commit hash is invalid or git fails.
+ * Used by auto-incremental scan to detect delta since last scan.
+ */
+export async function getFilesSinceCommit(
+  commitHash: string,
+  projectRoot: string,
+): Promise<string[]> {
+  try {
+    const git = simpleGit(projectRoot);
+    const diff = await git.diff(["--name-only", `${commitHash}...HEAD`]);
+    return dedup(parseFileList(diff));
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Map changed file paths to their parent modules from coverit.json.
  *
  * Returns the set of affected module paths and any files that couldn't

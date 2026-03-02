@@ -10,7 +10,13 @@ vi.mock("simple-git", () => {
   return { default: vi.fn(() => mockGit), simpleGit: vi.fn(() => mockGit) };
 });
 
-import { getChangedFiles, mapFilesToModules, detectDefaultBranch } from "../git.js";
+import {
+  getChangedFiles,
+  mapFilesToModules,
+  detectDefaultBranch,
+  getHeadCommit,
+  getFilesSinceCommit,
+} from "../git.js";
 import type { ModuleEntry } from "../../schema/coverit-manifest.js";
 
 describe("detectDefaultBranch", () => {
@@ -91,5 +97,50 @@ describe("mapFilesToModules", () => {
     );
     expect(result.affectedModules).toEqual(new Set());
     expect(result.unmappedFiles).toEqual([]);
+  });
+});
+
+describe("getHeadCommit", () => {
+  it("returns current HEAD SHA", async () => {
+    const { simpleGit } = await import("simple-git");
+    const git = simpleGit() as any;
+    git.revparse.mockResolvedValue("abc123def456\n");
+    const result = await getHeadCommit("/project");
+    expect(result).toBe("abc123def456");
+  });
+
+  it("returns null on error", async () => {
+    const { simpleGit } = await import("simple-git");
+    const git = simpleGit() as any;
+    git.revparse.mockRejectedValue(new Error("not a git repo"));
+    const result = await getHeadCommit("/project");
+    expect(result).toBeNull();
+  });
+});
+
+describe("getFilesSinceCommit", () => {
+  it("returns files changed since a specific commit", async () => {
+    const { simpleGit } = await import("simple-git");
+    const git = simpleGit() as any;
+    git.diff.mockResolvedValue("src/a.ts\nsrc/b.ts\n");
+    const files = await getFilesSinceCommit("abc123", "/project");
+    expect(files).toEqual(["src/a.ts", "src/b.ts"]);
+    expect(git.diff).toHaveBeenCalledWith(["--name-only", "abc123...HEAD"]);
+  });
+
+  it("returns empty array on error (invalid hash)", async () => {
+    const { simpleGit } = await import("simple-git");
+    const git = simpleGit() as any;
+    git.diff.mockRejectedValue(new Error("unknown revision"));
+    const files = await getFilesSinceCommit("invalid", "/project");
+    expect(files).toEqual([]);
+  });
+
+  it("deduplicates results", async () => {
+    const { simpleGit } = await import("simple-git");
+    const git = simpleGit() as any;
+    git.diff.mockResolvedValue("src/a.ts\nsrc/a.ts\n");
+    const files = await getFilesSinceCommit("abc123", "/project");
+    expect(files).toEqual(["src/a.ts"]);
   });
 });
