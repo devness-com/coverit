@@ -10,11 +10,15 @@ import type { AIUsage } from "../ai/types.js";
 
 export class UsageTracker {
   private calls: AIUsage[] = [];
+  private models = new Set<string>();
 
-  /** Record usage from a single AI generate() call */
-  add(usage: AIUsage | undefined): void {
+  /** Record usage and model from a single AI generate() call */
+  add(usage: AIUsage | undefined, model?: string): void {
     if (usage) {
       this.calls.push(usage);
+    }
+    if (model && model !== "claude-cli" && model !== "gemini-cli" && model !== "codex-cli") {
+      this.models.add(model);
     }
   }
 
@@ -69,6 +73,10 @@ export class UsageTracker {
       parts.push(`$${t.totalCostUsd.toFixed(4)}`);
     }
 
+    if (this.models.size > 0) {
+      parts.push([...this.models].join(", "));
+    }
+
     if (t.durationApiMs > 0) {
       parts.push(`API ${formatDuration(t.durationApiMs)}`);
     }
@@ -101,6 +109,7 @@ export class UsageTracker {
       durationApiMs: t.durationApiMs,
       numTurns: t.numTurns,
       aiCalls: this.callCount,
+      ...(this.models.size > 0 ? { models: [...this.models] } : {}),
     };
   }
 }

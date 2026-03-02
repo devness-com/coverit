@@ -162,7 +162,7 @@ export async function cover(options: CoverOptions): Promise<CoverResult> {
           timeoutMs: options.timeoutMs ?? PER_MODULE_TIMEOUT_MS,
           onProgress: options.onProgress,
         });
-        usageTracker.add(response.usage);
+        usageTracker.add(response.usage, response.model);
 
         summary = parseCoverResponse(response.content);
         logger.debug(

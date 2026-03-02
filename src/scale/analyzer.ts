@@ -277,7 +277,7 @@ export async function scanCodebase(
         timeoutMs,
         onProgress,
       });
-      usageTracker.add(response.usage);
+      usageTracker.add(response.usage, response.model);
 
       const incResult = parseScaleResponse(response.content);
 
@@ -332,7 +332,7 @@ export async function scanCodebase(
         timeoutMs,
         onProgress,
       });
-      usageTracker.add(response.usage);
+      usageTracker.add(response.usage, response.model);
 
       logger.debug(
         `AI analysis complete (${response.content.length} chars, model: ${response.model})`,
@@ -590,7 +590,7 @@ async function runSecurityScan(
       timeoutMs: ctx.timeoutMs,
       onProgress,
     });
-    ctx.usageTracker.add(secResponse.usage);
+    ctx.usageTracker.add(secResponse.usage, secResponse.model);
     const secResult = parseSecurityResponse(secResponse.content);
     applySecurityResults(ctx.modules, secResult.modules);
     ctx.scannedDates.security = ctx.now;
@@ -633,7 +633,7 @@ async function runStabilityScan(
       timeoutMs: ctx.timeoutMs,
       onProgress,
     });
-    ctx.usageTracker.add(stabResponse.usage);
+    ctx.usageTracker.add(stabResponse.usage, stabResponse.model);
     const stabResult = parseStabilityResponse(stabResponse.content);
     applyStabilityResults(ctx.modules, stabResult.modules);
     ctx.scannedDates.stability = ctx.now;
@@ -675,7 +675,7 @@ async function runConformanceScan(
       timeoutMs: ctx.timeoutMs,
       onProgress,
     });
-    ctx.usageTracker.add(confResponse.usage);
+    ctx.usageTracker.add(confResponse.usage, confResponse.model);
     const confResult = parseConformanceResponse(confResponse.content);
     applyConformanceResults(ctx.modules, confResult.modules);
     ctx.scannedDates.conformance = ctx.now;

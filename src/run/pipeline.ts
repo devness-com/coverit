@@ -127,7 +127,7 @@ export async function runTests(options: RunOptions): Promise<RunResult> {
         timeoutMs: FIX_TIMEOUT_MS,
         onProgress: options.onProgress,
       });
-      usageTracker.add(response.usage);
+      usageTracker.add(response.usage, response.model);
 
       const summary = parseRunFixResponse(response.content);
       fixed = summary.fixed;
