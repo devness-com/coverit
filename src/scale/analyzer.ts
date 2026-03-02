@@ -49,7 +49,7 @@ import type { AIProvider, AIProgressEvent } from "../ai/types.js";
 import type { SecurityAIModule } from "../ai/security-prompts.js";
 import type { StabilityAIModule } from "../ai/stability-prompts.js";
 import type { ConformanceAIModule } from "../ai/conformance-prompts.js";
-import { mapFilesToModules } from "../utils/git.js";
+import { mapFilesToModules, getHeadCommit, getFilesSinceCommit } from "../utils/git.js";
 import { readManifest } from "./writer.js";
 import { logger } from "../utils/logger.js";
 import { ScanLogger } from "../utils/scan-logger.js";
@@ -88,6 +88,8 @@ export interface ScanOptions {
    * Requires coverit.json to exist if functionality is not included.
    */
   dimensions?: ScanDimension[];
+  /** Force a full scan even if lastScanCommit exists (--full flag) */
+  forceFullScan?: boolean;
 }
 
 // ─── Core Logic ──────────────────────────────────────────────
@@ -130,6 +132,7 @@ export async function scanCodebase(
   let aiProvider: AIProvider | undefined;
   let onProgress: ((event: AIProgressEvent) => void) | undefined;
   let timeoutMs: number;
+  let forceFullScan = false;
 
   let dimensions: Set<ScanDimension>;
 
@@ -146,6 +149,7 @@ export async function scanCodebase(
     onProgress = opts.onProgress;
     timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     dimensions = new Set(opts.dimensions ?? ALL_DIMENSIONS);
+    forceFullScan = opts.forceFullScan ?? false;
   } else {
     timeoutMs = DEFAULT_TIMEOUT_MS;
     dimensions = new Set(ALL_DIMENSIONS);
@@ -193,8 +197,49 @@ export async function scanCodebase(
     ...(existingManifest?.score.scanned ?? {}),
   };
 
-  // Placeholder for auto-incremental (Task 4 will replace this)
-  const autoIncremental = false;
+  // ─── Step 2b: Auto-detect incremental scope from lastScanCommit ──
+  let autoIncremental = false;
+  let autoChangedFiles: string[] = [];
+  let autoAffectedModules = new Set<string>();
+  let autoUnmappedFiles: string[] = [];
+
+  if (
+    !forceFullScan &&
+    existingManifest?.project.lastScanCommit &&
+    runFunctionality
+  ) {
+    const headCommit = await getHeadCommit(projectRoot);
+    if (headCommit && headCommit !== existingManifest.project.lastScanCommit) {
+      autoChangedFiles = await getFilesSinceCommit(
+        existingManifest.project.lastScanCommit,
+        projectRoot,
+      );
+      if (autoChangedFiles.length > 0) {
+        const modulePaths = existingManifest.modules.map(m => m.path);
+        const mapping = mapFilesToModules(autoChangedFiles, modulePaths);
+        autoAffectedModules = mapping.affectedModules;
+        autoUnmappedFiles = mapping.unmappedFiles;
+        autoIncremental = true;
+        logger.info(
+          `Auto-incremental: ${autoChangedFiles.length} files changed since last scan, ${autoAffectedModules.size} modules affected`,
+        );
+        onProgress?.({ type: "phase", name: "Auto-incremental", step: 1, total: dimensions.size });
+      } else if (autoChangedFiles.length === 0) {
+        // getFilesSinceCommit returned empty — could be same commit or invalid hash
+        // If same commit, no changes; if invalid hash, fall through to full scan
+        if (headCommit === existingManifest.project.lastScanCommit) {
+          // This shouldn't happen (we checked !== above) but guard anyway
+        }
+        // Empty diff but different HEAD — hash might be invalid, do full scan
+        logger.debug("No files in diff despite different HEAD — falling back to full scan");
+      }
+    } else if (headCommit === existingManifest.project.lastScanCommit) {
+      // Exact same commit — nothing changed
+      logger.info("Nothing changed since last scan.");
+      return existingManifest;
+    }
+    // If headCommit is null (not a git repo), fall through to full scan
+  }
 
   // ─── Step 4: Functionality scan (or reuse from existing manifest) ──
   if (runFunctionality) {
@@ -204,15 +249,9 @@ export async function scanCodebase(
 
     // ── Incremental scan path ──
     if (autoIncremental && existingManifest) {
-      const changedFiles: string[] = []; // Will be populated by auto-incremental in Task 4
-
-      if (changedFiles.length === 0) {
-        logger.info("No changes detected. Nothing to scan.");
-        return existingManifest;
-      }
-
-      const modulePaths = existingManifest.modules.map(m => m.path);
-      const { affectedModules, unmappedFiles } = mapFilesToModules(changedFiles, modulePaths);
+      const changedFiles = autoChangedFiles;
+      const affectedModules = autoAffectedModules;
+      const unmappedFiles = autoUnmappedFiles;
 
       logger.debug(`Changed files: ${changedFiles.length}, affected modules: ${affectedModules.size}, unmapped: ${unmappedFiles.length}`);
 
@@ -450,6 +489,12 @@ export async function scanCodebase(
       scanned: scannedDates,
     },
   };
+
+  // Set lastScanCommit for auto-incremental on next run
+  const headCommitForSave = await getHeadCommit(projectRoot);
+  if (headCommitForSave) {
+    preliminary.project.lastScanCommit = headCommitForSave;
+  }
 
   // Use the scoring engine for consistent scoring across all scanned dimensions
   const scoreResult = calculateScore(preliminary);
