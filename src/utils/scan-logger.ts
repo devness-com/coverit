@@ -7,6 +7,7 @@
 
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { ensureCoveritIgnored } from "./gitignore.js";
 
 export interface DimensionLogEntry {
   name: string;
@@ -34,6 +35,7 @@ export class ScanLogger {
   /** Flush all recorded entries to .coverit/scan.log */
   async flush(score?: number): Promise<void> {
     await mkdir(join(this.logPath, ".."), { recursive: true });
+    await ensureCoveritIgnored(join(this.logPath, "../.."));
 
     const lines: string[] = [];
     const ts = this.sessionStart.toISOString();
