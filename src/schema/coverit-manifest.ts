@@ -49,6 +49,8 @@ export interface ManifestProject {
   sourceFiles: number;
   /** Total lines of source code */
   sourceLines: number;
+  /** Git commit SHA at time of last successful scan (for auto-incremental) */
+  lastScanCommit?: string;
 }
 
 // ─── Dimension Configuration ────────────────────────────────

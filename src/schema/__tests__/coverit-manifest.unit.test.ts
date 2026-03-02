@@ -182,6 +182,33 @@ describe("ManifestProject structure", () => {
     expect(project.sourceFiles).toBe(10);
     expect(project.sourceLines).toBe(500);
   });
+
+  it("ManifestProject accepts lastScanCommit field", () => {
+    const project: ManifestProject = {
+      name: "test",
+      root: "/test",
+      language: "typescript",
+      framework: "none",
+      testFramework: "vitest",
+      sourceFiles: 10,
+      sourceLines: 500,
+      lastScanCommit: "abc123def456",
+    };
+    expect(project.lastScanCommit).toBe("abc123def456");
+  });
+
+  it("ManifestProject allows undefined lastScanCommit", () => {
+    const project: ManifestProject = {
+      name: "test",
+      root: "/test",
+      language: "typescript",
+      framework: "none",
+      testFramework: "vitest",
+      sourceFiles: 10,
+      sourceLines: 500,
+    };
+    expect(project.lastScanCommit).toBeUndefined();
+  });
 });
 
 // ─── ModuleEntry ─────────────────────────────────────────────
