@@ -207,6 +207,9 @@ function createProgressHandler(spinner: ReturnType<typeof ora>) {
           updateSpinner();
         }
         break;
+      case "module_status":
+        // Handled by createCoverProgressHandler, not here
+        break;
       case "model_detected":
         // Handled by createLazyUseAISession wrapper, not here
         break;
@@ -378,6 +381,265 @@ class ParallelProgress {
     this.lastRenderTime = 0; // Force render
     this.render();
   }
+}
+
+// ─── Multi-Line Cover Progress ───────────────────────────────
+
+interface CoverModuleLine {
+  activity: string;
+  startTime: number;
+  status: "pending" | "running" | "done" | "failed" | "timed_out";
+  stats?: { testsWritten: number; testsPassed: number; testsFailed: number };
+}
+
+/**
+ * Renders multi-line progress for the cover command.
+ * Shows a header summary + per-module status lines.
+ *
+ * Format:
+ *   Cover: 5/11 modules · 23 tests · 15m 32s
+ *
+ *   ✓ auth                    2m 14s ─ 5 tests, 5 passed
+ *   ⠼ supplier-integration   14m 55s ─ Write booking-discount.spec.ts
+ *   ○ analytics                       ─ waiting
+ */
+class CoverProgress {
+  private modules = new Map<string, CoverModuleLine>();
+  /** Insertion order for stable display */
+  private moduleOrder: string[] = [];
+  private physicalRows = 0;
+  private spinnerFrame = 0;
+  private lastRenderTime = 0;
+  private startTime: number;
+
+  constructor() {
+    this.startTime = Date.now();
+  }
+
+  log(fn: () => void): void {
+    if (this.physicalRows > 0) {
+      process.stderr.write(`\x1B[${this.physicalRows}A\x1B[0J`);
+      this.physicalRows = 0;
+    }
+    fn();
+    this.lastRenderTime = 0;
+    this.render();
+  }
+
+  updateModuleStatus(
+    name: string,
+    status: "pending" | "running" | "done" | "failed" | "timed_out",
+    stats?: { testsWritten: number; testsPassed: number; testsFailed: number },
+  ): void {
+    if (!this.modules.has(name)) {
+      this.modules.set(name, { activity: "", startTime: Date.now(), status: "pending" });
+      this.moduleOrder.push(name);
+    }
+    const line = this.modules.get(name)!;
+    if (line.status === "pending" && status === "running") {
+      line.startTime = Date.now();
+    }
+    line.status = status;
+    if (stats) line.stats = stats;
+  }
+
+  updateActivity(name: string, activity: string): void {
+    const line = this.modules.get(name);
+    if (line && line.status === "running") {
+      line.activity = activity;
+    }
+  }
+
+  render(): void {
+    const now = Date.now();
+    if (now - this.lastRenderTime < 67) return;
+    this.lastRenderTime = now;
+
+    this.spinnerFrame = (this.spinnerFrame + 1) % SPINNER_CHARS.length;
+
+    if (this.physicalRows > 0) {
+      process.stderr.write(`\x1B[${this.physicalRows}A\x1B[0J`);
+    }
+
+    const columns = process.stderr.columns || 80;
+    const outputLines: string[] = [];
+
+    // Header summary
+    const total = this.modules.size;
+    const doneCount = this.countByStatus("done");
+    const failedCount = this.countByStatus("failed") + this.countByStatus("timed_out");
+    const runningCount = this.countByStatus("running");
+    const finishedCount = doneCount + failedCount;
+    const totalTests = this.sumStats("testsWritten");
+    const elapsed = formatElapsed(now - this.startTime);
+
+    let headerParts = [`${finishedCount}/${total} modules`];
+    if (totalTests > 0) headerParts.push(`${totalTests} tests`);
+    if (runningCount > 0) headerParts.push(`${runningCount} active`);
+    headerParts.push(elapsed);
+
+    outputLines.push(`  ${chalk.bold.cyan("Cover:")} ${chalk.dim(headerParts.join(" · "))}`);
+    outputLines.push(""); // blank line after header
+
+    // Module lines in insertion order
+    for (const name of this.moduleOrder) {
+      const state = this.modules.get(name)!;
+      const shortName = shortenModulePath(name);
+
+      if (state.status === "pending") {
+        outputLines.push(`  ${chalk.dim(`○ ${shortName.padEnd(24)}         ─ waiting`)}`);
+        continue;
+      }
+
+      const lineElapsed = formatElapsed(now - state.startTime);
+
+      if (state.status === "done") {
+        const statsStr = this.formatStats(state.stats);
+        const line = `  ${chalk.green("✓")} ${shortName.padEnd(24)} ${chalk.dim(lineElapsed.padStart(7))} ${chalk.dim("─")} ${chalk.dim(statsStr)}`;
+        outputLines.push(line);
+      } else if (state.status === "failed") {
+        outputLines.push(`  ${chalk.red("✗")} ${shortName.padEnd(24)} ${chalk.dim(lineElapsed.padStart(7))} ${chalk.dim("─")} ${chalk.red("failed")}`);
+      } else if (state.status === "timed_out") {
+        const statsStr = state.stats && state.stats.testsWritten > 0
+          ? ` (${this.formatStats(state.stats)})`
+          : "";
+        outputLines.push(`  ${chalk.yellow("⏱")} ${shortName.padEnd(24)} ${chalk.dim(lineElapsed.padStart(7))} ${chalk.dim("─")} ${chalk.yellow("timed out")}${chalk.dim(statsStr)}`);
+      } else {
+        // running
+        const spinner = chalk.cyan(SPINNER_CHARS[this.spinnerFrame]!);
+        const fixedLen = `  X ${"".padEnd(24)} ${lineElapsed.padStart(7)} ─ `.length;
+        let activityStr = state.activity;
+        const maxLen = columns - fixedLen - 2;
+        if (activityStr && maxLen > 5 && activityStr.length > maxLen) {
+          activityStr = activityStr.slice(0, maxLen - 1) + "…";
+        }
+        outputLines.push(`  ${spinner} ${shortName.padEnd(24)} ${chalk.dim(lineElapsed.padStart(7))} ${chalk.dim("─")} ${chalk.dim(activityStr || "starting...")}`);
+      }
+    }
+
+    const output = outputLines.join("\n");
+    process.stderr.write(output + "\n");
+
+    let rows = 0;
+    for (const line of outputLines) {
+      const visible = line.replace(/\x1B\[[0-9;]*m/g, "").length;
+      rows += Math.max(1, Math.ceil(visible / columns));
+    }
+    this.physicalRows = rows;
+  }
+
+  finalize(): void {
+    this.lastRenderTime = 0;
+    this.render();
+  }
+
+  private countByStatus(status: string): number {
+    let count = 0;
+    for (const line of this.modules.values()) {
+      if (line.status === status) count++;
+    }
+    return count;
+  }
+
+  private sumStats(key: "testsWritten" | "testsPassed" | "testsFailed"): number {
+    let sum = 0;
+    for (const line of this.modules.values()) {
+      if (line.stats) sum += line.stats[key];
+    }
+    return sum;
+  }
+
+  private formatStats(stats?: { testsWritten: number; testsPassed: number; testsFailed: number }): string {
+    if (!stats || stats.testsWritten === 0) return "no tests";
+    const parts = [`${stats.testsWritten} tests`];
+    if (stats.testsPassed > 0) parts.push(`${stats.testsPassed} passed`);
+    if (stats.testsFailed > 0) parts.push(`${stats.testsFailed} failed`);
+    return parts.join(", ");
+  }
+}
+
+/** Shorten a module path for display: "apps/api/apps/auth" → "auth" */
+function shortenModulePath(path: string): string {
+  const segments = path.split("/");
+  // Use last segment, but if it's generic (like "src") include parent too
+  if (segments.length >= 2) {
+    const last = segments[segments.length - 1]!;
+    if (last === "src" || last === "lib" || last === "app") {
+      return segments.slice(-2).join("/");
+    }
+    return last;
+  }
+  return path;
+}
+
+/**
+ * Create a progress handler specifically for the cover command.
+ * Uses CoverProgress multi-line display instead of a single spinner.
+ */
+function createCoverProgressHandler(spinner: ReturnType<typeof ora>) {
+  let coverProgress: CoverProgress | null = null;
+
+  setLogInterceptor((fn) => {
+    if (coverProgress) {
+      coverProgress.log(fn);
+    } else if (spinner.isSpinning) {
+      spinner.clear();
+      fn();
+      spinner.render();
+    } else {
+      fn();
+    }
+  });
+
+  const handler = (event: AIProgressEvent): void => {
+    switch (event.type) {
+      case "module_status": {
+        if (!coverProgress) {
+          spinner.stop();
+          coverProgress = new CoverProgress();
+        }
+        coverProgress.updateModuleStatus(event.name, event.status, event.stats);
+        coverProgress.render();
+        break;
+      }
+      case "tool_use": {
+        if (coverProgress) {
+          // Parse module-prefixed input: "apps/api/apps/auth: filename" → route to "apps/api/apps/auth"
+          const colonIdx = event.input?.indexOf(": ") ?? -1;
+          if (colonIdx > 0) {
+            const moduleName = event.input!.slice(0, colonIdx);
+            const file = shortenToFilename(event.input!.slice(colonIdx + 2));
+            coverProgress.updateActivity(moduleName, `${event.tool} ${file}`);
+          }
+          coverProgress.render();
+        }
+        break;
+      }
+      case "thinking":
+      case "tool_result":
+      case "text_delta":
+      case "phase":
+        break;
+      case "model_detected":
+        break;
+    }
+  };
+
+  // Tick elapsed time every second
+  const timer = setInterval(() => {
+    if (coverProgress) coverProgress.render();
+  }, 1_000);
+
+  const cleanup = (): void => {
+    clearInterval(timer);
+    if (coverProgress) {
+      coverProgress.finalize();
+      coverProgress = null;
+    }
+    setLogInterceptor(null);
+  };
+
+  return { handler, cleanup };
 }
 
 /** Format the spinner line: [step/total] Phase (elapsed) · activity */
@@ -713,7 +975,7 @@ program
 
     const provider = await resolveProvider(autoYes);
     const spinner = ora("Reading coverit.json and generating tests...").start();
-    const progress = createProgressHandler(spinner);
+    const progress = createCoverProgressHandler(spinner);
     const lazySession = createLazyUseAISession("cover", projectRoot, provider, progress.handler);
     const usageTracker = new UsageTracker();
 

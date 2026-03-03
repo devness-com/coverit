@@ -188,23 +188,39 @@ export async function cover(options: CoverOptions): Promise<CoverResult> {
   const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY;
   logger.debug(`Processing modules with concurrency: ${concurrency}`);
 
+  // Emit all modules as pending so the UI can show the full list
+  for (const gap of gaps) {
+    options.onProgress?.({ type: "module_status", name: gap.path, status: "pending" });
+  }
+
   // Write lock — serializes manifest updates from parallel workers
   let writeQueue = Promise.resolve();
 
   const moduleResults = await processWithConcurrency(
     gaps,
     concurrency,
-    async (gap, index) => {
+    async (gap) => {
       logger.debug(
         `Covering ${gap.path} (${gap.complexity}, ${gap.totalGap} gaps)`,
       );
 
-      options.onProgress?.({
-        type: "phase",
-        name: gap.path,
-        step: index + 1 + skippedCount,
-        total: gaps.length + skippedCount,
-      });
+      // Notify UI this module is now active
+      options.onProgress?.({ type: "module_status", name: gap.path, status: "running" });
+
+      // Wrap onProgress per-worker to prefix tool_use events with module path
+      // so the multi-line display can route activity to the correct module line
+      const moduleProgress = options.onProgress
+        ? (event: AIProgressEvent): void => {
+            if (event.type === "tool_use") {
+              options.onProgress!({
+                ...event,
+                input: `${gap.path}: ${event.input ?? ""}`,
+              });
+            } else {
+              options.onProgress!(event);
+            }
+          }
+        : undefined;
 
       // Track module as in_progress
       const moduleSession = session!.modules[gap.path]!;
@@ -221,7 +237,7 @@ export async function cover(options: CoverOptions): Promise<CoverResult> {
           allowedTools: ALLOWED_TOOLS,
           cwd: projectRoot,
           timeoutMs: options.timeoutMs ?? PER_MODULE_TIMEOUT_MS,
-          onProgress: options.onProgress,
+          onProgress: moduleProgress,
         });
         usageTracker.add(response.usage, response.model);
 
@@ -231,10 +247,23 @@ export async function cover(options: CoverOptions): Promise<CoverResult> {
         );
 
         moduleSession.status = "completed";
+        options.onProgress?.({
+          type: "module_status",
+          name: gap.path,
+          status: "done",
+          stats: { testsWritten: summary.testsWritten, testsPassed: summary.testsPassed, testsFailed: summary.testsFailed },
+        });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         logger.error(`Failed to cover ${gap.path}: ${message}`);
-        moduleSession.status = message.includes("timed out") ? "timed_out" : "failed";
+        const timedOut = message.includes("timed out");
+        moduleSession.status = timedOut ? "timed_out" : "failed";
+        options.onProgress?.({
+          type: "module_status",
+          name: gap.path,
+          status: timedOut ? "timed_out" : "failed",
+          stats: { testsWritten: summary.testsWritten, testsPassed: summary.testsPassed, testsFailed: summary.testsFailed },
+        });
       }
 
       // Save session + progress incrementally — even on failure the AI may have
@@ -269,12 +298,6 @@ export async function cover(options: CoverOptions): Promise<CoverResult> {
   const modulesProcessed = gaps.length + skippedCount;
 
   // Step 6: Final rescan (consistency check — picks up any edge cases)
-  options.onProgress?.({
-    type: "phase",
-    name: "Rescanning",
-    step: gaps.length + skippedCount + 1,
-    total: gaps.length + skippedCount + 1,
-  });
   logger.debug("Final rescan for consistency...");
   await rescanAndSaveManifest(projectRoot, manifest);
 
