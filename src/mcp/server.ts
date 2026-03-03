@@ -147,8 +147,9 @@ server.tool(
       .optional()
       .describe("Timeout per module in seconds (default: 600)"),
     fresh: z.boolean().optional().describe("Start fresh, ignoring any previous session (default: false)"),
+    full: z.boolean().optional().describe("Cover all modules with gaps, ignoring incremental detection (default: false)"),
   },
-  async ({ projectRoot, modules, parallel, timeoutSeconds, fresh }) => {
+  async ({ projectRoot, modules, parallel, timeoutSeconds, fresh, full }) => {
     let session: Awaited<ReturnType<typeof useaiStart>> = null;
     const usageTracker = new UsageTracker();
     try {
@@ -160,6 +161,7 @@ server.tool(
         timeoutMs: timeoutSeconds ? timeoutSeconds * 1000 : undefined,
         usageTracker,
         resume: !fresh,
+        full,
       });
 
       await useaiEnd(session, {

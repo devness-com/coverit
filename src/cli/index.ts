@@ -926,8 +926,9 @@ program
   .option("--parallel <count>", "Max modules to process in parallel (default: 3)")
   .option("--timeout <seconds>", "Timeout per module in seconds (default: 600)")
   .option("--fresh", "Ignore previous session and start fresh")
+  .option("--full", "Cover all modules with gaps (ignore incremental detection)")
   .description("AI generates tests from coverit.json gaps, runs them, and updates the score")
-  .action(async (pathArg: string, cmdOpts: { modules?: string; parallel?: string; timeout?: string; fresh?: boolean }) => {
+  .action(async (pathArg: string, cmdOpts: { modules?: string; parallel?: string; timeout?: string; fresh?: boolean; full?: boolean }) => {
     const projectRoot = resolveProjectRoot(pathArg);
     const autoYes = program.opts().yes ?? false;
 
@@ -995,6 +996,7 @@ program
         onProgress: lazySession.handler,
         usageTracker,
         resume: resumeCover,
+        full: cmdOpts.full,
       });
 
       progress.cleanup();

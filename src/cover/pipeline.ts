@@ -36,6 +36,7 @@ import {
   type CoverSession,
 } from "../utils/session.js";
 import { useaiHeartbeat } from "../integrations/useai.js";
+import { getHeadCommit, getFilesSinceCommit, mapFilesToModules } from "../utils/git.js";
 import { logger } from "../utils/logger.js";
 
 // ─── Types ───────────────────────────────────────────────────
@@ -56,6 +57,8 @@ export interface CoverOptions {
   usageTracker?: UsageTracker;
   /** Resume from a previous interrupted session (default: true) */
   resume?: boolean;
+  /** Force full cover of all gaps, ignoring incremental detection (default: false) */
+  full?: boolean;
 }
 
 export interface CoverResult {
@@ -131,6 +134,45 @@ export async function cover(options: CoverOptions): Promise<CoverResult> {
   logger.debug(
     `Found ${gaps.length} modules with gaps (${gaps.reduce((s, g) => s + g.totalGap, 0)} total missing tests)`,
   );
+
+  // Step 2b: Auto-incremental — only cover modules affected by recent changes
+  if (!options.full && !options.modules && manifest.project.lastScanCommit) {
+    const headCommit = await getHeadCommit(projectRoot);
+    if (headCommit && headCommit === manifest.project.lastScanCommit) {
+      // Exact same commit as last scan — nothing new to cover
+      logger.info("Nothing changed since last scan — nothing to cover.");
+      return {
+        scoreBefore,
+        scoreAfter: scoreBefore,
+        modulesProcessed: 0,
+        testsGenerated: 0,
+        testsPassed: 0,
+        testsFailed: 0,
+      };
+    }
+    if (headCommit) {
+      const changedFiles = await getFilesSinceCommit(manifest.project.lastScanCommit, projectRoot);
+      if (changedFiles.length > 0) {
+        const modulePaths = manifest.modules.map((m) => m.path);
+        const { affectedModules } = mapFilesToModules(changedFiles, modulePaths);
+
+        if (affectedModules.size > 0) {
+          const beforeCount = gaps.length;
+          const filtered = gaps.filter((g) => affectedModules.has(g.path));
+          if (filtered.length < beforeCount) {
+            gaps.length = 0;
+            gaps.push(...filtered);
+            logger.info(
+              `Incremental: ${changedFiles.length} files changed → ${gaps.length} of ${beforeCount} modules with gaps affected`,
+            );
+          }
+        }
+        // If no modules matched changed files but gaps exist, fall through to full
+      }
+      // If changedFiles is empty (invalid hash), fall through to full
+    }
+    // If not a git repo, fall through to full
+  }
 
   // Step 3: Resume support — skip modules completed in a previous session
   const resumeEnabled = options.resume !== false;
