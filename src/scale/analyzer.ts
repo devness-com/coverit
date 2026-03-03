@@ -295,13 +295,12 @@ export async function scanCodebase(
 
       logger.debug(`Changed files: ${changedFiles.length}, affected modules: ${affectedModules.size}, unmapped: ${unmappedFiles.length}`);
 
-      // Use incremental prompt
+      // Use incremental prompt — pass commit SHA + manifest, let AI discover changes via git diff
       const { buildIncrementalScalePrompt } = await import("../ai/scale-prompts.js");
       const incMessages = buildIncrementalScalePrompt(
         projectInfo,
-        changedFiles,
-        [...affectedModules],
-        unmappedFiles,
+        existingManifest.project.lastScanCommit!,
+        existingManifest,
       );
 
       const response = await provider.generate(incMessages, {

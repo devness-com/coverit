@@ -603,12 +603,6 @@ program
       console.log(`  Scope: ${chalk.cyan("full scan (first time)")}\n`);
     }
 
-    // Default to functionality-only for auto-incremental scans
-    if (!cmdOpts.full && !cmdOpts.dimensions && existingManifest?.project.lastScanCommit) {
-      dimensions = ["functionality"] as ScanDimension[];
-      console.log(`  Dimensions: ${chalk.cyan("functionality")} (default for incremental)\n`);
-    }
-
     const spinner = ora("Scanning and analyzing codebase with AI...").start();
     const progress = createProgressHandler(spinner);
     // AI is used for all dimensions except regression-only

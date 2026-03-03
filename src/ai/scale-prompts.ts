@@ -12,6 +12,7 @@
 import type { AIMessage } from "./types.js";
 import type { ProjectInfo } from "../types/index.js";
 import type { CoveritManifest } from "../schema/coverit-manifest.js";
+import { logger } from "../utils/logger.js";
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -277,25 +278,33 @@ Start by exploring the file structure, then read source and test files to build 
 /**
  * Build a scoped Functionality prompt for incremental scanning.
  *
- * Instead of "explore the entire codebase", this tells the AI to
- * re-analyze only the affected modules based on changed files.
+ * Instead of embedding all changed file paths in the prompt, we give the AI
+ * the last scan commit SHA and the existing manifest summary. The AI uses
+ * `git diff --name-only` to discover changes itself, maps them to modules,
+ * and re-analyzes only the affected ones. This keeps the prompt compact
+ * regardless of how many files changed.
  */
 export function buildIncrementalScalePrompt(
   projectInfo: ProjectInfo,
-  changedFiles: string[],
-  affectedModulePaths: string[],
-  unmappedFiles: string[],
+  lastScanCommit: string,
+  existingManifest: CoveritManifest,
 ): AIMessage[] {
-  const unmappedSection =
-    unmappedFiles.length > 0
-      ? `
-## Unmapped Files
-
-These changed files do not belong to any known module. Check if they represent a new module that should be added to the manifest:
-
-${unmappedFiles.map((f) => `- \`${f}\``).join("\n")}
-`
-      : "";
+  // Compact summary of existing modules for context
+  const manifestSummary = JSON.stringify(
+    {
+      modules: existingManifest.modules.map((m) => ({
+        path: m.path,
+        files: m.files,
+        lines: m.lines,
+        complexity: m.complexity,
+        tests: m.functionality.tests,
+      })),
+      journeys: existingManifest.journeys,
+      contracts: existingManifest.contracts,
+    },
+    null,
+    2,
+  );
 
   const system = `You are a senior QA architect performing an INCREMENTAL codebase analysis.
 
@@ -303,27 +312,21 @@ You have access to Glob, Grep, Read, and Bash tools. Use them to explore the aff
 
 ## Your Task
 
-Re-analyze ONLY the affected modules based on recent file changes. Do NOT explore or re-analyze the entire codebase.
+Re-analyze ONLY the modules affected by recent changes since commit \`${lastScanCommit}\`. Do NOT explore or re-analyze the entire codebase.
 
-## Changed Files
-
-The following files have been modified:
-
-${changedFiles.map((f) => `- \`${f}\``).join("\n")}
-
-## Affected Modules
-
-Re-analyze ONLY these modules:
-
-${affectedModulePaths.map((m) => `- \`${m}\``).join("\n")}
-${unmappedSection}
 ## Workflow
 
-1. **Read changed files**: Start by reading each changed file to understand what was modified.
-2. **Re-analyze affected modules**: For each affected module, re-assess its files, lines, complexity, and test coverage.
-3. **Find tests**: Check if test files for the affected modules have changed or if new tests were added.
-4. **Map tests to modules**: Match test files to the affected source modules based on file paths, imports, and the code being tested.
-5. **Calculate expected tests**: Based on each module's complexity and the Diamond testing strategy, determine how many tests of each type should exist.
+1. **Discover changes**: Run \`git diff --name-only ${lastScanCommit}...HEAD\` to get the list of changed files.
+2. **Map to modules**: Match each changed file to the existing modules listed below. Files that don't belong to any known module may represent new modules.
+3. **Re-analyze affected modules**: For each affected module, read its files, re-assess file count, line count, complexity, and test coverage.
+4. **Check for new modules**: If changed files fall outside all known module paths, determine if they form a new module that should be added.
+5. **Find tests**: Check if test files for the affected modules have changed or if new tests were added.
+6. **Map tests to modules**: Match test files to the affected source modules based on file paths, imports, and the code being tested.
+7. **Calculate expected tests**: Based on each module's complexity and the Diamond testing strategy, determine how many tests of each type should exist.
+
+## Existing Manifest (${existingManifest.modules.length} modules, score ${existingManifest.score.overall}/100)
+
+${manifestSummary}
 
 ${MODULE_DETECTION_RULES}
 
@@ -337,9 +340,10 @@ ${OUTPUT_FORMAT}
 
 IMPORTANT:
 - Only return the affected modules and any new modules discovered from unmapped files.
+- Do NOT return unchanged modules — only modules that were touched by the diff or are new.
 - If a module was deleted (all its files removed), include it with files: 0 and lines: 0.`;
 
-  const user = `Analyze the affected modules in this ${projectInfo.language} ${projectInfo.framework} project and return the JSON manifest. Start by reading the changed files, then explore each affected module's directory.
+  const user = `Perform an incremental analysis of this ${projectInfo.language} ${projectInfo.framework} project. Start by running git diff to discover what changed since commit ${lastScanCommit}, then re-analyze only the affected modules.
 
 Project: ${projectInfo.name}
 Root: ${projectInfo.root}
@@ -355,11 +359,130 @@ ${projectInfo.existingTestPatterns.length > 0 ? `Test Patterns Found: ${projectI
   ];
 }
 
+// ─── JSON Repair ────────────────────────────────────────────
+
+/**
+ * Attempt to repair malformed JSON from AI responses.
+ *
+ * AI models (especially on large codebases) can produce JSON with common
+ * defects: truncation mid-output, trailing commas, unescaped control
+ * characters inside string values, or strings cut off without closing quotes.
+ *
+ * This is a best-effort repair — it will not fix arbitrarily broken JSON,
+ * but it handles the failure modes we've observed in production.
+ */
+export function repairJSON(jsonStr: string): string {
+  let repaired = jsonStr;
+
+  // 1. Fix unescaped control characters inside JSON string values.
+  //    Walk through the string tracking whether we're inside a JSON string
+  //    (between unescaped double-quotes). Replace raw \n, \r, \t with
+  //    their escaped equivalents only when inside a string value.
+  let inString = false;
+  let result = "";
+  for (let i = 0; i < repaired.length; i++) {
+    const ch = repaired[i]!;
+    const prev = i > 0 ? repaired[i - 1] : "";
+
+    if (ch === '"' && prev !== "\\") {
+      inString = !inString;
+      result += ch;
+      continue;
+    }
+
+    if (inString) {
+      if (ch === "\n") {
+        result += "\\n";
+        continue;
+      }
+      if (ch === "\r") {
+        result += "\\r";
+        continue;
+      }
+      if (ch === "\t") {
+        result += "\\t";
+        continue;
+      }
+    }
+
+    result += ch;
+  }
+  repaired = result;
+
+  // 2. Remove trailing commas before closing braces/brackets.
+  //    e.g. [1, 2, 3,] → [1, 2, 3]  and  {"a": 1,} → {"a": 1}
+  repaired = repaired.replace(/,\s*([\]}])/g, "$1");
+
+  // 3. Handle truncated string values — if the JSON ends while a string
+  //    is still open, close the string. We detect this by counting
+  //    unescaped quotes: an odd count means a string is still open.
+  let quoteCount = 0;
+  for (let i = 0; i < repaired.length; i++) {
+    if (repaired[i] === '"' && (i === 0 || repaired[i - 1] !== "\\")) {
+      quoteCount++;
+    }
+  }
+  if (quoteCount % 2 !== 0) {
+    // String is still open — close it
+    repaired += '"';
+  }
+
+  // 4. Handle truncated JSON — if there are more opening brackets/braces
+  //    than closing ones, the output was cut off. Try to find the last
+  //    structurally valid position and close everything properly.
+  const openBraces = (repaired.match(/{/g) || []).length;
+  const closeBraces = (repaired.match(/}/g) || []).length;
+  const openBrackets = (repaired.match(/\[/g) || []).length;
+  const closeBrackets = (repaired.match(/]/g) || []).length;
+
+  if (openBraces > closeBraces || openBrackets > closeBrackets) {
+    // Trim back to the last structurally complete element boundary.
+    const lastCloseBrace = repaired.lastIndexOf("}");
+    const lastCloseBracket = repaired.lastIndexOf("]");
+    const lastCompleteIdx = Math.max(lastCloseBrace, lastCloseBracket);
+
+    if (lastCompleteIdx > repaired.length * 0.5) {
+      // Only truncate if we're keeping at least half the content
+      repaired = repaired.slice(0, lastCompleteIdx + 1);
+    }
+
+    // Remove any trailing comma left by the truncation
+    repaired = repaired.replace(/,\s*$/, "");
+
+    // Walk through tracking the bracket/brace stack and append missing closers
+    const stack: string[] = [];
+    let inStr = false;
+    for (let i = 0; i < repaired.length; i++) {
+      const c = repaired[i]!;
+      if (c === '"' && (i === 0 || repaired[i - 1] !== "\\")) {
+        inStr = !inStr;
+        continue;
+      }
+      if (inStr) continue;
+      if (c === "{") stack.push("}");
+      else if (c === "[") stack.push("]");
+      else if (c === "}" || c === "]") {
+        if (stack.length > 0 && stack[stack.length - 1] === c) {
+          stack.pop();
+        }
+      }
+    }
+
+    // Append closers in reverse (LIFO) to properly nest them
+    while (stack.length > 0) {
+      repaired += stack.pop();
+    }
+  }
+
+  return repaired;
+}
+
 // ─── Response Parser ────────────────────────────────────────
 
 /**
  * Extract and parse the JSON response from the AI.
  * Handles responses that may be wrapped in markdown code fences.
+ * If initial parse fails, attempts JSON repair before giving up.
  */
 export function parseScaleResponse(raw: string): ScaleAIResponse {
   let jsonStr = raw.trim();
@@ -382,10 +505,32 @@ export function parseScaleResponse(raw: string): ScaleAIResponse {
   let parsed: unknown;
   try {
     parsed = JSON.parse(jsonStr);
-  } catch (e) {
-    throw new Error(
-      `Failed to parse AI response as JSON: ${e instanceof Error ? e.message : String(e)}\n\nRaw response (first 500 chars): ${raw.slice(0, 500)}`,
-    );
+  } catch (originalError) {
+    // Initial parse failed — attempt repair before giving up
+    const originalMsg =
+      originalError instanceof Error
+        ? originalError.message
+        : String(originalError);
+
+    try {
+      const repaired = repairJSON(jsonStr);
+      parsed = JSON.parse(repaired);
+      logger.warn(
+        `JSON repair succeeded (original error: ${originalMsg}). ` +
+          `Repaired ${jsonStr.length} chars → ${repaired.length} chars.`,
+      );
+    } catch (repairError) {
+      // Repair also failed — throw the original error with both details
+      const repairMsg =
+        repairError instanceof Error
+          ? repairError.message
+          : String(repairError);
+      throw new Error(
+        `Failed to parse AI response as JSON: ${originalMsg}\n` +
+          `Repair also failed: ${repairMsg}\n\n` +
+          `Raw response (first 500 chars): ${raw.slice(0, 500)}`,
+      );
+    }
   }
 
   // Basic structural validation
