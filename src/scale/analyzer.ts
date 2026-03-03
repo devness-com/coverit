@@ -287,6 +287,7 @@ export async function scanCodebase(
     onProgress?.({ type: "phase", name: "Functionality", step: 1, total: dimCount });
     const funcStart = Date.now();
 
+    try {
     // ── Incremental scan path ──
     if (autoIncremental && existingManifest) {
       const changedFiles = autoChangedFiles;
@@ -419,6 +420,39 @@ export async function scanCodebase(
 
       // Save manifest incrementally so Functionality results survive a kill
       await savePartialManifest(projectRoot, existingManifest, modules, projectInfo, totalSourceFiles, totalSourceLines, scannedDates, now, aiResult);
+    }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error("Functionality scan failed:", msg);
+      scanSession!.dimensions.functionality = { status: "failed", durationMs: Date.now() - funcStart };
+      await writeScanSession(projectRoot, scanSession!).catch(() => {});
+      scanLog.record({
+        name: "Functionality",
+        success: false,
+        durationMs: Date.now() - funcStart,
+        error: msg,
+      });
+      onProgress?.({ type: "dimension_status", name: "Functionality", status: "failed", detail: msg });
+
+      // Fall back to existing manifest data so other dimensions can still run
+      if (existingManifest) {
+        logger.debug("Falling back to previous functionality data from existing coverit.json");
+        modules = existingManifest.modules;
+        totalSourceFiles = existingManifest.project.sourceFiles;
+        totalSourceLines = existingManifest.project.sourceLines;
+        projectInfo = {
+          ...projectInfo,
+          language: existingManifest.project.language,
+          framework: existingManifest.project.framework,
+          testFramework: existingManifest.project.testFramework,
+        };
+        // Preserve the previous functionality scanned date
+        const prevFuncDate = existingManifest.score.scanned?.functionality;
+        if (prevFuncDate) scannedDates.functionality = prevFuncDate;
+      } else {
+        // First-time scan with no fallback — must re-throw since other dimensions need modules
+        throw new Error(`Functionality scan failed and no previous scan exists to fall back to: ${msg}`);
+      }
     }
   } else {
     // Reuse modules from existing coverit.json

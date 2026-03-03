@@ -265,7 +265,7 @@ export class ClaudeCliProvider implements AIProvider {
       args.push("--dangerously-skip-permissions"); // safe: restricted to read-only tools
     }
 
-    const result = await this.spawnClaude(args, prompt, options?.cwd, options?.timeoutMs, options?.onProgress);
+    const result = await this.spawnClaude(args, prompt, options?.cwd, options?.timeoutMs, options?.maxWallTimeMs, options?.onProgress);
 
     if (result.exitCode !== 0 && !result.stdout.trim()) {
       throw new Error(
@@ -290,6 +290,7 @@ export class ClaudeCliProvider implements AIProvider {
     stdinData?: string,
     cwd?: string,
     callTimeoutMs?: number,
+    callMaxWallTimeMs?: number,
     onProgress?: (event: AIProgressEvent) => void,
   ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
     return new Promise((resolve, reject) => {
@@ -325,6 +326,19 @@ export class ClaudeCliProvider implements AIProvider {
       };
       resetTimeout();
 
+      // Absolute wall-time timeout: kills the process regardless of activity.
+      // Prevents runaway scans on large codebases where the AI is continuously
+      // active but never converges on a final answer.
+      const maxWallTimeMs = callMaxWallTimeMs ?? 1_800_000; // default 30 minutes
+      const wallTimeout = setTimeout(() => {
+        if (!killed) {
+          killed = true;
+          proc.kill("SIGTERM");
+          const mins = Math.round(maxWallTimeMs / 60_000);
+          reject(new Error(`Claude CLI exceeded ${mins}m absolute wall-time limit`));
+        }
+      }, maxWallTimeMs);
+
       proc.stdout.on("data", (chunk: Buffer) => {
         const text = chunk.toString();
         stdout += text;
@@ -355,6 +369,7 @@ export class ClaudeCliProvider implements AIProvider {
 
       proc.on("close", (code) => {
         clearTimeout(timeout);
+        clearTimeout(wallTimeout);
         if (!killed) {
           resolve({ stdout, stderr, exitCode: code ?? 1 });
         }
@@ -362,6 +377,7 @@ export class ClaudeCliProvider implements AIProvider {
 
       proc.on("error", (err) => {
         clearTimeout(timeout);
+        clearTimeout(wallTimeout);
         if (!killed) {
           reject(
             new Error(`Failed to spawn Claude CLI: ${err.message}`),

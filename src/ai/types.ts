@@ -66,8 +66,10 @@ export interface AIGenerateOptions {
   allowedTools?: string[];
   /** Working directory for tool access — Claude CLI only */
   cwd?: string;
-  /** Timeout in milliseconds — Claude CLI only. Defaults to 600_000 (10 min). */
+  /** Inactivity timeout in milliseconds — Claude CLI only. Resets on each output chunk. Defaults to 600_000 (10 min). */
   timeoutMs?: number;
+  /** Absolute wall-time timeout in milliseconds — Claude CLI only. Kills process regardless of activity. Defaults to 1_800_000 (30 min). */
+  maxWallTimeMs?: number;
   /** Callback for streaming progress events — Claude CLI only */
   onProgress?: (event: AIProgressEvent) => void;
 }
