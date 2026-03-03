@@ -299,7 +299,8 @@ class ParallelProgress {
   updateActivity(name: string, activity: string): void {
     const line = this.lines.get(name);
     if (line && line.status === "running") {
-      line.activity = activity;
+      // Strip newlines — tool inputs (especially Bash) can be multi-line
+      line.activity = activity.replace(/[\n\r]+/g, " ").trim();
     }
   }
 
@@ -458,7 +459,8 @@ class CoverProgress {
   updateActivity(name: string, activity: string): void {
     const line = this.modules.get(name);
     if (line && line.status === "running") {
-      line.activity = activity;
+      // Strip newlines — tool inputs (especially Bash) can be multi-line
+      line.activity = activity.replace(/[\n\r]+/g, " ").trim();
     }
   }
 
@@ -706,11 +708,14 @@ function formatElapsed(ms: number): string {
 
 /** Extract just the filename from a path (last segment) */
 function shortenToFilename(input: string): string {
+  // Strip to first line only — tool inputs (especially Bash) can be multi-line
+  const firstLine = input.split("\n")[0]!.trim();
+  if (!firstLine) return "";
   // Handle glob patterns — keep as-is if short enough
-  if (input.includes("*")) return input.length <= 40 ? input : "..." + input.slice(-37);
+  if (firstLine.includes("*")) return firstLine.length <= 40 ? firstLine : "..." + firstLine.slice(-37);
   // Extract last path segment
-  const parts = input.split("/");
-  return parts[parts.length - 1] ?? input;
+  const parts = firstLine.split("/");
+  return parts[parts.length - 1] ?? firstLine;
 }
 
 // ─── Lazy UseAI Session ──────────────────────────────────────
