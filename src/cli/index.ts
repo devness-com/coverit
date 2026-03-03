@@ -29,7 +29,7 @@ import {
   getProviderDisplayName,
 } from "../ai/provider-factory.js";
 import type { AIProvider, AIProgressEvent } from "../ai/types.js";
-import { logger } from "../utils/logger.js";
+import { logger, setLogInterceptor } from "../utils/logger.js";
 import { registerCleanupHandlers } from "../utils/process-tracker.js";
 import { useaiStart, useaiEnd, type UseAISession, type CoveritCommand, type UseAIEndUsage } from "../integrations/useai.js";
 import { UsageTracker } from "../utils/usage-tracker.js";
@@ -130,6 +130,21 @@ function createProgressHandler(spinner: ReturnType<typeof ora>) {
   // Multi-line parallel state
   let parallel: ParallelProgress | null = null;
 
+  // Register log interceptor so logger calls don't corrupt spinner/progress output.
+  // For multi-line mode: clears progress, prints, re-renders.
+  // For single-line mode: ora.clear() → print → ora.render().
+  setLogInterceptor((fn) => {
+    if (parallel) {
+      parallel.log(fn);
+    } else if (spinner.isSpinning) {
+      spinner.clear();
+      fn();
+      spinner.render();
+    } else {
+      fn();
+    }
+  });
+
   function updateSpinner(): void {
     if (parallel) {
       parallel.render();
@@ -204,6 +219,7 @@ function createProgressHandler(spinner: ReturnType<typeof ora>) {
       parallel.finalize();
       parallel = null;
     }
+    setLogInterceptor(null);
   };
 
   return { handler, cleanup };
@@ -237,13 +253,25 @@ interface DimensionLine {
  */
 class ParallelProgress {
   private lines = new Map<string, DimensionLine>();
-  private linesWritten = 0;
+  private physicalRows = 0;
   private spinnerFrame = 0;
   private lastRenderTime = 0;
   private scanStartTime: number;
 
   constructor(scanStartTime: number) {
     this.scanStartTime = scanStartTime;
+  }
+
+  /** Log a message safely while multi-line progress is active.
+   *  Clears the progress, prints the message, then re-renders. */
+  log(fn: () => void): void {
+    if (this.physicalRows > 0) {
+      process.stderr.write(`\x1B[${this.physicalRows}A\x1B[0J`);
+      this.physicalRows = 0;
+    }
+    fn();
+    this.lastRenderTime = 0; // force re-render
+    this.render();
   }
 
   updateStatus(name: string, status: "running" | "done" | "failed", detail?: string): void {
@@ -281,9 +309,9 @@ class ParallelProgress {
     this.spinnerFrame = (this.spinnerFrame + 1) % SPINNER_CHARS.length;
 
     // Move cursor up to overwrite previous render, then clear to end of screen.
-    // \x1B[0J handles residual content from lines that previously wrapped.
-    if (this.linesWritten > 0) {
-      process.stderr.write(`\x1B[${this.linesWritten}A\x1B[0J`);
+    // Uses physical row count (accounts for line wrapping) to avoid eating previous output.
+    if (this.physicalRows > 0) {
+      process.stderr.write(`\x1B[${this.physicalRows}A\x1B[0J`);
     }
 
     const columns = process.stderr.columns || 80;
@@ -292,7 +320,7 @@ class ParallelProgress {
       (DIMENSION_STEPS[a[0]] ?? 99) - (DIMENSION_STEPS[b[0]] ?? 99),
     );
     const total = entries.length;
-    const output = entries.map(([name, state], idx) => {
+    const outputLines = entries.map(([name, state], idx) => {
       const step = idx + 1;
 
       if (state.status === "pending") {
@@ -330,10 +358,18 @@ class ParallelProgress {
         }
       }
       return `  ${prefixColored} ${chalk.dim(`[${step}/${total}]`)} ${name.padEnd(12)} ${chalk.dim(`(${elapsed})`)}${chalk.dim(activityStr)}`;
-    }).join("\n");
+    });
+    const output = outputLines.join("\n");
 
     process.stderr.write(output + "\n");
-    this.linesWritten = entries.length;
+
+    // Count physical rows: each logical line may wrap across multiple terminal rows
+    let rows = 0;
+    for (const line of outputLines) {
+      const visible = line.replace(/\x1B\[[0-9;]*m/g, "").length;
+      rows += Math.max(1, Math.ceil(visible / columns));
+    }
+    this.physicalRows = rows;
   }
 
   /** Clean up the multi-line display — move cursor below the last line */

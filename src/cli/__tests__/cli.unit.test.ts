@@ -102,6 +102,7 @@ vi.mock("../../utils/logger.js", () => ({
     success: vi.fn(),
     table: vi.fn(),
   },
+  setLogInterceptor: vi.fn(),
 }));
 
 const mockCliProvider = {

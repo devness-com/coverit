@@ -3,6 +3,10 @@
  *
  * Structured logging with colored output for CLI and internal use.
  * Debug logging gated behind COVERIT_DEBUG=1 environment variable.
+ *
+ * When a CLI spinner/progress display is active, use setLogInterceptor()
+ * to route log output through the progress handler so it doesn't corrupt
+ * ANSI cursor positioning.
  */
 
 import chalk from "chalk";
@@ -14,27 +18,47 @@ function isDebug(): boolean {
   return process.env["COVERIT_DEBUG"] === "1";
 }
 
+/**
+ * Optional interceptor: wraps a logging function so the CLI can clear
+ * any active spinner/progress before the message is written, then re-render.
+ * Set via setLogInterceptor() from the CLI when a spinner is active.
+ */
+let logInterceptor: ((fn: () => void) => void) | null = null;
+
+/** Register an interceptor that wraps logger output (call with null to unset). */
+export function setLogInterceptor(interceptor: ((fn: () => void) => void) | null): void {
+  logInterceptor = interceptor;
+}
+
+function safeLog(fn: () => void): void {
+  if (logInterceptor) {
+    logInterceptor(fn);
+  } else {
+    fn();
+  }
+}
+
 export const logger = {
   debug(...args: unknown[]): void {
     if (isDebug()) {
-      console.debug(chalk.gray(`${PREFIX} [debug]`), ...args);
+      safeLog(() => console.debug(chalk.gray(`${PREFIX} [debug]`), ...args));
     }
   },
 
   info(...args: unknown[]): void {
-    console.log(chalk.cyan(PREFIX), ...args);
+    safeLog(() => console.log(chalk.cyan(PREFIX), ...args));
   },
 
   warn(...args: unknown[]): void {
-    console.warn(chalk.yellow(PREFIX), ...args);
+    safeLog(() => console.warn(chalk.yellow(PREFIX), ...args));
   },
 
   error(...args: unknown[]): void {
-    console.error(chalk.red(PREFIX), ...args);
+    safeLog(() => console.error(chalk.red(PREFIX), ...args));
   },
 
   success(...args: unknown[]): void {
-    console.log(chalk.green(`${PREFIX} ✓`), ...args);
+    safeLog(() => console.log(chalk.green(`${PREFIX} ✓`), ...args));
   },
 
   spinner(text: string): Ora {
@@ -43,15 +67,17 @@ export const logger = {
 
   table(data: Record<string, unknown>[] | Record<string, unknown>): void {
     if (Array.isArray(data)) {
-      console.table(data);
+      safeLog(() => console.table(data));
     } else {
       const entries = Object.entries(data);
       const maxKey = Math.max(...entries.map(([k]) => k.length));
-      for (const [key, value] of entries) {
-        console.log(
-          `  ${chalk.gray(key.padEnd(maxKey))}  ${chalk.white(String(value))}`,
-        );
-      }
+      safeLog(() => {
+        for (const [key, value] of entries) {
+          console.log(
+            `  ${chalk.gray(key.padEnd(maxKey))}  ${chalk.white(String(value))}`,
+          );
+        }
+      });
     }
   },
 };
