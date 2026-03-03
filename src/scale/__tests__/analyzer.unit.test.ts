@@ -58,7 +58,7 @@ vi.mock("../../ai/conformance-prompts.js", () => ({
   parseConformanceResponse: vi.fn().mockReturnValue({ modules: [] }),
 }));
 
-vi.mock("../../run/pipeline.js", () => ({
+vi.mock("../../fix/pipeline.js", () => ({
   collectTestFiles: vi.fn().mockReturnValue([]),
   detectTestRunner: vi.fn().mockReturnValue("vitest"),
   executeTests: vi.fn().mockResolvedValue({ total: 0, passed: 0, failed: 0 }),

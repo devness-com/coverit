@@ -84,7 +84,7 @@ async function callTool(
 
 // ─── Public API ──────────────────────────────────────────────
 
-export type CoveritCommand = "scan" | "cover" | "run";
+export type CoveritCommand = "scan" | "cover" | "fix";
 
 interface UseAISession {
   sessionId: string | null;
@@ -193,7 +193,7 @@ function buildMilestone(
         category: "test",
       };
     }
-    case "run": {
+    case "fix": {
       const delta = (data.scoreAfter ?? 0) - (data.scoreBefore ?? 0);
       const deltaStr = delta > 0 ? `+${delta}` : String(delta);
       return {
@@ -341,7 +341,7 @@ await useaiEnd(session, {});
 Before provider resolution:
 
 ```typescript
-const session = await useaiStart("run", projectRoot);
+const session = await useaiStart("fix", projectRoot);
 ```
 
 In the success path:
@@ -430,7 +430,7 @@ await useaiEnd(session, {
 });
 ```
 
-**Step 4: Add useai calls to coverit_run tool**
+**Step 4: Add useai calls to coverit_fix tool**
 
 ```typescript
 await useaiEnd(session, {

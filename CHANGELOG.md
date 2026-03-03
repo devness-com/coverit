@@ -8,14 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.5.3] - 2026-02-14
 
 ### Added
-- `run` command — run existing tests, AI fixes failures, rescan and update score
-- AI run prompts (`src/ai/run-prompts.ts`)
-- Run pipeline (`src/run/pipeline.ts`)
+- `fix` command — fix failing tests via AI, rescan and update score
+- AI fix prompts (`src/ai/fix-prompts.ts`)
+- Fix pipeline (`src/fix/pipeline.ts`)
 
 ### Changed
 - Renamed `analyze` command to `scan` across CLI, MCP, and skill files
-- Updated MCP server to 7 tools (added `coverit_run`)
-- Updated CLI to 5 commands (added `run`)
+- Updated MCP server to 7 tools (added `coverit_fix`)
+- Updated CLI to 5 commands (added `fix`)
 
 ## [0.5.0] - 2026-02-10
 

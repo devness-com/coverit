@@ -9,7 +9,7 @@ import DocsLayout from '../../layouts/DocsLayout.astro';
     Coverit has five commands. The four core commands &mdash;
     <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">scan</code>,
     <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">cover</code>,
-    <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">run</code>, and
+    <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">fix</code>, and
     <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">status</code> &mdash;
     form the main workflow. The <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">clear</code> command
     is a utility for starting fresh.
@@ -106,9 +106,9 @@ coverit cover
 # Cover only specific modules
 coverit cover --modules src/auth,src/billing</code></pre>
 
-  <!-- run -->
-  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">run</h2>
-  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code>coverit run [path] [--modules &lt;paths&gt;]</code></pre>
+  <!-- fix -->
+  <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">fix</h2>
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code>coverit fix [path] [--modules &lt;paths&gt;]</code></pre>
   <p class="font-body text-text leading-relaxed mb-4">
     Runs your existing test suite, sends any failures to AI for fixing, rescans the codebase,
     and updates the quality score. Use this when you have failing tests that need attention.
@@ -140,18 +140,18 @@ coverit cover --modules src/auth,src/billing</code></pre>
       </tr>
       <tr>
         <td class="border border-border p-3 font-mono text-sm">--modules &lt;paths&gt;</td>
-        <td class="border border-border p-3 font-body text-sm">Only run tests for specific modules (comma-separated paths)</td>
+        <td class="border border-border p-3 font-body text-sm">Only fix tests for specific modules (comma-separated paths)</td>
         <td class="border border-border p-3 font-body text-sm italic text-text-muted">All modules</td>
       </tr>
     </tbody>
   </table>
 
   <h3 class="font-heading text-xl font-semibold mt-8 mb-3 text-text">Example</h3>
-  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code># Run all tests and fix failures
-coverit run
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code># Fix all failing tests
+coverit fix
 
-# Run tests for specific modules only
-coverit run --modules src/auth,src/payments</code></pre>
+# Fix tests for specific modules only
+coverit fix --modules src/auth,src/payments</code></pre>
 
   <!-- status -->
   <h2 class="font-heading text-2xl font-semibold mt-12 mb-4 border-b border-border pb-2 text-text">status</h2>
@@ -237,15 +237,15 @@ coverit status
 # 3. Generate tests to fill gaps
 coverit cover
 
-# 4. Run tests and fix any failures
-coverit run
+# 4. Fix any failing tests
+coverit fix
 
 # 5. Check your improved score
 coverit status</code></pre>
   <p class="font-body text-text leading-relaxed mb-4">
     Repeat steps 3&ndash;5 to iteratively improve your quality score. Each round of
     <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">cover</code> and
-    <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">run</code> targets
+    <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">fix</code> targets
     the remaining gaps.
   </p>
 </DocsLayout>

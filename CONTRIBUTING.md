@@ -45,14 +45,14 @@ src/
 │   ├── ollama-provider.ts     Ollama (local)
 │   ├── scale-prompts.ts       Prompts for codebase scanning
 │   ├── cover-prompts.ts       Prompts for test generation
-│   └── run-prompts.ts         Prompts for test run + fix
+│   └── fix-prompts.ts         Prompts for test fix
 ├── scale/                     Codebase scanning
 │   ├── analyzer.ts            analyzeCodebase() → CoveritManifest
 │   └── writer.ts              readManifest(), writeManifest()
 ├── cover/                     Test generation pipeline
 │   └── pipeline.ts            cover() → CoverResult
-├── run/                       Test run + fix pipeline
-│   └── pipeline.ts            run() → RunResult
+├── fix/                       Test fix pipeline
+│   └── pipeline.ts            fixTests() → FixResult
 ├── measure/                   Test scanning and scoring
 │   ├── scanner.ts             Filesystem test file scanner
 │   ├── scorer.ts              rescoreManifest()
@@ -81,7 +81,7 @@ src/
 
 ## Development Workflow
 
-1. **Pick an area to work on.** Most contributions will touch `src/ai/`, `src/scale/`, `src/cover/`, `src/run/`, or `src/measure/`.
+1. **Pick an area to work on.** Most contributions will touch `src/ai/`, `src/scale/`, `src/cover/`, `src/fix/`, or `src/measure/`.
 
 2. **Run in dev mode:**
    ```bash

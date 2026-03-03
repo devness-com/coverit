@@ -54,8 +54,8 @@ vi.mock("../../cover/pipeline.js", () => ({
   cover: (...args: unknown[]) => mockCover(...args),
 }));
 
-vi.mock("../../run/pipeline.js", () => ({
-  runTests: vi.fn(),
+vi.mock("../../fix/pipeline.js", () => ({
+  fixTests: vi.fn(),
 }));
 
 vi.mock("../../utils/logger.js", () => ({

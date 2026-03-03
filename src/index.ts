@@ -9,8 +9,8 @@ export { scanCodebase, ALL_DIMENSIONS } from "./scale/analyzer.js";
 export type { ScanOptions, ScanDimension } from "./scale/analyzer.js";
 export { cover } from "./cover/pipeline.js";
 export type { CoverOptions, CoverResult } from "./cover/pipeline.js";
-export { runTests } from "./run/pipeline.js";
-export type { RunOptions, RunResult } from "./run/pipeline.js";
+export { fixTests } from "./fix/pipeline.js";
+export type { FixOptions, FixResult } from "./fix/pipeline.js";
 
 // Manifest I/O
 export { readManifest, writeManifest } from "./scale/writer.js";

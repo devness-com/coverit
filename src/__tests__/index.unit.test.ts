@@ -20,9 +20,9 @@ describe("core pipeline exports", () => {
     expect(typeof publicAPI.cover).toBe("function");
   });
 
-  it("exports runTests function", () => {
-    expect(publicAPI.runTests).toBeDefined();
-    expect(typeof publicAPI.runTests).toBe("function");
+  it("exports fixTests function", () => {
+    expect(publicAPI.fixTests).toBeDefined();
+    expect(typeof publicAPI.fixTests).toBe("function");
   });
 });
 
@@ -99,7 +99,7 @@ describe("export completeness", () => {
     const expectedExports = [
       "scanCodebase",
       "cover",
-      "runTests",
+      "fixTests",
       "readManifest",
       "writeManifest",
       "rescoreManifest",

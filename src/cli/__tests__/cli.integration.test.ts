@@ -92,8 +92,8 @@ vi.mock("../../cover/pipeline.js", () => ({
   cover: vi.fn(),
 }));
 
-vi.mock("../../run/pipeline.js", () => ({
-  runTests: vi.fn(),
+vi.mock("../../fix/pipeline.js", () => ({
+  fixTests: vi.fn(),
 }));
 
 // Mock renderDashboard to prevent stdout pollution

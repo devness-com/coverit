@@ -69,7 +69,7 @@ const mockScanCodebase = vi.fn();
 const mockWriteManifest = vi.fn();
 const mockReadManifest = vi.fn();
 const mockCover = vi.fn();
-const mockRunTests = vi.fn();
+const mockFixTests = vi.fn();
 const mockRenderDashboard = vi.fn();
 
 vi.mock("../../scale/analyzer.js", () => ({
@@ -85,8 +85,8 @@ vi.mock("../../cover/pipeline.js", () => ({
   cover: (...args: unknown[]) => mockCover(...args),
 }));
 
-vi.mock("../../run/pipeline.js", () => ({
-  runTests: (...args: unknown[]) => mockRunTests(...args),
+vi.mock("../../fix/pipeline.js", () => ({
+  fixTests: (...args: unknown[]) => mockFixTests(...args),
 }));
 
 vi.mock("../../measure/dashboard.js", () => ({
@@ -200,11 +200,11 @@ const sampleManifest = {
 // ─── Unit Tests ─────────────────────────────────────────────
 
 describe("CLI command registration (unit)", () => {
-  it("registers all 5 commands: scan, cover, run, status, clear", () => {
+  it("registers all 5 commands: scan, cover, fix, status, clear", () => {
     expect(actionHandlers.size).toBe(5);
     expect(actionHandlers.has("scan")).toBe(true);
     expect(actionHandlers.has("cover")).toBe(true);
-    expect(actionHandlers.has("run")).toBe(true);
+    expect(actionHandlers.has("fix")).toBe(true);
     expect(actionHandlers.has("status")).toBe(true);
     expect(actionHandlers.has("clear")).toBe(true);
   });
@@ -295,9 +295,9 @@ describe("cover handler (unit)", () => {
   });
 });
 
-describe("run handler (unit)", () => {
-  it("calls runTests() with correct options and stops spinner on success", async () => {
-    mockRunTests.mockResolvedValue({
+describe("fix handler (unit)", () => {
+  it("calls fixTests() with correct options and stops spinner on success", async () => {
+    mockFixTests.mockResolvedValue({
       scoreBefore: 40,
       scoreAfter: 45,
       totalTests: 20,
@@ -306,10 +306,10 @@ describe("run handler (unit)", () => {
       fixed: 3,
     });
 
-    const handler = actionHandlers.get("run")!;
+    const handler = actionHandlers.get("fix")!;
     await handler(".", {});
 
-    expect(mockRunTests).toHaveBeenCalledWith(
+    expect(mockFixTests).toHaveBeenCalledWith(
       expect.objectContaining({
         projectRoot: expect.any(String),
         modules: undefined,
@@ -319,7 +319,7 @@ describe("run handler (unit)", () => {
   });
 
   it("parses comma-separated --modules option into array", async () => {
-    mockRunTests.mockResolvedValue({
+    mockFixTests.mockResolvedValue({
       scoreBefore: 40,
       scoreAfter: 42,
       totalTests: 10,
@@ -328,10 +328,10 @@ describe("run handler (unit)", () => {
       fixed: 0,
     });
 
-    const handler = actionHandlers.get("run")!;
+    const handler = actionHandlers.get("fix")!;
     await handler(".", { modules: "src/a, src/b" });
 
-    expect(mockRunTests).toHaveBeenCalledWith(
+    expect(mockFixTests).toHaveBeenCalledWith(
       expect.objectContaining({
         projectRoot: expect.any(String),
         modules: ["src/a", "src/b"],
@@ -339,13 +339,13 @@ describe("run handler (unit)", () => {
     );
   });
 
-  it("handles run errors: shows failure and exits with code 1", async () => {
-    mockRunTests.mockRejectedValue(new Error("No coverit.json found"));
+  it("handles fix errors: shows failure and exits with code 1", async () => {
+    mockFixTests.mockRejectedValue(new Error("No coverit.json found"));
 
-    const handler = actionHandlers.get("run")!;
+    const handler = actionHandlers.get("fix")!;
     await handler(".", {});
 
-    expect(mockSpinner.fail).toHaveBeenCalledWith("Run failed");
+    expect(mockSpinner.fail).toHaveBeenCalledWith("Fix failed");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 });

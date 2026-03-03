@@ -16,7 +16,7 @@
         "package": "@devness/coverit",
         "version": "latest"
       },
-      "description": "AI-powered test quality platform — scan, cover, run, and track your codebase quality score.",
+      "description": "AI-powered test quality platform — scan, cover, fix, and track your codebase quality score.",
       "version": "0.6.17",
       "author": {
         "name": "Devness"

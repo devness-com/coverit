@@ -4,7 +4,7 @@
  * 4-command architecture:
  *   coverit_scan    — AI explores codebase → creates coverit.json
  *   coverit_cover   — AI reads gaps → generates + runs + fixes tests → updates coverit.json
- *   coverit_run     — Run existing tests → fix failures → update coverit.json
+ *   coverit_fix     — Fix failing tests → update coverit.json
  *   coverit_status  — Shows dashboard from coverit.json (instant, no AI)
  *
  * Plus utility tools: clear, backup, restore.
@@ -19,7 +19,7 @@ import { dirname, join } from "node:path";
 import { scanCodebase, type ScanDimension } from "../scale/analyzer.js";
 import { readManifest, writeManifest } from "../scale/writer.js";
 import { cover } from "../cover/pipeline.js";
-import { runTests } from "../run/pipeline.js";
+import { fixTests } from "../fix/pipeline.js";
 import { logger } from "../utils/logger.js";
 import { useaiStart, useaiEnd, type UseAIEndUsage } from "../integrations/useai.js";
 import { UsageTracker } from "../utils/usage-tracker.js";
@@ -194,25 +194,25 @@ server.tool(
   },
 );
 
-// ─── coverit_run ────────────────────────────────────────────
-// Run existing tests → fix failures via AI → rescan → update score.
+// ─── coverit_fix ────────────────────────────────────────────
+// Fix failing tests via AI → rescan → update score.
 
 server.tool(
-  "coverit_run",
-  "Run existing tests, fix failures via AI, rescan and update coverit.json. Unlike cover (which writes new tests), run assumes tests exist and just runs + fixes them.",
+  "coverit_fix",
+  "Run existing tests, fix failures via AI, rescan and update coverit.json. Unlike cover (which writes new tests), fix assumes tests exist and just runs + fixes them.",
   {
     projectRoot: z.string().describe("Absolute path to the project root"),
     modules: z
       .array(z.string())
       .optional()
-      .describe("Only run tests for specific modules (paths from coverit.json, e.g. ['src/services', 'src/utils'])"),
+      .describe("Only fix tests for specific modules (paths from coverit.json, e.g. ['src/services', 'src/utils'])"),
   },
   async ({ projectRoot, modules }) => {
     let session: Awaited<ReturnType<typeof useaiStart>> = null;
     const usageTracker = new UsageTracker();
     try {
-      session = await useaiStart("run", projectRoot);
-      const result = await runTests({
+      session = await useaiStart("fix", projectRoot);
+      const result = await fixTests({
         projectRoot,
         modules,
         usageTracker,
@@ -242,7 +242,7 @@ server.tool(
     } catch (err) {
       await useaiEnd(session, { usage: extractUsageForUseAI(usageTracker) });
       const message = err instanceof Error ? err.message : String(err);
-      logger.error("coverit_run failed:", message);
+      logger.error("coverit_fix failed:", message);
       return {
         content: [{ type: "text" as const, text: `Error: ${message}` }],
         isError: true,

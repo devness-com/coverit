@@ -1,7 +1,7 @@
 /**
- * Coverit Run — Run Existing Tests, Fix Failures, Update Manifest
+ * Coverit Fix — Run Existing Tests, Fix Failures, Update Manifest
  *
- * Unlike `cover` (which writes new tests for gaps), `run` assumes
+ * Unlike `cover` (which writes new tests for gaps), `fix` assumes
  * tests already exist and just runs + fixes them via AI.
  *
  * Pipeline:
@@ -20,18 +20,18 @@ import { scanTests } from "../measure/scanner.js";
 import { rescoreManifest } from "../measure/scorer.js";
 import { createAIProvider } from "../ai/provider-factory.js";
 import {
-  buildRunFixPrompt,
-  parseRunFixResponse,
-} from "../ai/run-prompts.js";
+  buildFixPrompt,
+  parseFixResponse,
+} from "../ai/fix-prompts.js";
 import type { AIProvider, AIProgressEvent } from "../ai/types.js";
 import { UsageTracker } from "../utils/usage-tracker.js";
 import { logger } from "../utils/logger.js";
 
 // ─── Types ───────────────────────────────────────────────────
 
-export interface RunOptions {
+export interface FixOptions {
   projectRoot: string;
-  /** Only run tests for specific modules (paths from coverit.json) */
+  /** Only fix tests for specific modules (paths from coverit.json) */
   modules?: string[];
   /** Optional AI provider (auto-detected if not provided) */
   aiProvider?: AIProvider;
@@ -41,7 +41,7 @@ export interface RunOptions {
   usageTracker?: UsageTracker;
 }
 
-export interface RunResult {
+export interface FixResult {
   scoreBefore: number;
   scoreAfter: number;
   totalTests: number;
@@ -61,9 +61,9 @@ const FIX_TIMEOUT_MS = 600_000;
 // ─── Core Pipeline ──────────────────────────────────────────
 
 /**
- * Run existing tests, fix failures via AI, rescan and update manifest.
+ * Fix failing tests via AI — runs tests, fixes failures, rescans and updates manifest.
  */
-export async function runTests(options: RunOptions): Promise<RunResult> {
+export async function fixTests(options: FixOptions): Promise<FixResult> {
   const { projectRoot } = options;
 
   // Step 1: Read manifest
@@ -75,12 +75,12 @@ export async function runTests(options: RunOptions): Promise<RunResult> {
   }
 
   const scoreBefore = manifest.score.overall;
-  logger.debug(`Run starting. Current score: ${scoreBefore}/100`);
+  logger.debug(`Fix starting. Current score: ${scoreBefore}/100`);
 
   // Step 2: Collect test files from modules
   const testFiles = collectTestFiles(manifest, options.modules);
   if (testFiles.length === 0) {
-    logger.debug("No test files found — nothing to run");
+    logger.debug("No test files found — nothing to fix");
     return {
       scoreBefore,
       scoreAfter: scoreBefore,
@@ -91,7 +91,7 @@ export async function runTests(options: RunOptions): Promise<RunResult> {
     };
   }
 
-  logger.debug(`Found ${testFiles.length} test files to run`);
+  logger.debug(`Found ${testFiles.length} test files to fix`);
 
   // Step 3: Run tests
   options.onProgress?.({ type: "phase", name: "Running tests", step: 1, total: 3 });
@@ -114,7 +114,7 @@ export async function runTests(options: RunOptions): Promise<RunResult> {
     const usageTracker = options.usageTracker ?? new UsageTracker();
     logger.debug(`Using AI provider: ${provider.name}`);
 
-    const messages = buildRunFixPrompt(
+    const messages = buildFixPrompt(
       runResult.output,
       runResult.failingFiles,
       manifest.project,
@@ -129,7 +129,7 @@ export async function runTests(options: RunOptions): Promise<RunResult> {
       });
       usageTracker.add(response.usage, response.model);
 
-      const summary = parseRunFixResponse(response.content);
+      const summary = parseFixResponse(response.content);
       fixed = summary.fixed;
 
       logger.debug(
@@ -172,7 +172,7 @@ export async function runTests(options: RunOptions): Promise<RunResult> {
   await writeManifest(projectRoot, rescored);
 
   const scoreAfter = rescored.score.overall;
-  logger.debug(`Run complete. Score: ${scoreBefore} → ${scoreAfter}`);
+  logger.debug(`Fix complete. Score: ${scoreBefore} → ${scoreAfter}`);
 
   // Re-run to get final counts after fixes
   const finalResult =

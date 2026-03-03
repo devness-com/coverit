@@ -156,7 +156,7 @@ async function callTool(
 
 // ─── Public API ──────────────────────────────────────────────
 
-export type CoveritCommand = "scan" | "cover" | "run";
+export type CoveritCommand = "scan" | "cover" | "fix";
 
 export interface UseAISession {
   sessionId: string | null;
@@ -167,7 +167,7 @@ export interface UseAISession {
 const COMMAND_TITLES: Record<CoveritCommand, { title: string; privatePrefix: string }> = {
   scan: { title: "Codebase quality scan", privatePrefix: "Coverit scan on" },
   cover: { title: "Test generation", privatePrefix: "Coverit cover on" },
-  run: { title: "Test run and fix", privatePrefix: "Coverit run on" },
+  fix: { title: "Test fix", privatePrefix: "Coverit fix on" },
 };
 
 export interface UseAIStartOptions {
@@ -290,12 +290,12 @@ function buildMilestone(
         category: "test",
       };
     }
-    case "run": {
+    case "fix": {
       const delta = Math.round(((data.scoreAfter ?? 0) - (data.scoreBefore ?? 0)) * 10) / 10;
       const deltaStr = delta > 0 ? `+${delta}` : String(delta);
       return {
-        title: `Ran ${data.totalTests ?? 0} tests, fixed ${data.fixed ?? 0}, score ${data.scoreBefore ?? 0} -> ${data.scoreAfter ?? 0} (${deltaStr})`,
-        private_title: `Coverit ran ${data.totalTests ?? 0} tests: ${data.passed ?? 0} passed, ${data.failed ?? 0} failed, ${data.fixed ?? 0} AI-fixed${usageSuffix}`,
+        title: `Fixed ${data.fixed ?? 0} tests out of ${data.totalTests ?? 0}, score ${data.scoreBefore ?? 0} -> ${data.scoreAfter ?? 0} (${deltaStr})`,
+        private_title: `Coverit fixed ${data.fixed ?? 0} of ${data.totalTests ?? 0} tests: ${data.passed ?? 0} passed, ${data.failed ?? 0} failed${usageSuffix}`,
         category: "test",
       };
     }

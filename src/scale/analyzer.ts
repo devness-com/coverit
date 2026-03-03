@@ -44,7 +44,7 @@ import {
   collectTestFiles,
   detectTestRunner,
   executeTests,
-} from "../run/pipeline.js";
+} from "../fix/pipeline.js";
 import type { AIProvider, AIProgressEvent } from "../ai/types.js";
 import { UsageTracker } from "../utils/usage-tracker.js";
 import type { SecurityAIModule } from "../ai/security-prompts.js";

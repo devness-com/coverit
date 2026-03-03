@@ -11,7 +11,7 @@ CLI / MCP
     │
     ├── cover ───→ reads coverit.json gaps ──→ AI writes + runs + fixes tests ──→ updates coverit.json
     │
-    ├── run ─────→ runs existing tests ──→ AI fixes failures ──→ updates coverit.json
+    ├── fix ─────→ runs existing tests ──→ AI fixes failures ──→ updates coverit.json
     │
     └── status ──→ reads coverit.json ──→ renders dashboard (instant, no AI)
 ```
@@ -31,14 +31,14 @@ src/
 │   ├── ollama-provider.ts     Ollama (local)
 │   ├── scale-prompts.ts       Prompts for codebase analysis
 │   ├── cover-prompts.ts       Prompts for test generation
-│   └── run-prompts.ts         Prompts for test run + fix
+│   └── fix-prompts.ts         Prompts for test fix
 ├── scale/                     Codebase analysis
 │   ├── analyzer.ts            analyzeCodebase() → CoveritManifest
 │   └── writer.ts              readManifest(), writeManifest()
 ├── cover/                     Test generation pipeline
 │   └── pipeline.ts            cover() → CoverResult
-├── run/                       Test run + fix pipeline
-│   └── pipeline.ts            run() → RunResult
+├── fix/                       Test fix pipeline
+│   └── pipeline.ts            fixTests() → FixResult
 ├── measure/                   Test scanning and scoring
 │   ├── scanner.ts             Filesystem test file scanner
 │   ├── scorer.ts              rescoreManifest()
@@ -106,7 +106,7 @@ rescoreManifest()            Recalculate quality score
 writeManifest()              Update coverit.json with new scores
 ```
 
-### Run
+### Fix
 
 ```
 readManifest()               Read coverit.json
@@ -187,7 +187,7 @@ interface CoverResult {
 |------|-------------|---------|
 | `coverit_scan` | AI explores codebase → coverit.json | High |
 | `coverit_cover` | AI generates tests from gaps → updates score | High |
-| `coverit_run` | Runs existing tests → AI fixes failures → updates score | High |
+| `coverit_fix` | Runs existing tests → AI fixes failures → updates score | High |
 | `coverit_status` | Shows dashboard from coverit.json | None |
 | `coverit_clear` | Deletes coverit.json and .coverit/ | None |
 | `coverit_backup` | Exports coverit.json | None |

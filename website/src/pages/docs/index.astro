@@ -22,7 +22,7 @@ import DocsLayout from '../../layouts/DocsLayout.astro';
     The entire system is built on four commands:
     <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">scan</code>,
     <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">cover</code>,
-    <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">run</code>, and
+    <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">fix</code>, and
     <code class="bg-bg-warm px-1.5 py-0.5 rounded font-mono text-sm">status</code>.
     AI does the heavy lifting &mdash; exploring your code with real tool access, understanding your
     architecture, and writing tests that actually pass.
@@ -65,7 +65,7 @@ import DocsLayout from '../../layouts/DocsLayout.astro';
   </p>
   <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code>npx @devness/coverit scan      # Scan your codebase
 npx @devness/coverit cover     # Generate tests for gaps
-npx @devness/coverit run       # Run tests, fix failures
+npx @devness/coverit fix       # Fix failing tests via AI
 npx @devness/coverit status    # Show quality dashboard</code></pre>
 
   <!-- Your first scan -->
@@ -111,7 +111,7 @@ npx @devness/coverit status    # Show quality dashboard</code></pre>
   <p class="font-body text-text leading-relaxed mb-4">
     If you have existing tests that are failing, let the AI fix them:
   </p>
-  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code>npx @devness/coverit run</code></pre>
+  <pre class="bg-bg-code text-[#f5f0e8] font-mono text-sm p-4 rounded-lg overflow-x-auto mb-6"><code>npx @devness/coverit fix</code></pre>
   <p class="font-body text-text leading-relaxed mb-4">
     This runs your existing test suite, sends any failures to the AI for fixing, rescans the
     codebase, and updates your score. It's the fastest way to go from red to green.

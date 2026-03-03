@@ -43,7 +43,7 @@ const mockScanCodebase = vi.fn();
 const mockReadManifest = vi.fn();
 const mockWriteManifest = vi.fn();
 const mockCover = vi.fn();
-const mockRunTests = vi.fn();
+const mockFixTests = vi.fn();
 
 vi.mock("../../scale/analyzer.js", () => ({
   scanCodebase: (...args: unknown[]) => mockScanCodebase(...args),
@@ -58,8 +58,8 @@ vi.mock("../../cover/pipeline.js", () => ({
   cover: (...args: unknown[]) => mockCover(...args),
 }));
 
-vi.mock("../../run/pipeline.js", () => ({
-  runTests: (...args: unknown[]) => mockRunTests(...args),
+vi.mock("../../fix/pipeline.js", () => ({
+  fixTests: (...args: unknown[]) => mockFixTests(...args),
 }));
 
 vi.mock("../../utils/logger.js", () => ({
@@ -157,7 +157,7 @@ describe("MCP Server — Tool Registration", () => {
     expect(toolHandlers.size).toBe(7);
     expect(toolHandlers.has("coverit_scan")).toBe(true);
     expect(toolHandlers.has("coverit_cover")).toBe(true);
-    expect(toolHandlers.has("coverit_run")).toBe(true);
+    expect(toolHandlers.has("coverit_fix")).toBe(true);
     expect(toolHandlers.has("coverit_status")).toBe(true);
     expect(toolHandlers.has("coverit_clear")).toBe(true);
     expect(toolHandlers.has("coverit_backup")).toBe(true);
@@ -229,9 +229,9 @@ describe("coverit_cover handler", () => {
   });
 });
 
-describe("coverit_run handler", () => {
-  it("returns run result on success", async () => {
-    const runResult = {
+describe("coverit_fix handler", () => {
+  it("returns fix result on success", async () => {
+    const fixResult = {
       scoreBefore: 40,
       scoreAfter: 45,
       totalTests: 20,
@@ -239,9 +239,9 @@ describe("coverit_run handler", () => {
       failed: 2,
       fixed: 3,
     };
-    mockRunTests.mockResolvedValue(runResult);
+    mockFixTests.mockResolvedValue(fixResult);
 
-    const handler = toolHandlers.get("coverit_run")!;
+    const handler = toolHandlers.get("coverit_fix")!;
     const result = await handler({ projectRoot: "/tmp/test" });
 
     expect(result.isError).toBeUndefined();
@@ -253,7 +253,7 @@ describe("coverit_run handler", () => {
   });
 
   it("passes modules option correctly", async () => {
-    mockRunTests.mockResolvedValue({
+    mockFixTests.mockResolvedValue({
       scoreBefore: 40,
       scoreAfter: 42,
       totalTests: 10,
@@ -262,10 +262,10 @@ describe("coverit_run handler", () => {
       fixed: 0,
     });
 
-    const handler = toolHandlers.get("coverit_run")!;
+    const handler = toolHandlers.get("coverit_fix")!;
     await handler({ projectRoot: "/tmp/test", modules: ["src/services"] });
 
-    expect(mockRunTests).toHaveBeenCalledWith(
+    expect(mockFixTests).toHaveBeenCalledWith(
       expect.objectContaining({
         projectRoot: "/tmp/test",
         modules: ["src/services"],
@@ -273,10 +273,10 @@ describe("coverit_run handler", () => {
     );
   });
 
-  it("returns error response when runTests throws", async () => {
-    mockRunTests.mockRejectedValue(new Error("No coverit.json found"));
+  it("returns error response when fixTests throws", async () => {
+    mockFixTests.mockRejectedValue(new Error("No coverit.json found"));
 
-    const handler = toolHandlers.get("coverit_run")!;
+    const handler = toolHandlers.get("coverit_fix")!;
     const result = await handler({ projectRoot: "/tmp/test" });
 
     expect(result.isError).toBe(true);

@@ -1,5 +1,5 @@
 /**
- * Coverit Run — AI-Driven Test Fix Prompts
+ * Coverit Fix — AI-Driven Test Fix Prompts
  *
  * Builds prompts for the AI to fix failing tests.
  * The AI gets tool access (Read, Glob, Grep, Bash, Edit) and
@@ -14,7 +14,7 @@ import type { ManifestProject } from "../schema/coverit-manifest.js";
 
 // ─── Types ───────────────────────────────────────────────────
 
-export interface RunFixSummary {
+export interface FixSummary {
   fixed: number;
   filesModified: string[];
 }
@@ -32,7 +32,7 @@ export interface RunFixSummary {
  * 5. Re-run to confirm the fix
  * 6. Return a JSON summary
  */
-export function buildRunFixPrompt(
+export function buildFixPrompt(
   failureOutput: string,
   failingFiles: string[],
   project: ManifestProject,
@@ -101,9 +101,9 @@ After completing all work, output ONLY this JSON (no markdown fences, no extra t
 // ─── Response Parser ────────────────────────────────────────
 
 /**
- * Parse the AI's summary response from the run-fix session.
+ * Parse the AI's summary response from the fix session.
  */
-export function parseRunFixResponse(raw: string): RunFixSummary {
+export function parseFixResponse(raw: string): FixSummary {
   let jsonStr = raw.trim();
 
   // Strip markdown fences if present

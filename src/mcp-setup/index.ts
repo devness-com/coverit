@@ -6,7 +6,7 @@ const COVERIT_INSTRUCTIONS_TEXT = [
   'Coverit generates and runs tests. Available via MCP tools or slash commands:',
   '- `/coverit:scan` — AI scans and analyzes codebase, creates coverit.json',
   '- `/coverit:cover` — AI generates tests from gaps and updates your score',
-  '- `/coverit:run` — Run existing tests, fix failures, update your score',
+  '- `/coverit:fix` — Fix failing tests, update your score',
   '- `/coverit:status` — Show quality dashboard from coverit.json',
 ].join('\n');
 

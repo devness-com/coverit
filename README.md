@@ -26,8 +26,8 @@ Install the plugin for MCP tools, slash commands, and CLAUDE.md instructions —
 ```
 
 This gives you:
-- MCP tools (`coverit_scan`, `coverit_cover`, `coverit_run`, `coverit_status`, etc.)
-- Slash commands (`/coverit:scan`, `/coverit:cover`, `/coverit:run`, `/coverit:status`)
+- MCP tools (`coverit_scan`, `coverit_cover`, `coverit_fix`, `coverit_status`, etc.)
+- Slash commands (`/coverit:scan`, `/coverit:cover`, `/coverit:fix`, `/coverit:status`)
 
 ### 2. Other AI Tools (MCP)
 
@@ -52,21 +52,21 @@ Use directly via `npx` in any project — no MCP or plugin required:
 ```bash
 npx @devness/coverit scan      # AI scans & analyzes your codebase → creates coverit.json
 npx @devness/coverit cover     # AI writes tests for gaps → updates your score
-npx @devness/coverit run       # Run existing tests, fix failures → updates your score
+npx @devness/coverit fix       # Fix failing tests via AI → updates your score
 npx @devness/coverit status    # Show your quality dashboard
 ```
 
 ## How It Works
 
 ```
-scan → coverit.json → cover/run → updated coverit.json → status
+scan → coverit.json → cover/fix → updated coverit.json → status
 ```
 
 | Command | What happens |
 |---------|-------------|
 | **scan** | AI scans and analyzes your codebase with tool access (read files, search code, run commands). Discovers modules, maps existing tests, classifies complexity, identifies user journeys and API contracts. Produces `coverit.json`. |
 | **cover** | AI reads gaps from `coverit.json`, writes test files for each module, runs them, fixes failures, and updates the quality score. |
-| **run** | Runs existing tests, sends failures to AI for fixing, rescans and updates the quality score. Unlike `cover`, doesn't write new tests. |
+| **fix** | Runs existing tests, sends failures to AI for fixing, rescans and updates the quality score. Unlike `cover`, doesn't write new tests. |
 | **status** | Instantly displays your quality dashboard from `coverit.json`. No AI, no scanning. |
 
 ### The Manifest: `coverit.json`
@@ -86,7 +86,7 @@ scan → coverit.json → cover/run → updated coverit.json → status
 |---------|-------------|
 | `coverit scan [path]` | AI scans and analyzes codebase → creates `coverit.json` |
 | `coverit cover [path]` | AI generates tests from gaps and updates score |
-| `coverit run [path]` | Run existing tests, fix failures, update score |
+| `coverit fix [path]` | Fix failing tests via AI, update score |
 | `coverit status [path]` | Show quality dashboard from `coverit.json` |
 | `coverit clear [path]` | Delete `coverit.json` and `.coverit/` for a fresh start |
 
@@ -96,11 +96,11 @@ scan → coverit.json → cover/run → updated coverit.json → status
 |--------|-------------|
 | `--modules <paths>` | Only cover specific modules (comma-separated) |
 
-### Run Options
+### Fix Options
 
 | Option | Description |
 |--------|-------------|
-| `--modules <paths>` | Only run tests for specific modules (comma-separated) |
+| `--modules <paths>` | Only fix tests for specific modules (comma-separated) |
 
 ## MCP Tools
 
@@ -110,7 +110,7 @@ Available in all AI tools after installation (plugin or npx):
 |------|-------------|
 | `coverit_scan` | AI scans and analyzes codebase → `coverit.json` |
 | `coverit_cover` | AI generates tests from gaps → updates score |
-| `coverit_run` | Run existing tests → fix failures → update score |
+| `coverit_fix` | Fix failing tests via AI → update score |
 | `coverit_status` | Show quality dashboard (instant, no AI) |
 | `coverit_clear` | Delete `coverit.json` and `.coverit/` |
 | `coverit_backup` | Export `coverit.json` as JSON |
@@ -162,7 +162,7 @@ coverit follows the Testing Diamond strategy (not the outdated Testing Pyramid):
        │
        ├── cover ───→ AI reads gaps ──→ writes tests ──→ runs ──→ updates coverit.json
        │
-       ├── run ─────→ runs tests ──→ AI fixes failures ──→ updates coverit.json
+       ├── fix ─────→ runs tests ──→ AI fixes failures ──→ updates coverit.json
        │
        └── status ──→ reads coverit.json ──→ dashboard
 ```
@@ -172,7 +172,7 @@ src/
 ├── ai/           AI providers (Claude, Gemini, Codex, Anthropic, OpenAI, Ollama)
 ├── scale/        Codebase scanner + manifest writer
 ├── cover/        Test generation pipeline
-├── run/          Test run + fix pipeline
+├── fix/          Test fix pipeline
 ├── measure/      Test scanner, scorer, dashboard
 ├── scoring/      Score engine, weights, thresholds
 ├── schema/       coverit.json types + defaults

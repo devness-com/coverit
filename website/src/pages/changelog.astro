@@ -24,17 +24,17 @@ const releases: VersionRelease[] = [
       {
         type: 'Added',
         entries: [
-          { text: 'run command — run existing tests, AI fixes failures, rescan and update score' },
-          { text: 'AI run prompts (src/ai/run-prompts.ts)' },
-          { text: 'Run pipeline (src/run/pipeline.ts)' },
+          { text: 'fix command — fix failing tests via AI, rescan and update score' },
+          { text: 'AI fix prompts (src/ai/fix-prompts.ts)' },
+          { text: 'Fix pipeline (src/fix/pipeline.ts)' },
         ],
       },
       {
         type: 'Changed',
         entries: [
           { text: 'Renamed analyze command to scan across CLI, MCP, and skill files' },
-          { text: 'Updated MCP server to 7 tools (added coverit_run)' },
-          { text: 'Updated CLI to 5 commands (added run)' },
+          { text: 'Updated MCP server to 7 tools (added coverit_fix)' },
+          { text: 'Updated CLI to 5 commands (added fix)' },
         ],
       },
     ],

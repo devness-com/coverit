@@ -2,7 +2,7 @@
 
 ## Problem
 
-Coverit has no session tracking. When a user runs `coverit scan`, `coverit cover`, or `coverit run`, there's no record of the work done, time spent, or results achieved. Users in the devness ecosystem use UseAI for AI session tracking, and coverit should integrate with it.
+Coverit has no session tracking. When a user runs `coverit scan`, `coverit cover`, or `coverit fix`, there's no record of the work done, time spent, or results achieved. Users in the devness ecosystem use UseAI for AI session tracking, and coverit should integrate with it.
 
 ## Approach
 
@@ -59,7 +59,7 @@ Additional fields:
 ### Hook points
 
 **CLI** (`src/cli/index.ts`): Before/after each scan/cover/run handler
-**MCP** (`src/mcp/server.ts`): Before/after each coverit_scan/coverit_cover/coverit_run tool
+**MCP** (`src/mcp/server.ts`): Before/after each coverit_scan/coverit_cover/coverit_fix tool
 
 Both use the same shared `useaiStart`/`useaiEnd` calls.
 
@@ -84,4 +84,4 @@ coverit scan /path/to/project
 
 1. **Create** `src/integrations/useai.ts` — UseAI daemon client
 2. **Modify** `src/cli/index.ts` — add useai calls in scan/cover/run handlers
-3. **Modify** `src/mcp/server.ts` — add useai calls in coverit_scan/coverit_cover/coverit_run tools
+3. **Modify** `src/mcp/server.ts` — add useai calls in coverit_scan/coverit_cover/coverit_fix tools

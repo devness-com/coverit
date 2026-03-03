@@ -6,7 +6,7 @@
  * 4-command architecture:
  *   coverit scan [path]    — AI explores codebase → creates coverit.json
  *   coverit cover [path]   — AI generates tests from gaps → updates coverit.json
- *   coverit run [path]     — Run existing tests, fix failures, update coverit.json
+ *   coverit fix [path]     — Fix failing tests via AI, update coverit.json
  *   coverit status [path]  — Shows dashboard from coverit.json
  *   coverit clear [path]   — Deletes coverit.json and .coverit/
  */
@@ -22,7 +22,7 @@ import { dirname, join } from "node:path";
 import { scanCodebase, ALL_DIMENSIONS, type ScanDimension } from "../scale/analyzer.js";
 import { readManifest, writeManifest } from "../scale/writer.js";
 import { cover } from "../cover/pipeline.js";
-import { runTests } from "../run/pipeline.js";
+import { fixTests } from "../fix/pipeline.js";
 import { renderDashboard } from "../measure/dashboard.js";
 import {
   detectAllProviders,
@@ -791,13 +791,13 @@ program
     }
   });
 
-// ─── run ────────────────────────────────────────────────────
+// ─── fix ────────────────────────────────────────────────────
 
 program
-  .command("run")
+  .command("fix")
   .argument("[path]", "Project root path", ".")
-  .option("--modules <paths>", "Only run tests for specific modules (comma-separated)")
-  .description("Run existing tests, fix failures via AI, and update the score")
+  .option("--modules <paths>", "Only fix tests for specific modules (comma-separated)")
+  .description("Fix failing tests via AI, and update the score")
   .action(async (pathArg: string, cmdOpts: { modules?: string }) => {
     const projectRoot = resolveProjectRoot(pathArg);
     const autoYes = program.opts().yes ?? false;
@@ -805,7 +805,7 @@ program
     const provider = await resolveProvider(autoYes);
     const spinner = ora("Running tests and fixing failures...").start();
     const progress = createProgressHandler(spinner);
-    const lazySession = createLazyUseAISession("run", projectRoot, provider, progress.handler);
+    const lazySession = createLazyUseAISession("fix", projectRoot, provider, progress.handler);
     const usageTracker = new UsageTracker();
 
     try {
@@ -813,7 +813,7 @@ program
         ? cmdOpts.modules.split(",").map((m) => m.trim())
         : undefined;
 
-      const result = await runTests({
+      const result = await fixTests({
         projectRoot,
         modules,
         aiProvider: provider,
@@ -824,7 +824,7 @@ program
       progress.cleanup();
       spinner.stop();
 
-      console.log(chalk.bold("\n  Run Results\n"));
+      console.log(chalk.bold("\n  Fix Results\n"));
 
       const delta = Math.round((result.scoreAfter - result.scoreBefore) * 10) / 10;
       const deltaStr =
@@ -862,11 +862,11 @@ program
         logger.info(`AI fixed ${result.fixed} test(s).`);
       }
       if (result.failed > 0) {
-        logger.warn("Some tests still failing. Run `coverit run` again to retry.");
+        logger.warn("Some tests still failing. Run `coverit fix` again to retry.");
       }
     } catch (err) {
       progress.cleanup();
-      spinner.fail("Run failed");
+      spinner.fail("Fix failed");
       logger.error(err instanceof Error ? err.message : String(err));
       printUsageSummary(usageTracker);
       const session = await lazySession.getSession();
