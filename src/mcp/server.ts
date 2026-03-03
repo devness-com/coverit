@@ -127,17 +127,22 @@ server.tool(
 );
 
 // ─── coverit_cover ──────────────────────────────────────────
-// AI reads gaps from coverit.json → generates tests → runs → fixes → updates score.
+// AI covers all dimensions: generates tests (functionality), fixes vulnerabilities (security),
+// improves reliability (stability), and fixes style issues (conformance).
 
 server.tool(
   "coverit_cover",
-  "Generate tests to fill coverage gaps in coverit.json. AI reads the manifest, writes test files for each module with gaps, runs them, fixes failures, and updates the quality score.",
+  "Generate tests and fix code quality issues from coverit.json gaps. Covers all scanned dimensions by default: functionality (test generation), security (fix vulnerabilities), stability (improve error handling), conformance (fix style issues).",
   {
     projectRoot: z.string().describe("Absolute path to the project root"),
     modules: z
       .array(z.string())
       .optional()
       .describe("Only cover specific modules (paths from coverit.json, e.g. ['src/services', 'src/utils'])"),
+    dimensions: z
+      .array(z.enum(["functionality", "security", "stability", "conformance"]))
+      .optional()
+      .describe("Which dimensions to cover (default: all scanned). Options: functionality, security, stability, conformance"),
     parallel: z
       .number()
       .optional()
@@ -149,7 +154,7 @@ server.tool(
     fresh: z.boolean().optional().describe("Start fresh, ignoring any previous session (default: false)"),
     full: z.boolean().optional().describe("Cover all modules with gaps, ignoring incremental detection (default: false)"),
   },
-  async ({ projectRoot, modules, parallel, timeoutSeconds, fresh, full }) => {
+  async ({ projectRoot, modules, dimensions, parallel, timeoutSeconds, fresh, full }) => {
     let session: Awaited<ReturnType<typeof useaiStart>> = null;
     const usageTracker = new UsageTracker();
     try {
@@ -157,6 +162,7 @@ server.tool(
       const result = await cover({
         projectRoot,
         modules,
+        dimensions: dimensions as import("../cover/pipeline.js").CoverDimension[] | undefined,
         concurrency: parallel,
         timeoutMs: timeoutSeconds ? timeoutSeconds * 1000 : undefined,
         usageTracker,

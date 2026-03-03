@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { scanCodebase, ALL_DIMENSIONS, type ScanDimension } from "../scale/analyzer.js";
 import { readManifest, writeManifest } from "../scale/writer.js";
-import { cover } from "../cover/pipeline.js";
+import { cover, type CoverDimension } from "../cover/pipeline.js";
 import { fixTests } from "../fix/pipeline.js";
 import { renderDashboard } from "../measure/dashboard.js";
 import {
@@ -389,7 +389,9 @@ interface CoverModuleLine {
   activity: string;
   startTime: number;
   status: "pending" | "running" | "done" | "failed" | "timed_out";
+  dimension?: string;
   stats?: { testsWritten: number; testsPassed: number; testsFailed: number };
+  detail?: string;
 }
 
 /**
@@ -411,9 +413,15 @@ class CoverProgress {
   private spinnerFrame = 0;
   private lastRenderTime = 0;
   private startTime: number;
+  /** Track dimension transitions for header rendering */
+  private dimensionStatus = new Map<string, "running" | "done" | "failed">();
 
   constructor() {
     this.startTime = Date.now();
+  }
+
+  updateDimensionStatus(name: string, status: "running" | "done" | "failed"): void {
+    this.dimensionStatus.set(name, status);
   }
 
   log(fn: () => void): void {
@@ -430,6 +438,8 @@ class CoverProgress {
     name: string,
     status: "pending" | "running" | "done" | "failed" | "timed_out",
     stats?: { testsWritten: number; testsPassed: number; testsFailed: number },
+    dimension?: string,
+    detail?: string,
   ): void {
     if (!this.modules.has(name)) {
       this.modules.set(name, { activity: "", startTime: Date.now(), status: "pending" });
@@ -441,6 +451,8 @@ class CoverProgress {
     }
     line.status = status;
     if (stats) line.stats = stats;
+    if (dimension) line.dimension = dimension;
+    if (detail) line.detail = detail;
   }
 
   updateActivity(name: string, activity: string): void {
@@ -481,39 +493,54 @@ class CoverProgress {
     outputLines.push(`  ${chalk.bold.cyan("Cover:")} ${chalk.dim(headerParts.join(" · "))}`);
     outputLines.push(""); // blank line after header
 
-    // Module lines in insertion order
+    // Dimension headers (only show if multiple dimensions are active)
+    const hasDimensions = this.dimensionStatus.size > 1 ||
+      (this.dimensionStatus.size === 1 && !this.dimensionStatus.has("Functionality"));
+
+    // Group modules by dimension for rendering
+    let lastDimension: string | undefined;
     for (const name of this.moduleOrder) {
       const state = this.modules.get(name)!;
       const shortName = shortenModulePath(name);
 
+      // Render dimension header when dimension changes
+      if (hasDimensions && state.dimension && state.dimension !== lastDimension) {
+        lastDimension = state.dimension;
+        const dimLabel = state.dimension.charAt(0).toUpperCase() + state.dimension.slice(1);
+        const dimStatus = this.dimensionStatus.get(dimLabel);
+        const dimIcon = dimStatus === "done" ? chalk.green("✓") : dimStatus === "failed" ? chalk.red("✗") : chalk.cyan("●");
+        if (outputLines.length > 2) outputLines.push(""); // blank line between dimensions
+        outputLines.push(`  ${dimIcon} ${chalk.bold(dimLabel)}`);
+      }
+
       if (state.status === "pending") {
-        outputLines.push(`  ${chalk.dim(`○ ${shortName.padEnd(24)}         ─ waiting`)}`);
+        outputLines.push(`  ${chalk.dim(`  ○ ${shortName.padEnd(24)}         ─ waiting`)}`);
         continue;
       }
 
       const lineElapsed = formatElapsed(now - state.startTime);
+      const indent = hasDimensions ? "    " : "  ";
 
       if (state.status === "done") {
-        const statsStr = this.formatStats(state.stats);
-        const line = `  ${chalk.green("✓")} ${shortName.padEnd(24)} ${chalk.dim(lineElapsed.padStart(7))} ${chalk.dim("─")} ${chalk.dim(statsStr)}`;
-        outputLines.push(line);
+        const statsStr = state.detail || this.formatStats(state.stats);
+        outputLines.push(`${indent}${chalk.green("✓")} ${shortName.padEnd(24)} ${chalk.dim(lineElapsed.padStart(7))} ${chalk.dim("─")} ${chalk.dim(statsStr)}`);
       } else if (state.status === "failed") {
-        outputLines.push(`  ${chalk.red("✗")} ${shortName.padEnd(24)} ${chalk.dim(lineElapsed.padStart(7))} ${chalk.dim("─")} ${chalk.red("failed")}`);
+        outputLines.push(`${indent}${chalk.red("✗")} ${shortName.padEnd(24)} ${chalk.dim(lineElapsed.padStart(7))} ${chalk.dim("─")} ${chalk.red("failed")}`);
       } else if (state.status === "timed_out") {
         const statsStr = state.stats && state.stats.testsWritten > 0
           ? ` (${this.formatStats(state.stats)})`
           : "";
-        outputLines.push(`  ${chalk.yellow("⏱")} ${shortName.padEnd(24)} ${chalk.dim(lineElapsed.padStart(7))} ${chalk.dim("─")} ${chalk.yellow("timed out")}${chalk.dim(statsStr)}`);
+        outputLines.push(`${indent}${chalk.yellow("⏱")} ${shortName.padEnd(24)} ${chalk.dim(lineElapsed.padStart(7))} ${chalk.dim("─")} ${chalk.yellow("timed out")}${chalk.dim(statsStr)}`);
       } else {
         // running
         const spinner = chalk.cyan(SPINNER_CHARS[this.spinnerFrame]!);
-        const fixedLen = `  X ${"".padEnd(24)} ${lineElapsed.padStart(7)} ─ `.length;
+        const fixedLen = `${indent}X ${"".padEnd(24)} ${lineElapsed.padStart(7)} ─ `.length;
         let activityStr = state.activity;
         const maxLen = columns - fixedLen - 2;
         if (activityStr && maxLen > 5 && activityStr.length > maxLen) {
           activityStr = activityStr.slice(0, maxLen - 1) + "…";
         }
-        outputLines.push(`  ${spinner} ${shortName.padEnd(24)} ${chalk.dim(lineElapsed.padStart(7))} ${chalk.dim("─")} ${chalk.dim(activityStr || "starting...")}`);
+        outputLines.push(`${indent}${spinner} ${shortName.padEnd(24)} ${chalk.dim(lineElapsed.padStart(7))} ${chalk.dim("─")} ${chalk.dim(activityStr || "starting...")}`);
       }
     }
 
@@ -593,12 +620,21 @@ function createCoverProgressHandler(spinner: ReturnType<typeof ora>) {
 
   const handler = (event: AIProgressEvent): void => {
     switch (event.type) {
+      case "dimension_status": {
+        if (!coverProgress) {
+          spinner.stop();
+          coverProgress = new CoverProgress();
+        }
+        coverProgress.updateDimensionStatus(event.name, event.status);
+        coverProgress.render();
+        break;
+      }
       case "module_status": {
         if (!coverProgress) {
           spinner.stop();
           coverProgress = new CoverProgress();
         }
-        coverProgress.updateModuleStatus(event.name, event.status, event.stats);
+        coverProgress.updateModuleStatus(event.name, event.status, event.stats, event.dimension, event.detail);
         coverProgress.render();
         break;
       }
@@ -923,12 +959,13 @@ program
   .command("cover")
   .argument("[path]", "Project root path", ".")
   .option("--modules <paths>", "Only cover specific modules (comma-separated)")
+  .option("--dimensions <list>", "Which dimensions to cover (comma-separated: functionality,security,stability,conformance)")
   .option("--parallel <count>", "Max modules to process in parallel (default: 3)")
   .option("--timeout <seconds>", "Timeout per module in seconds (default: 600)")
   .option("--fresh", "Ignore previous session and start fresh")
   .option("--full", "Cover all modules with gaps (ignore incremental detection)")
-  .description("AI generates tests from coverit.json gaps, runs them, and updates the score")
-  .action(async (pathArg: string, cmdOpts: { modules?: string; parallel?: string; timeout?: string; fresh?: boolean; full?: boolean }) => {
+  .description("AI generates tests and fixes code quality issues from coverit.json gaps across all dimensions")
+  .action(async (pathArg: string, cmdOpts: { modules?: string; dimensions?: string; parallel?: string; timeout?: string; fresh?: boolean; full?: boolean }) => {
     const projectRoot = resolveProjectRoot(pathArg);
     const autoYes = program.opts().yes ?? false;
 
@@ -984,12 +1021,16 @@ program
       const modules = cmdOpts.modules
         ? cmdOpts.modules.split(",").map((m) => m.trim())
         : undefined;
+      const dimensions = cmdOpts.dimensions
+        ? cmdOpts.dimensions.split(",").map((d) => d.trim()) as CoverDimension[]
+        : undefined;
       const concurrency = cmdOpts.parallel ? parseInt(cmdOpts.parallel, 10) : undefined;
       const timeoutMs = cmdOpts.timeout ? parseInt(cmdOpts.timeout, 10) * 1000 : undefined;
 
       const result = await cover({
         projectRoot,
         modules,
+        dimensions,
         concurrency,
         timeoutMs,
         aiProvider: provider,
@@ -1012,13 +1053,33 @@ program
             ? chalk.red(String(delta))
             : chalk.gray("±0");
 
-      logger.table({
+      const table: Record<string, string | number> = {
         "Score": `${result.scoreBefore}/100 → ${result.scoreAfter}/100 (${deltaStr})`,
         "Modules Processed": result.modulesProcessed,
-        "Tests Generated": result.testsGenerated,
-        "Passed": chalk.green(String(result.testsPassed)),
-        "Failed": result.testsFailed > 0 ? chalk.red(String(result.testsFailed)) : String(result.testsFailed),
-      });
+      };
+
+      // Show functionality stats if present
+      if (result.dimensionResults.functionality || result.testsGenerated > 0) {
+        table["Tests Generated"] = result.testsGenerated;
+        table["Passed"] = chalk.green(String(result.testsPassed));
+        table["Failed"] = result.testsFailed > 0 ? chalk.red(String(result.testsFailed)) : String(result.testsFailed);
+      }
+
+      // Show other dimension stats
+      if (result.dimensionResults.security) {
+        const sec = result.dimensionResults.security;
+        table["Security"] = `${sec.itemsFixed} findings fixed${sec.itemsSkipped > 0 ? `, ${sec.itemsSkipped} skipped` : ""}`;
+      }
+      if (result.dimensionResults.stability) {
+        const stab = result.dimensionResults.stability;
+        table["Stability"] = `${stab.itemsFixed} gaps fixed${stab.itemsSkipped > 0 ? `, ${stab.itemsSkipped} skipped` : ""}`;
+      }
+      if (result.dimensionResults.conformance) {
+        const conf = result.dimensionResults.conformance;
+        table["Conformance"] = `${conf.itemsFixed} violations fixed${conf.itemsSkipped > 0 ? `, ${conf.itemsSkipped} skipped` : ""}`;
+      }
+
+      logger.table(table);
 
       printUsageSummary(usageTracker);
 

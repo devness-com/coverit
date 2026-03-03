@@ -23,6 +23,16 @@ export interface CoverModuleSession {
 export interface CoverSession {
   startedAt: string;
   modules: Record<string, CoverModuleSession>;
+  /** Which dimension is currently being processed */
+  currentDimension?: string;
+  /** Per-dimension completion status */
+  dimensionStatus?: Record<string, DimensionStatus>;
+  /** Security fix progress per module */
+  securityModules?: Record<string, CoverModuleSession>;
+  /** Stability fix progress per module */
+  stabilityModules?: Record<string, CoverModuleSession>;
+  /** Conformance fix progress per module */
+  conformanceModules?: Record<string, CoverModuleSession>;
 }
 
 export interface ScanDimensionSession {

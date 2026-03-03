@@ -36,6 +36,22 @@ vi.mock("../../utils/logger.js", () => ({
   },
 }));
 
+vi.mock("../../utils/session.js", () => ({
+  readCoverSession: vi.fn().mockResolvedValue(null),
+  writeCoverSession: vi.fn().mockResolvedValue(undefined),
+  deleteCoverSession: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("../../utils/git.js", () => ({
+  getHeadCommit: vi.fn().mockResolvedValue(null),
+  getFilesSinceCommit: vi.fn().mockResolvedValue([]),
+  mapFilesToModules: vi.fn().mockReturnValue({ affectedModules: new Set(), unmappedFiles: [] }),
+}));
+
+vi.mock("../../integrations/useai.js", () => ({
+  useaiHeartbeat: vi.fn().mockResolvedValue(undefined),
+}));
+
 // NOTE: We do NOT mock cover-prompts — we use real buildCoverPrompt/parseCoverResponse
 // to test the integration of gap identification → prompt building → response parsing.
 

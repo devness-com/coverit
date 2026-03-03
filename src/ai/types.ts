@@ -57,7 +57,7 @@ export type AIProgressEvent =
   | { type: "thinking"; text: string }
   | { type: "phase"; name: string; step: number; total: number }
   | { type: "dimension_status"; name: string; status: "running" | "done" | "failed"; detail?: string }
-  | { type: "module_status"; name: string; status: "pending" | "running" | "done" | "failed" | "timed_out"; stats?: { testsWritten: number; testsPassed: number; testsFailed: number } }
+  | { type: "module_status"; name: string; status: "pending" | "running" | "done" | "failed" | "timed_out"; dimension?: string; stats?: { testsWritten: number; testsPassed: number; testsFailed: number }; detail?: string }
   | { type: "model_detected"; model: string };
 
 export interface AIGenerateOptions {
