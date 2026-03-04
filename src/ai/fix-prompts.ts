@@ -80,6 +80,15 @@ After completing all work, output ONLY this JSON (no markdown fences, no extra t
 
 {"fixed": <number of tests fixed>, "filesModified": ["<relative path to each modified test file>"]}`;
 
+  // Cap test output to avoid overwhelming the AI context window.
+  // Keep first 50KB (usually enough to see all unique error types).
+  const MAX_OUTPUT_CHARS = 50_000;
+  const truncatedOutput =
+    failureOutput.length > MAX_OUTPUT_CHARS
+      ? failureOutput.slice(0, MAX_OUTPUT_CHARS) +
+        `\n\n... [truncated — ${failureOutput.length - MAX_OUTPUT_CHARS} chars omitted, ${failingFiles.length} files total]`
+      : failureOutput;
+
   const user = `Fix the ${failingFiles.length} failing test file(s) listed below.
 
 ## Failing Test Files
@@ -89,7 +98,7 @@ ${fileList}
 ## Test Output
 
 \`\`\`
-${failureOutput}
+${truncatedOutput}
 \`\`\`
 
 Start by reading the test output above, then read and fix each file.`;

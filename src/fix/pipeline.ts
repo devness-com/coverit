@@ -98,7 +98,7 @@ export async function fixTests(options: FixOptions): Promise<FixResult> {
   const testRunner = detectTestRunner(manifest);
   const runResult = await executeTests(projectRoot, testFiles, testRunner);
 
-  logger.debug(
+  logger.info(
     `Test run: ${runResult.passed} passed, ${runResult.failed} failed out of ${runResult.total}`,
   );
 
@@ -111,8 +111,8 @@ export async function fixTests(options: FixOptions): Promise<FixResult> {
     runResult.failingFiles.length > 0 ? runResult.failingFiles : testFiles;
   if (runResult.failed > 0 && failingFiles.length > 0) {
     options.onProgress?.({ type: "phase", name: "Fixing failures", step: 2, total: 3 });
-    logger.debug(
-      `Sending ${failingFiles.length} failing files to AI for fixing...`,
+    logger.info(
+      `Sending ${failingFiles.length} failing file(s) to AI for fixing...`,
     );
 
     const provider = options.aiProvider ?? (await createAIProvider());
@@ -299,12 +299,23 @@ function parseTestOutput(
 
   // Jest format: "Tests:       3 failed, 12 passed, 15 total"
   const jestMatch = output.match(
-    /Tests:\s+(?:(\d+)\s+failed,\s+)?(\d+)\s+passed,\s+(\d+)\s+total/,
+    /Tests:\s+(?:(\d+)\s+failed,\s+)?(?:(\d+)\s+passed,\s+)?(\d+)\s+total/,
   );
   if (jestMatch) {
     const failed = jestMatch[1] ? parseInt(jestMatch[1], 10) : 0;
-    const passed = parseInt(jestMatch[2]!, 10);
+    const passed = jestMatch[2] ? parseInt(jestMatch[2], 10) : 0;
     const total = parseInt(jestMatch[3]!, 10);
+    return { total, passed, failed };
+  }
+
+  // Jest "Test Suites" line as fallback (when Tests line shows 0 total)
+  const suitesMatch = output.match(
+    /Test Suites:\s+(?:(\d+)\s+failed,\s+)?(?:(\d+)\s+passed,\s+)?(\d+)\s+total/,
+  );
+  if (suitesMatch) {
+    const failed = suitesMatch[1] ? parseInt(suitesMatch[1], 10) : 0;
+    const passed = suitesMatch[2] ? parseInt(suitesMatch[2], 10) : 0;
+    const total = parseInt(suitesMatch[3]!, 10);
     return { total, passed, failed };
   }
 
