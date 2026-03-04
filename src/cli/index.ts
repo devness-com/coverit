@@ -694,7 +694,15 @@ function formatSpinnerText(
   if (phase) parts.push(phase);
   parts.push(`(${elapsed})`);
   if (activity) parts.push(`· ${activity}`);
-  return chalk.dim(`  ${parts.join(" ")}`);
+  let text = `  ${parts.join(" ")}`;
+  // Truncate to terminal width to prevent line wrapping which corrupts
+  // previous output when ora clears/redraws the spinner line.
+  // Reserve 4 chars for the spinner symbol + space prefix.
+  const maxWidth = (process.stdout.columns || 80) - 4;
+  if (text.length > maxWidth) {
+    text = text.slice(0, maxWidth - 1) + "…";
+  }
+  return chalk.dim(text);
 }
 
 /** Format milliseconds as "1m 23s" or "45s" */
