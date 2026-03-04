@@ -103,11 +103,16 @@ export async function fixTests(options: FixOptions): Promise<FixResult> {
   );
 
   // Step 4: If failures, send AI to fix
+  // If we couldn't extract specific failing files from the output, fall back
+  // to sending all test files — the AI can determine which are failing from
+  // the test output itself.
   let fixed = 0;
-  if (runResult.failed > 0 && runResult.failingFiles.length > 0) {
+  const failingFiles =
+    runResult.failingFiles.length > 0 ? runResult.failingFiles : testFiles;
+  if (runResult.failed > 0 && failingFiles.length > 0) {
     options.onProgress?.({ type: "phase", name: "Fixing failures", step: 2, total: 3 });
     logger.debug(
-      `Sending ${runResult.failingFiles.length} failing files to AI for fixing...`,
+      `Sending ${failingFiles.length} failing files to AI for fixing...`,
     );
 
     const provider = options.aiProvider ?? (await createAIProvider());
@@ -116,7 +121,7 @@ export async function fixTests(options: FixOptions): Promise<FixResult> {
 
     const messages = buildFixPrompt(
       runResult.output,
-      runResult.failingFiles,
+      failingFiles,
       manifest.project,
     );
 
@@ -319,16 +324,20 @@ function extractFailingFiles(
 ): string[] {
   const failing: string[] = [];
 
-  // Check each test file — if its name appears near "FAIL" in output
   for (const file of allFiles) {
     const basename = file.split("/").pop() ?? file;
-    // vitest: "FAIL  src/foo.test.ts" or jest: "FAIL src/foo.test.ts"
+    // Match various test runner output formats:
+    // jest:   "FAIL src/foo.test.ts" or "FAIL  src/foo.test.ts"
+    // jest:   "● Test suite failed to run" ... "at Object.<anonymous> (src/foo.test.ts:1:1)"
+    // vitest: "FAIL  src/foo.test.ts" or "src/foo.test.ts > ..."
     if (
       output.includes(`FAIL  ${file}`) ||
       output.includes(`FAIL ${file}`) ||
       output.includes(`FAIL  ${basename}`) ||
       output.includes(`FAIL ${basename}`) ||
-      output.includes(`${file} >`) // vitest inline failure
+      output.includes(`${file} >`) || // vitest inline failure
+      output.includes(`(${file}:`) || // jest stack trace with relative path
+      output.includes(`(${basename}:`) // jest stack trace with basename
     ) {
       failing.push(file);
     }
