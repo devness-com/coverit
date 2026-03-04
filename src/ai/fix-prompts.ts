@@ -49,7 +49,7 @@ Fix the failing tests listed below. Do NOT write new tests — only fix existing
 
 ## Workflow
 
-1. **Understand failures**: Read the test output below to identify what's failing and why.
+1. **Understand failures**: Read the test output provided in the user message to identify what's failing and why.
 2. **Read test files**: Use Read to examine the failing test files.
 3. **Read source files**: Use Read/Grep to understand the source code the tests are testing.
 4. **Fix tests**: Use Edit to fix the test code. Common fixes include:
@@ -68,16 +68,6 @@ Fix the failing tests listed below. Do NOT write new tests — only fix existing
 - Framework: ${project.framework}
 - Test Framework: ${project.testFramework}
 
-## Failing Test Files
-
-${fileList}
-
-## Test Output
-
-\`\`\`
-${failureOutput}
-\`\`\`
-
 ## Rules
 
 - **Only fix tests** — do NOT modify source code. If a test is wrong because the source API changed, update the test to match the current source.
@@ -90,7 +80,19 @@ After completing all work, output ONLY this JSON (no markdown fences, no extra t
 
 {"fixed": <number of tests fixed>, "filesModified": ["<relative path to each modified test file>"]}`;
 
-  const user = `Fix the ${failingFiles.length} failing test file(s). Start by reading the test output above, then read and fix each file.`;
+  const user = `Fix the ${failingFiles.length} failing test file(s) listed below.
+
+## Failing Test Files
+
+${fileList}
+
+## Test Output
+
+\`\`\`
+${failureOutput}
+\`\`\`
+
+Start by reading the test output above, then read and fix each file.`;
 
   return [
     { role: "system" as const, content: system },

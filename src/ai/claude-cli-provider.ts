@@ -225,7 +225,7 @@ export class ClaudeCliProvider implements AIProvider {
     const userMessages = messages.filter((m) => m.role !== "system");
 
     // The user prompt is piped via stdin
-    const prompt = userMessages
+    let prompt = userMessages
       .map((msg) => msg.content)
       .join("\n\n");
 
@@ -248,10 +248,18 @@ export class ClaudeCliProvider implements AIProvider {
       "--strict-mcp-config",
     ];
 
-    // Pass system prompt as a proper CLI flag
+    // Pass system prompt as a CLI flag, unless it's too large (E2BIG risk).
+    // macOS ARG_MAX is ~256KB total for all args. If the system prompt is
+    // large, merge it into the stdin payload instead of using --system-prompt.
+    const MAX_SYSTEM_PROMPT_ARG_BYTES = 100_000; // ~100KB safety threshold
     if (systemMessages.length > 0) {
       const systemPrompt = systemMessages.map((m) => m.content).join("\n\n");
-      args.push("--system-prompt", systemPrompt);
+      if (Buffer.byteLength(systemPrompt, "utf-8") > MAX_SYSTEM_PROMPT_ARG_BYTES) {
+        // Too large for CLI arg — prepend to stdin prompt instead
+        prompt = `<system>\n${systemPrompt}\n</system>\n\n${prompt}`;
+      } else {
+        args.push("--system-prompt", systemPrompt);
+      }
     }
 
     // Only pass --model when explicitly configured; otherwise inherit user's default
@@ -379,9 +387,20 @@ export class ClaudeCliProvider implements AIProvider {
         clearTimeout(timeout);
         clearTimeout(wallTimeout);
         if (!killed) {
-          reject(
-            new Error(`Failed to spawn Claude CLI: ${err.message}`),
-          );
+          // E2BIG = argument list too long (system prompt passed as CLI arg exceeded OS limit)
+          if (err.message.includes("E2BIG")) {
+            reject(
+              new Error(
+                "AI prompt too large for CLI arguments (E2BIG). " +
+                "This usually means the system prompt exceeded the OS limit (~256KB). " +
+                "Try running `coverit scan` to refresh the manifest, then retry.",
+              ),
+            );
+          } else {
+            reject(
+              new Error(`Failed to spawn Claude CLI: ${err.message}`),
+            );
+          }
         }
       });
 
